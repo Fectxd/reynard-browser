@@ -15,4 +15,5 @@ struct ContextMenuContext {
     
     let target: Target
     let point: CGPoint
+    let allowsPreview: Bool
 }

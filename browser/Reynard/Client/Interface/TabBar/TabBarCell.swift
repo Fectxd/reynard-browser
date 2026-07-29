@@ -65,6 +65,9 @@ final class TabBarCell: UICollectionViewCell {
     
     private let closeButton: UIButton = {
         let button = UIButton(type: .system)
+        if #available(iOS 13.4, *) {
+            button.isPointerInteractionEnabled = true
+        }
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setImage(UIImage(named: "reynard.x.square.fill"), for: .normal)
         button.setPreferredSymbolConfiguration(

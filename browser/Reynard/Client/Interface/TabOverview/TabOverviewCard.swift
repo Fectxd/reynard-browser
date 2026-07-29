@@ -97,6 +97,9 @@ final class TabOverviewCard: UICollectionViewCell {
     
     private let closeTabButton: TabOverviewCardCloseTabButton = {
         let button = TabOverviewCardCloseTabButton(type: .system)
+        if #available(iOS 13.4, *) {
+            button.isPointerInteractionEnabled = true
+        }
         button.translatesAutoresizingMaskIntoConstraints = false
         button.touchTargetScale = UX.closeButtonTouchTargetScale
         button.setImage(UIImage(named: "reynard.xmark"), for: .normal)

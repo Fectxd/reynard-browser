@@ -24,6 +24,7 @@ public struct ContextElement {
     public let type: ElementType
     public let srcUri: String?
     public let textContent: String?
+    public let isMouseInput: Bool
 }
 
 public enum SlowScriptResponse {
@@ -165,7 +166,8 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
                 altText: message?["alt"] as? String,
                 type: parseElementType(message?["elementType"] as? String ?? ""),
                 srcUri: message?["elementSrc"] as? String,
-                textContent: message?["textContent"] as? String
+                textContent: message?["textContent"] as? String,
+                isMouseInput: message?["isMouseInput"] as? Bool ?? false
             )
             
             delegate?.onContextMenu(

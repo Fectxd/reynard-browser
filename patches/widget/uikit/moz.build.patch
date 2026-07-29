@@ -1,8 +1,8 @@
 diff --git a/widget/uikit/moz.build b/widget/uikit/moz.build
-index f5d8821773c0..5ead3454cf7e 100644
+index f5d8821773c0..12b41af4f769 100644
 --- a/widget/uikit/moz.build
 +++ b/widget/uikit/moz.build
-@@ -8,35 +8,50 @@ with Files("**"):
+@@ -8,35 +8,51 @@ with Files("**"):
  with Files("*TextInput*"):
      BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
  
@@ -35,6 +35,7 @@ index f5d8821773c0..5ead3454cf7e 100644
      "EventDispatcher.mm",
 +    "ExternalResponseService.mm",
 +    "GeckoEditableSupport.mm",
++    "GeckoPointerSupport.mm",
      "GfxInfo.cpp",
      "IOSBridge.mm",
      "MediaKeysEventSourceFactory.cpp",

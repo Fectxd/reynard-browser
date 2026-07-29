@@ -1,0 +1,45 @@
+diff --git a/widget/uikit/GeckoPointerSupport.h b/widget/uikit/GeckoPointerSupport.h
+new file mode 100644
+index 000000000000..3768d6b73eb1
+--- /dev/null
++++ b/widget/uikit/GeckoPointerSupport.h
+@@ -0,0 +1,39 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#ifndef mozilla_widget_GeckoPointerSupport_h
++#define mozilla_widget_GeckoPointerSupport_h
++
++#import <UIKit/UIKit.h>
++
++class nsWindow;
++
++namespace mozilla {
++class WidgetSimpleGestureEvent;
++}
++
++@class ChildView;
++@protocol GeckoViewInputResultDelegate;
++
++@interface GeckoPointerSupport
++    : NSObject <UIGestureRecognizerDelegate, UIPointerInteractionDelegate>
++
++- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild;
++- (void)requireTextInteractionsToFail:
++    (NSArray<UITextInteraction*>*)textInteractions;
++- (void)setInputResultDelegate:
++    (id<GeckoViewInputResultDelegate>)inputResultDelegate;
++- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches;
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)releasePointerButtons;
++- (void)invalidatePointerInteraction;
++- (BOOL)handleHistorySwipeEvent:(mozilla::WidgetSimpleGestureEvent&)event;
++- (void)widgetDestroyed;
++
++@end
++
++#endif

@@ -135,6 +135,9 @@ final class AddressBar: UIView {
     
     private let leadingButton: AddressBarButton = {
         let button = AddressBarButton(type: .system)
+        if #available(iOS 13.4, *) {
+            button.isPointerInteractionEnabled = true
+        }
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = .secondaryLabel
         if #available(iOS 14.0, *) {
@@ -146,6 +149,9 @@ final class AddressBar: UIView {
     
     private let trailingButton: AddressBarButton = {
         let button = AddressBarButton(type: .system)
+        if #available(iOS 13.4, *) {
+            button.isPointerInteractionEnabled = true
+        }
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = .label
         button.isHidden = true

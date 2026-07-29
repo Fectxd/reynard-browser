@@ -41,6 +41,12 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private let refreshIndicatorContainer = UIView()
     private let refreshIndicator = UIActivityIndicatorView(style: .large)
     
+    var historySwipeDirectionsProvider: (() -> GeckoHistorySwipeDirections)?
+    var onHistorySwipeDidStart: ((GeckoHistorySwipeDirections) -> Void)?
+    var onHistorySwipeDidUpdate: ((CGFloat) -> Void)?
+    var onHistorySwipeDidComplete: ((GeckoHistorySwipeDirections) -> Void)?
+    var onHistorySwipeDidEnd: (() -> Void)?
+    
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureHierarchy()
@@ -74,6 +80,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         scrollToTopTriggerView.delegate = self
         scrollToTopTriggerView.showsVerticalScrollIndicator = false
         scrollToTopTriggerView.contentInsetAdjustmentBehavior = .never
+        webView.inputResultDelegate = self
         errorLabel.font = .preferredFont(forTextStyle: .body)
         errorLabel.adjustsFontForContentSizeCategory = true
         errorLabel.numberOfLines = 0
@@ -182,9 +189,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         }
         if enabled {
             installPullToRefreshRecognizer()
-            webView.inputResultDelegate = self
         } else if let pullToRefreshRecognizer {
-            webView.inputResultDelegate = nil
             refreshingSession = nil
             pullToRefreshRecognizer.cancelPull()
             webView.removeGestureRecognizer(pullToRefreshRecognizer)
@@ -359,6 +364,26 @@ extension WebContentView: GeckoViewInputResultDelegate {
     }
     
     func touchSequenceDidEnd(_ sequenceID: UInt64) {}
+    
+    func allowedHistorySwipeDirections() -> GeckoHistorySwipeDirections {
+        return historySwipeDirectionsProvider?() ?? []
+    }
+    
+    func historySwipeDidStart(_ direction: GeckoHistorySwipeDirections) {
+        onHistorySwipeDidStart?(direction)
+    }
+    
+    func historySwipeDidUpdate(_ progress: Double) {
+        onHistorySwipeDidUpdate?(CGFloat(progress))
+    }
+    
+    func historySwipeDidComplete(_ direction: GeckoHistorySwipeDirections) {
+        onHistorySwipeDidComplete?(direction)
+    }
+    
+    func historySwipeDidEnd() {
+        onHistorySwipeDidEnd?()
+    }
 }
 
 private struct PullInputResult {

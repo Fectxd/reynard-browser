@@ -51,12 +51,12 @@ final class ContextMenuCoordinator: NSObject {
         self.interaction = interaction
     }
     
-    func present(at point: CGPoint, target: ContextMenuContext.Target) {
+    func present(at point: CGPoint, target: ContextMenuContext.Target, allowsPreview: Bool) {
         guard let interaction else {
             return
         }
         
-        let context = ContextMenuContext(target: target, point: point)
+        let context = ContextMenuContext(target: target, point: point, allowsPreview: allowsPreview)
         closePreview()
         pendingContext = context
         isCommitting = false
@@ -78,7 +78,7 @@ final class ContextMenuCoordinator: NSObject {
             return
         }
         
-        if !Prefs.BrowsingSettings.showLinkPreviews {
+        if pendingContext?.allowsPreview != true || !Prefs.BrowsingSettings.showLinkPreviews {
             guard case .link(let url) = pendingContext?.target else {
                 return
             }
@@ -179,7 +179,7 @@ extension ContextMenuCoordinator: UIContextMenuInteractionDelegate {
         
         if let imageConfiguration = ImagePreviewMenu.configuration(
             for: context,
-            showsPreview: Prefs.BrowsingSettings.showImagePreviews,
+            showsPreview: context.allowsPreview && Prefs.BrowsingSettings.showImagePreviews,
             presentingController: host.contextMenuPresenter,
             sourceView: host.contextMenuSourceView
         ) {
@@ -188,7 +188,7 @@ extension ContextMenuCoordinator: UIContextMenuInteractionDelegate {
         
         return LinkPreviewMenu.configuration(
             for: context,
-            showsPreview: Prefs.BrowsingSettings.showLinkPreviews,
+            showsPreview: context.allowsPreview && Prefs.BrowsingSettings.showLinkPreviews,
             isPrivate: host.contextMenuSelectedTabIsPrivate,
             sessionManager: sessionManager,
             onPreviewCreated: { [weak self] preview in

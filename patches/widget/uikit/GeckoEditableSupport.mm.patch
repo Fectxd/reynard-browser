@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..113c3907d1e7
+index 000000000000..4c73bcb41ef3
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,3849 @@
+@@ -0,0 +1,3925 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -431,6 +431,7 @@ index 000000000000..113c3907d1e7
 +                           lineEnd:(NSUInteger)aLineEnd
 +                           handler:(widget::TextInputHandler*)aHandler;
 +- (NSRange)deleteBackwardRangeWithHandler:(widget::TextInputHandler*)aHandler;
++- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction;
 +- (void)updateTextInteractions;
 +- (void)scheduleResponderBlur;
 +- (void)cancelResponderBlur;
@@ -440,6 +441,9 @@ index 000000000000..113c3907d1e7
 +- (void)scheduleEditSelectionUpdate;
 +- (void)applyEditSelectionUpdate;
 +- (void)updateEditMenu;
++- (void)showEditMenuForSecondaryClick;
++- (void)setSelectionHandlesVisible:(BOOL)aVisible;
++- (void)updateSelectionHandleSuppression;
 +
 +@end
 +
@@ -532,6 +536,8 @@ index 000000000000..113c3907d1e7
 +  mEditable.mSelectionDisplayInteraction = nil;
 +  mEditable.mSelectionHandlePanRecognizer = nil;
 +  mEditable.mTextInteractionInProgress = NO;
++  mEditable.mSelectionHandlesVisibleForTouchInput = NO;
++  mEditable.mSelectionHandleSuppressionAssertion = nil;
 +  mEditable.mPendingSelectionGeometryRefresh = NO;
 +  // The other Vietnamese fields are meaningful only while this buffer exists.
 +  mEditable.mVietnameseBufferText = nil;
@@ -563,6 +569,8 @@ index 000000000000..113c3907d1e7
 +  [mEditable.mNonEditableTextInteraction release];
 +  mEditable.mNonEditableTextInteraction = nil;
 +  mEditable.mTextInteractionInProgress = NO;
++  [mEditable.mSelectionHandleSuppressionAssertion release];
++  mEditable.mSelectionHandleSuppressionAssertion = nil;
 +  // Drop any temporary Vietnamese mirror before releasing UIKit interactions.
 +  [self clearVietnameseBuffer];
 +  [self clearKoreanCompositionState];
@@ -1815,6 +1823,15 @@ index 000000000000..113c3907d1e7
 +  [self updateLegacyTextInteractions];
 +}
 +
++- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction {
++  NSArray<NSNumber*>* touchTypes =
++      @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
++  for (UIGestureRecognizer* gestureRecognizer in aInteraction
++           .gesturesForFailureRequirements) {
++    gestureRecognizer.allowedTouchTypes = touchTypes;
++  }
++}
++
 +// Delay resigning first responder for one runloop turn so transient
 +// focus handoffs inside the same editable or between editables do not dismiss
 +// the keyboard, while a real outside tap still collapses it.
@@ -1850,10 +1867,9 @@ index 000000000000..113c3907d1e7
 +// selection UI at most once per runloop turn.
 +- (void)selectionGeometryChanged {
 +  // If a caret-menu resolution is pending (from handleTap), check
-+  // whether this position-change notification reflects an actual caret
-+  // move. If the offset differs from the pre-tap offset, cancel the
-+  // pending menu. If it matches, the caret stayed in place and the
-+  // fallback timer will show the menu.
++  // whether the notification reflects an actual caret move. If the offset
++  // differs from the pre-tap offset, cancel the pending menu. If it matches,
++  // the caret stayed in place and the fallback timer will show the menu.
 +  if (mEditable.mPendingCaretMenu) {
 +    NSRange sel = [self selectedRange];
 +    if (sel.location == NSNotFound || sel.length > 0 ||
@@ -2026,6 +2042,53 @@ index 000000000000..113c3907d1e7
 +  [menuController hideMenuFromView:self];
 +}
 +
++- (void)showEditMenuForSecondaryClick {
++  NSRange selectedRange = [self selectedRange];
++  mEditable.mCaretMenuActive =
++      selectedRange.location != NSNotFound && selectedRange.length == 0;
++  [self updateEditMenu];
++}
++
++- (void)setSelectionHandlesVisible:(BOOL)aVisible {
++  mEditable.mSelectionHandlesVisibleForTouchInput = aVisible;
++  [self updateSelectionHandleSuppression];
++  if (aVisible && mEditable.mSelectionDisplayInteraction != nil) {
++    [self refreshSelectionUI];
++  }
++}
++
++- (void)updateSelectionHandleSuppression {
++  if (mEditable.mSelectionHandlesVisibleForTouchInput) {
++    [mEditable.mSelectionHandleSuppressionAssertion release];
++    mEditable.mSelectionHandleSuppressionAssertion = nil;
++    return;
++  }
++  if (mEditable.mSelectionHandleSuppressionAssertion != nil) {
++    return;
++  }
++
++  id selectionDisplay = mEditable.mSelectionDisplayInteraction;
++  SEL obtainAssertion =
++      NSSelectorFromString(@"_obtainGrabberSuppressionAssertion");
++  if (selectionDisplay &&
++      [selectionDisplay respondsToSelector:obtainAssertion]) {
++    mEditable.mSelectionHandleSuppressionAssertion =
++        [[selectionDisplay performSelector:obtainAssertion] retain];
++    return;
++  }
++
++  NSMutableArray<UIView*>* selectionViews = [NSMutableArray array];
++  CollectViewsOfClass(self.window, @"UITextSelectionView", selectionViews);
++  obtainAssertion = NSSelectorFromString(@"obtainGrabberSuppressionAssertion");
++  for (UIView* selectionView in selectionViews) {
++    if ([selectionView respondsToSelector:obtainAssertion]) {
++      mEditable.mSelectionHandleSuppressionAssertion =
++          [[selectionView performSelector:obtainAssertion] retain];
++      return;
++    }
++  }
++}
++
 +// Returns the plain text inside a UITextRange.
 +- (NSString*)textInRange:(UITextRange*)aRange {
 +  NSRange queryRange = [self rangeForTextRange:aRange];
@@ -2186,7 +2249,8 @@ index 000000000000..113c3907d1e7
 +}
 +
 +- (void)removeDictationResultPlaceholder:(id)aPlaceholder
-+                        willInsertResult:(BOOL)aWillInsertResult {}
++                        willInsertResult:(BOOL)aWillInsertResult {
++}
 +
 +- (UIView*)textInputView {
 +  return self;
@@ -2664,6 +2728,7 @@ index 000000000000..113c3907d1e7
 +    return NO;
 +  }
 +
++  [self setSelectionHandlesVisible:YES];
 +  [self startHandleTrackingAtPoint:aPoint
 +                             range:[self selectedRange]
 +                           handler:[self textHandler]];
@@ -2726,6 +2791,8 @@ index 000000000000..113c3907d1e7
 +    mEditable.mSelectionHandlePanRecognizer.delegate = self;
 +    mEditable.mSelectionHandlePanRecognizer.maximumNumberOfTouches = 1;
 +    mEditable.mSelectionHandlePanRecognizer.cancelsTouchesInView = YES;
++    mEditable.mSelectionHandlePanRecognizer.allowedTouchTypes =
++        @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
 +    [self addGestureRecognizer:mEditable.mSelectionHandlePanRecognizer];
 +  }
 +}
@@ -2767,6 +2834,9 @@ index 000000000000..113c3907d1e7
 +    }
 +  }
 +
++  [self configureTextInteractionForTouchInput:
++            keyboardDisabled ? mEditable.mNonEditableTextInteraction
++                             : mEditable.mEditableTextInteraction];
 +  [self updateSelectionActivation];
 +}
 +
@@ -2794,10 +2864,10 @@ index 000000000000..113c3907d1e7
 +  if (mEditable.mSelectionDisplayInteraction == nil) {
 +    return;
 +  }
++  if (!mEditable.mSelectionHandlesVisibleForTouchInput) {
++    return;
++  }
 +
-+  const BOOL hasAttachedTextInteraction =
-+      mEditable.mEditableTextInteraction.view == self ||
-+      mEditable.mNonEditableTextInteraction.view == self;
 +  CGRect visibleBounds = [self selectionBounds];
 +  widget::TextInputHandler* handler = [self textHandler];
 +  NSRange selectedRange = [self selectedRange];
@@ -2814,36 +2884,33 @@ index 000000000000..113c3907d1e7
 +      [(id)mEditable.mSelectionDisplayInteraction handleViews];
 +  NSUInteger handleIndex = 0;
 +  for (UIView* handleView in handleViews) {
-+    BOOL shouldHide =
-+        hasAttachedTextInteraction && mEditable.mTextInteractionInProgress;
-+    if (!shouldHide) {
-+      if (selectedRange.location != NSNotFound && selectedRange.length > 0 &&
-+          [handleViews count] >= 2) {
-+        // UIKit exposes the handle views as an ordered pair, so map index 0/1
-+        // to Gecko's start/end endpoint visibility before doing final clipping.
-+        if (handleIndex == 0) {
-+          shouldHide = !startEndpointVisible;
-+        } else if (handleIndex == 1) {
-+          shouldHide = !endEndpointVisible;
-+        }
++    BOOL shouldHide = NO;
++    if (selectedRange.location != NSNotFound && selectedRange.length > 0 &&
++        [handleViews count] >= 2) {
++      // UIKit exposes the handle views as an ordered pair, so map index 0/1
++      // to Gecko's start/end endpoint visibility before doing final clipping.
++      if (handleIndex == 0) {
++        shouldHide = !startEndpointVisible;
++      } else if (handleIndex == 1) {
++        shouldHide = !endEndpointVisible;
 +      }
++    }
 +
-+      // Trust Gecko's endpoint visibility over the UIKit handle view's
-+      // frame, which includes decorative chrome (teardrop) that may be out
-+      // past the editor bounds at line edges (and therefore make the entire
-+      // handle hidden although it is supposed to be visible).
-+      const BOOL geckoEndpointIsVisible =
-+          (handleIndex == 0 && startEndpointVisible) ||
-+          (handleIndex == 1 && endEndpointVisible);
++    // Trust Gecko's endpoint visibility over the UIKit handle view's
++    // frame, which includes decorative chrome (teardrop) that may be out
++    // past the editor bounds at line edges (and therefore make the entire
++    // handle hidden although it is supposed to be visible).
++    const BOOL geckoEndpointIsVisible =
++        (handleIndex == 0 && startEndpointVisible) ||
++        (handleIndex == 1 && endEndpointVisible);
 +
-+      if (!shouldHide && !geckoEndpointIsVisible) {
-+        CGRect handleRect = [self convertRect:handleView.bounds
-+                                     fromView:handleView];
-+        shouldHide = CGRectIsEmpty(visibleBounds) ||
-+                     CGRectIsNull(visibleBounds) ||
-+                     !CGRectContainsRect(CGRectStandardize(visibleBounds),
-+                                         CGRectStandardize(handleRect));
-+      }
++    if (!shouldHide && !geckoEndpointIsVisible) {
++      CGRect handleRect = [self convertRect:handleView.bounds
++                                   fromView:handleView];
++      shouldHide = CGRectIsEmpty(visibleBounds) ||
++                   CGRectIsNull(visibleBounds) ||
++                   !CGRectContainsRect(CGRectStandardize(visibleBounds),
++                                       CGRectStandardize(handleRect));
 +    }
 +    handleView.hidden = shouldHide;
 +    handleIndex++;
@@ -2980,6 +3047,8 @@ index 000000000000..113c3907d1e7
 +    return;
 +  }
 +
++  [self configureTextInteractionForTouchInput:mEditable
++                                                  .mNonEditableTextInteraction];
 +  for (UIGestureRecognizer* gesture in mEditable.mNonEditableTextInteraction
 +           .gesturesForFailureRequirements) {
 +    gesture.delaysTouchesBegan = NO;
@@ -3010,6 +3079,8 @@ index 000000000000..113c3907d1e7
 +    if (mEditable.mEditableTextInteraction.view != self) {
 +      [self addInteraction:mEditable.mEditableTextInteraction];
 +    }
++    [self configureTextInteractionForTouchInput:mEditable
++                                                    .mEditableTextInteraction];
 +  }
 +}
 +
@@ -3018,6 +3089,11 @@ index 000000000000..113c3907d1e7
 +// endpoint is actually offscreen.
 +- (void)updateLegacyGrabbers {
 +  if (mEditable.mSelectionDisplayInteraction != nil || !self.window) {
++    return;
++  }
++
++  [self updateSelectionHandleSuppression];
++  if (!mEditable.mSelectionHandlesVisibleForTouchInput) {
 +    return;
 +  }
 +

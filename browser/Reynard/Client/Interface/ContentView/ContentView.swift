@@ -67,6 +67,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     private var forwardPreviewImage: UIImage?
     private var isHistorySwipeEnabled = false
     private var historySwipeState = HistorySwipeState.idle
+    private var activeHistorySwipeDirection: HistorySwipeDirection?
     private var webContentSize: CGSize?
     
     private let webContentView = WebContentView()
@@ -152,6 +153,22 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         forwardGesture.edges = .right
         forwardGesture.delegate = self
         addGestureRecognizer(forwardGesture)
+        
+        webContentView.historySwipeDirectionsProvider = { [weak self] in
+            return self?.allowedTrackpadHistorySwipeDirections() ?? []
+        }
+        webContentView.onHistorySwipeDidStart = { [weak self] direction in
+            self?.beginTrackpadHistoryNavigation(direction)
+        }
+        webContentView.onHistorySwipeDidUpdate = { [weak self] progress in
+            self?.updateTrackpadHistoryNavigation(progress)
+        }
+        webContentView.onHistorySwipeDidComplete = { [weak self] direction in
+            self?.completeTrackpadHistoryNavigation(direction)
+        }
+        webContentView.onHistorySwipeDidEnd = { [weak self] in
+            self?.endTrackpadHistoryNavigation()
+        }
     }
     
     // MARK: - Layout
@@ -433,6 +450,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         
         onHistorySwipeBegan?()
         historySwipeState = .swiping(direction)
+        activeHistorySwipeDirection = direction
         updatePullToRefreshAvailability()
         historyPreviewImageView.image = direction == .back ? backPreviewImage : forwardPreviewImage
         historyPreviewImageView.isHidden = false
@@ -460,12 +478,19 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         _ gesture: UIScreenEdgePanGestureRecognizer,
         direction: HistorySwipeDirection
     ) {
+        let progress = historyNavigationProgress(for: gesture, direction: direction)
+        updateHistoryNavigation(progress: progress, direction: direction)
+    }
+    
+    private func updateHistoryNavigation(
+        progress: CGFloat,
+        direction: HistorySwipeDirection
+    ) {
         guard case .swiping(let activeDirection) = historySwipeState,
               activeDirection == direction else {
             return
         }
         
-        let progress = historyNavigationProgress(for: gesture, direction: direction)
         let width = bounds.width
         switch direction {
         case .back:
@@ -509,6 +534,19 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         + directionalVelocity * UX.historyTransitionProjectionDuration
         let shouldComplete = !cancelled && projectedDistance >= width
         
+        settleHistoryNavigation(
+            direction: direction,
+            shouldComplete: shouldComplete,
+            velocityX: velocityX
+        )
+    }
+    
+    private func settleHistoryNavigation(
+        direction: HistorySwipeDirection,
+        shouldComplete: Bool,
+        velocityX: CGFloat
+    ) {
+        let width = bounds.width
         UIView.animate(
             withDuration: UX.historyTransitionDuration,
             delay: 0,
@@ -580,6 +618,72 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         return min(max(distance / max(bounds.width, 1), 0), 1)
     }
     
+    private func allowedTrackpadHistorySwipeDirections() -> GeckoHistorySwipeDirections {
+        guard canBeginHistoryNavigation else {
+            return []
+        }
+        
+        var directions: GeckoHistorySwipeDirections = []
+        if canGoBack {
+            directions.insert(.back)
+        }
+        if canGoForward {
+            directions.insert(.forward)
+        }
+        return directions
+    }
+    
+    private func beginTrackpadHistoryNavigation(_ direction: GeckoHistorySwipeDirections) {
+        guard let direction = historySwipeDirection(from: direction) else {
+            return
+        }
+        beginHistoryNavigation(direction)
+    }
+    
+    private func updateTrackpadHistoryNavigation(_ progress: CGFloat) {
+        guard let direction = activeHistorySwipeDirection else {
+            return
+        }
+        updateHistoryNavigation(
+            progress: min(max(progress, 0), 1),
+            direction: direction
+        )
+    }
+    
+    private func completeTrackpadHistoryNavigation(_ direction: GeckoHistorySwipeDirections) {
+        guard let direction = historySwipeDirection(from: direction),
+              direction == activeHistorySwipeDirection,
+              case .swiping(let activeDirection) = historySwipeState,
+              activeDirection == direction else {
+            return
+        }
+        
+        settleHistoryNavigation(
+            direction: direction,
+            shouldComplete: true,
+            velocityX: 0
+        )
+    }
+    
+    private func endTrackpadHistoryNavigation() {
+        guard case .swiping = historySwipeState else {
+            return
+        }
+        resetHistoryNavigation()
+    }
+    
+    private func historySwipeDirection(
+        from direction: GeckoHistorySwipeDirections
+    ) -> HistorySwipeDirection? {
+        if direction.contains(.back) {
+            return .back
+        }
+        if direction.contains(.forward) {
+            return .forward
+        }
+        return nil
+    }
+    
     private func updateHistoryTransitionOverlay(
         direction: HistorySwipeDirection,
         progress: CGFloat
@@ -603,6 +707,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         historyTransitionOverlayView.alpha = 0
         historyTransitionOverlayView.isHidden = true
         historySwipeState = .idle
+        activeHistorySwipeDirection = nil
         updatePullToRefreshAvailability()
     }
     
@@ -657,10 +762,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer is UIScreenEdgePanGestureRecognizer,
-              case .idle = historySwipeState,
-              isHistorySwipeEnabled,
-              state == .browsing,
-              webContentView.visibility == .visible else {
+              canBeginHistoryNavigation else {
             return false
         }
         
@@ -670,6 +772,16 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         }
         
         return canGoForward
+    }
+    
+    private var canBeginHistoryNavigation: Bool {
+        guard case .idle = historySwipeState else {
+            return false
+        }
+        
+        return isHistorySwipeEnabled &&
+        state == .browsing &&
+        webContentView.visibility == .visible
     }
     
     // MARK: - Presentation

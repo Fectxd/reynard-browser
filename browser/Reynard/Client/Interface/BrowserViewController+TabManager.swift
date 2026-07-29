@@ -96,7 +96,7 @@ extension BrowserViewController: TabManagerDelegate {
         if element.type == .image,
            let source = element.srcUri?.trimmingCharacters(in: .whitespacesAndNewlines),
            let url = URL(string: source) {
-            contextMenuCoordinator.present(at: point, target: .image(url))
+            contextMenuCoordinator.present(at: point, target: .image(url), allowsPreview: !element.isMouseInput)
             return
         }
         
@@ -105,7 +105,7 @@ extension BrowserViewController: TabManagerDelegate {
             return
         }
         
-        contextMenuCoordinator.present(at: point, target: .link(url))
+        contextMenuCoordinator.present(at: point, target: .link(url), allowsPreview: !element.isMouseInput)
     }
     
     func tabManager(_ tabManager: TabManager, didChangeFullscreen fullScreen: Bool, for session: GeckoSession) {
