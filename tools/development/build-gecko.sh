@@ -16,7 +16,7 @@ if [ ! -d "$FIREFOX_DIR" ]; then
 	exit 1
 fi
 
-rm -f "$FIREFOX_DIR/.mozconfig"
+mv "$FIREFOX_DIR/.mozconfig" "$FIREFOX_DIR/.mozconfig.bak"
 
 {
 	echo "ac_add_options --enable-application=mobile/ios"
@@ -24,6 +24,9 @@ rm -f "$FIREFOX_DIR/.mozconfig"
 	echo "ac_add_options --enable-ios-target=13.0"
 	echo "ac_add_options --enable-webrtc"
 	echo "ac_add_options --enable-optimize"
+	echo "ac_add_options --enable-release"
+	echo "ac_add_options --enable-rust-simd"
+	echo "ac_add_options --enable-lto"
 	echo "ac_add_options --disable-debug"
 	echo "ac_add_options --disable-tests"
 } > "$FIREFOX_DIR/.mozconfig"
@@ -34,3 +37,6 @@ fi
 
 cd "$FIREFOX_DIR"
 ./mach build
+
+rm "$FIREFOX_DIR/.mozconfig"
+mv "$FIREFOX_DIR/.mozconfig.bak" "$FIREFOX_DIR/.mozconfig"
