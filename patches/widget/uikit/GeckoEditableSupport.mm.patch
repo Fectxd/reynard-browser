@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..4c73bcb41ef3
+index 000000000000..294e32fc5c38
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,3925 @@
+@@ -0,0 +1,4201 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,6 +12,7 @@ index 000000000000..4c73bcb41ef3
 + * https://github.com/minh-ton/reynard-browser in Feb 2026. */
 +
 +#import <UIKit/UIKit.h>
++#import <objc/runtime.h>
 +
 +#include <algorithm>
 +
@@ -31,6 +32,12 @@ index 000000000000..4c73bcb41ef3
 +using namespace mozilla;
 +using namespace mozilla::widget;
 +using mozilla::widget::UIKitUtils;
++
++@class UITextInputArrowKeyHistory;
++
++@protocol GeckoUITextInputTraitsPrivate <UITextInputTraits>
++- (void)takeTraitsFrom:(id<UITextInputTraits>)aTraits;
++@end
 +
 +namespace {
 +
@@ -177,10 +184,18 @@ index 000000000000..4c73bcb41ef3
 +// Updates Gecko's selection range.
 +bool TextInputHandler::SetSelectedRange(const NSRange& aRange) {
 +  if (Destroyed() || aRange.location == NSNotFound) {
++    if (!Destroyed()) {
++      MarkCurrentKeyEventFailed();
++    }
++    return false;
++  }
++
++  if (!PrepareCurrentKeyForIME()) {
 +    return false;
 +  }
 +
 +  if (aRange.location > UINT32_MAX || aRange.length > UINT32_MAX) {
++    MarkCurrentKeyEventFailed();
 +    return false;
 +  }
 +
@@ -189,6 +204,9 @@ index 000000000000..4c73bcb41ef3
 +  event.mLength = static_cast<uint32_t>(aRange.length);
 +  event.mExpandToClusterBoundary = false;
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  return event.mSucceeded;
 +}
 +
@@ -239,6 +257,9 @@ index 000000000000..4c73bcb41ef3
 +// Replaces Gecko text inside a document range.
 +bool TextInputHandler::ReplaceRange(const NSRange& aRange, NSString* aText) {
 +  if (Destroyed() || aRange.location == NSNotFound) {
++    if (!Destroyed()) {
++      MarkCurrentKeyEventFailed();
++    }
 +    return false;
 +  }
 +
@@ -256,6 +277,9 @@ index 000000000000..4c73bcb41ef3
 +  WidgetContentCommandEvent event(true, eContentCommandInsertText, mWidget);
 +  event.mString = Some(replacement);
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  return event.mSucceeded;
 +}
 +
@@ -332,6 +356,9 @@ index 000000000000..4c73bcb41ef3
 +
 +  WidgetContentCommandEvent event(true, aMessage, mWidget, aOnlyEnabledCheck);
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  if (aIsEnabled) {
 +    *aIsEnabled = event.mIsEnabled;
 +  }
@@ -444,6 +471,45 @@ index 000000000000..4c73bcb41ef3
 +- (void)showEditMenuForSecondaryClick;
 +- (void)setSelectionHandlesVisible:(BOOL)aVisible;
 +- (void)updateSelectionHandleSuppression;
++- (void)performEditingCommand:(Command)aCommand;
++- (void)_deleteByWord;
++- (void)_deleteForwardByWord;
++- (void)_deleteToStartOfLine;
++- (void)_deleteToEndOfLine;
++- (void)_deleteForwardAndNotify:(BOOL)aNotify;
++- (void)_deleteToEndOfParagraph;
++- (UITextInputArrowKeyHistory*)_moveUp:(BOOL)aExtending
++                           withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveDown:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveLeft:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveRight:(BOOL)aExtending
++                              withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToStartOfWord:(BOOL)aExtending
++                                      withHistory:
++                                          (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfParagraph:(BOOL)aExtending
++                withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToStartOfLine:(BOOL)aExtending
++                                      withHistory:
++                                          (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfDocument:(BOOL)aExtending
++               withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToEndOfWord:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfParagraph:(BOOL)aExtending
++              withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToEndOfLine:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfDocument:(BOOL)aExtending
++             withHistory:(UITextInputArrowKeyHistory*)aHistory;
 +
 +@end
 +
@@ -522,11 +588,23 @@ index 000000000000..4c73bcb41ef3
 +@implementation ChildView (Shared)
 +
 +- (void)setupTextInput {
++  Protocol* textInputPrivateProtocol =
++      NSProtocolFromString(@"UITextInputPrivate");
++  MOZ_RELEASE_ASSERT(textInputPrivateProtocol);
++  if (!class_conformsToProtocol([ChildView class], textInputPrivateProtocol)) {
++    MOZ_RELEASE_ASSERT(
++        class_addProtocol([ChildView class], textInputPrivateProtocol));
++  }
++
 +  self.inputAssistantItem.leadingBarButtonGroups = @[];
 +  self.inputAssistantItem.trailingBarButtonGroups = @[];
 +
 +  mEditable.mTokenizer =
 +      [[UITextInputStringTokenizer alloc] initWithTextInput:self];
++  Class textInputTraitsClass = NSClassFromString(@"UITextInputTraits");
++  MOZ_RELEASE_ASSERT(textInputTraitsClass);
++  mEditable.mTextInputTraits = [[textInputTraitsClass alloc] init];
++  mEditable.mSeenHardwareKeyDownInNonEditableContent = NO;
 +  mEditable.mTextInputDelegate = nil;
 +  mEditable.mCredentialDelegate = nil;
 +  mEditable.mWaitingForPasswordAutofillFocus = NO;
@@ -562,6 +640,8 @@ index 000000000000..4c73bcb41ef3
 +  mEditable.mCredentialDelegate = nil;
 +  [mEditable.mTokenizer release];
 +  mEditable.mTokenizer = nil;
++  [mEditable.mTextInputTraits release];
++  mEditable.mTextInputTraits = nil;
 +  [mEditable.mMarkedTextStyle release];
 +  mEditable.mMarkedTextStyle = nil;
 +  [mEditable.mEditableTextInteraction release];
@@ -2173,6 +2253,27 @@ index 000000000000..4c73bcb41ef3
 +    return length > 0 &&
 +           !(selection.location == 0 && selection.length == length);
 +  }
++  if (mGeckoChild->GetInputContext().mIMEState.IsEditable() &&
++      (aAction == @selector(_deleteByWord) ||
++       aAction == @selector(_deleteForwardByWord) ||
++       aAction == @selector(_deleteToStartOfLine) ||
++       aAction == @selector(_deleteToEndOfLine) ||
++       aAction == @selector(_deleteForwardAndNotify:) ||
++       aAction == @selector(_deleteToEndOfParagraph) ||
++       aAction == @selector(_moveUp:withHistory:) ||
++       aAction == @selector(_moveDown:withHistory:) ||
++       aAction == @selector(_moveLeft:withHistory:) ||
++       aAction == @selector(_moveRight:withHistory:) ||
++       aAction == @selector(_moveToStartOfWord:withHistory:) ||
++       aAction == @selector(_moveToStartOfParagraph:withHistory:) ||
++       aAction == @selector(_moveToStartOfLine:withHistory:) ||
++       aAction == @selector(_moveToStartOfDocument:withHistory:) ||
++       aAction == @selector(_moveToEndOfWord:withHistory:) ||
++       aAction == @selector(_moveToEndOfParagraph:withHistory:) ||
++       aAction == @selector(_moveToEndOfLine:withHistory:) ||
++       aAction == @selector(_moveToEndOfDocument:withHistory:))) {
++    return selection.location != NSNotFound;
++  }
 +
 +  return [super canPerformAction:aAction withSender:aSender];
 +}
@@ -2257,7 +2358,8 @@ index 000000000000..4c73bcb41ef3
 +}
 +
 +- (UIView*)inputView {
-+  if (mGeckoChild && mGeckoChild->IsVirtualKeyboardDisabled()) {
++  if (mGeckoChild && (mGeckoChild->IsVirtualKeyboardDisabled() ||
++                      mGeckoChild->IsSoftwareKeyboardSuppressed())) {
 +    static UIView* sHiddenInputView = nil;
 +    if (!sHiddenInputView) {
 +      sHiddenInputView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -2552,6 +2654,19 @@ index 000000000000..4c73bcb41ef3
 +
 +// MARK: - UITextInputTraits (Shared)
 +
++- (id<UITextInputTraits>)textInputTraits {
++  id<GeckoUITextInputTraitsPrivate> traits =
++      static_cast<id<GeckoUITextInputTraitsPrivate>>(
++          mEditable.mTextInputTraits);
++  [traits takeTraitsFrom:self];
++  return traits;
++}
++
++- (void)takeTraitsFrom:(id<UITextInputTraits>)aTraits {
++  [static_cast<id<GeckoUITextInputTraitsPrivate>>(mEditable.mTextInputTraits)
++      takeTraitsFrom:aTraits];
++}
++
 +- (UIKeyboardType)keyboardType {
 +  if (!mGeckoChild || mGeckoChild->Destroyed()) {
 +    return UIKeyboardTypeDefault;
@@ -2641,18 +2756,155 @@ index 000000000000..4c73bcb41ef3
 +  NSRange geckoEditRange = [self
 +      geckoRangeForVietnameseBufferRange:hasPendingDelete ? pendingDeleteRange
 +                                                          : bufferEditRange];
-+  handler->SetSelectedRange(geckoEditRange);
++  if (!handler->SetSelectedRange(geckoEditRange)) {
++    return;
++  }
 +
++  bool didApplyEdit = false;
 +  if (hasPendingDelete) {
 +    // A previous selected delete was deferred; this insert is the replacement.
 +    NSRange geckoPendingDeleteRange =
 +        [self geckoRangeForVietnameseBufferRange:pendingDeleteRange];
-+    handler->ReplaceRange(geckoPendingDeleteRange, aText ?: @"");
++    didApplyEdit = handler->ReplaceRange(geckoPendingDeleteRange, aText ?: @"");
 +  } else {
-+    handler->InsertText(aText);
++    didApplyEdit = handler->InsertText(aText);
++  }
++  if (!didApplyEdit) {
++    return;
 +  }
 +  [self replaceVietnameseBufferRange:bufferEditRange withText:aText ?: @""];
 +  [self scheduleEditSelectionUpdate];
++}
++
++- (void)_deleteByWord {
++  [self performEditingCommand:Command::DeleteWordBackward];
++}
++
++- (void)_deleteForwardByWord {
++  [self performEditingCommand:Command::DeleteWordForward];
++}
++
++- (void)_deleteToStartOfLine {
++  [self performEditingCommand:Command::DeleteToBeginningOfLine];
++}
++
++- (void)_deleteToEndOfLine {
++  [self performEditingCommand:Command::DeleteToEndOfLine];
++}
++
++- (void)_deleteForwardAndNotify:(BOOL)aNotify {
++  [self performEditingCommand:Command::DeleteCharForward];
++}
++
++- (void)_deleteToEndOfParagraph {
++  [self performEditingCommand:Command::DeleteToEndOfLine];
++}
++
++- (UITextInputArrowKeyHistory*)_moveUp:(BOOL)aExtending
++                           withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectLinePrevious
++                                         : Command::LinePrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveDown:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectLineNext
++                                         : Command::LineNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveLeft:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectCharPrevious
++                                         : Command::CharPrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveRight:(BOOL)aExtending
++                              withHistory:
++                                  (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectCharNext
++                                         : Command::CharNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToStartOfWord:(BOOL)aExtending
++                                      withHistory:(UITextInputArrowKeyHistory*)
++                                                      aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectWordPrevious
++                                         : Command::WordPrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfParagraph:(BOOL)aExtending
++                withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBeginParagraph
++                                         : Command::BeginParagraph];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToStartOfLine:(BOOL)aExtending
++                                      withHistory:(UITextInputArrowKeyHistory*)
++                                                      aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBeginLine
++                                         : Command::BeginLine];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfDocument:(BOOL)aExtending
++               withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self
++      performEditingCommand:aExtending ? Command::SelectTop : Command::MoveTop];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToEndOfWord:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectWordNext
++                                         : Command::WordNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfParagraph:(BOOL)aExtending
++              withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectEndParagraph
++                                         : Command::EndParagraph];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToEndOfLine:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectEndLine
++                                         : Command::EndLine];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfDocument:(BOOL)aExtending
++             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBottom
++                                         : Command::MoveBottom];
++  return nil;
++}
++
++- (void)performEditingCommand:(Command)aCommand {
++  mEditable.mCaretMenuActive = NO;
++  mEditable.mPendingCaretMenu = NO;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  if (widget::TextInputHandler* handler = [self textHandler]) {
++    handler->HandleCommand(aCommand);
++  }
 +}
 +
 +- (void)deleteBackward {
@@ -2664,8 +2916,19 @@ index 000000000000..4c73bcb41ef3
 +    return;
 +  }
 +
-+  BOOL hasBuffer = [self ensureVietnameseBufferWithHandler:handler];
 +  mEditable.mCaretMenuActive = NO;
++  mEditable.mPendingCaretMenu = NO;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  BOOL hasBuffer = [self ensureVietnameseBufferWithHandler:handler];
++  if (handler->HandlePhysicalDeleteBackward(
++          hasBuffer, mEditable.mKoreanComposedText != nil)) {
++    return;
++  }
 +  if (!hasBuffer) {
 +    NSRange deleteRange = [self deleteBackwardRangeWithHandler:handler];
 +    if (deleteRange.location == NSNotFound) {
@@ -2713,6 +2976,19 @@ index 000000000000..4c73bcb41ef3
 +
 +- (BOOL)hasText {
 +  return [self documentLength] > 0;
++}
++
++- (BOOL)hasContent {
++  return [self hasText];
++}
++
++- (BOOL)hasSelection {
++  NSRange range = [self selectedRange];
++  return range.location != NSNotFound && range.length > 0;
++}
++
++- (void)selectAll {
++  [self selectAll:nil];
 +}
 +
 +// MARK: UITextInteraction (Shared)

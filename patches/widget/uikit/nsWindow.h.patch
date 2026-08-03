@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.h b/widget/uikit/nsWindow.h
-index dd2d9e2be070..87b679d1c6c4 100644
+index dd2d9e2be070..ff90cc9401fa 100644
 --- a/widget/uikit/nsWindow.h
 +++ b/widget/uikit/nsWindow.h
 @@ -21,11 +21,14 @@ typedef struct objc_object ChildView;
@@ -44,7 +44,7 @@ index dd2d9e2be070..87b679d1c6c4 100644
    double GetDefaultScaleInternal() override { return BackingScaleFactor(); }
    int32_t RoundsWidgetCoordinatesTo() override;
  
-@@ -93,6 +101,9 @@ class nsWindow final : public nsIWidget {
+@@ -93,22 +101,32 @@ class nsWindow final : public nsIWidget {
    void SetInputContext(const InputContext& aContext,
                         const InputContextAction& aAction) override;
    InputContext GetInputContext() override;
@@ -52,10 +52,29 @@ index dd2d9e2be070..87b679d1c6c4 100644
 +  void SetCompositorWidgetDelegate(
 +      mozilla::widget::CompositorWidgetDelegate* aDelegate) override;
    TextEventDispatcherListener* GetNativeTextEventDispatcherListener() override;
++  nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent) override;
++  void PostHandleKeyEvent(mozilla::WidgetKeyboardEvent* aEvent) override;
  
    mozilla::widget::TextInputHandler* GetTextInputHandler() const {
-@@ -109,6 +120,11 @@ class nsWindow final : public nsIWidget {
-   */
+     return mTextInputHandler;
+   }
++  bool FocusForHardwareKeyboard();
+   bool IsVirtualKeyboardDisabled() const;
+-
+-  /*
+-  virtual bool ExecuteNativeKeyBinding(
+-                      NativeKeyBindingsType aType,
+-                      const mozilla::WidgetKeyboardEvent& aEvent,
+-                      DoCommandCallback aCallback,
+-                      void* aCallbackData) override;
+-  */
++  bool IsSoftwareKeyboardSuppressed() const {
++    return mSoftwareKeyboardSuppressed;
++  }
++  MOZ_CAN_RUN_SCRIPT bool GetEditCommands(
++      mozilla::NativeKeyBindingsType aType,
++      const mozilla::WidgetKeyboardEvent& aEvent,
++      nsTArray<mozilla::CommandInt>& aCommands) override;
  
    mozilla::layers::NativeLayerRoot* GetNativeLayerRoot() override;
 +  void GetCompositorWidgetInitData(
@@ -66,7 +85,7 @@ index dd2d9e2be070..87b679d1c6c4 100644
  
    void HandleMainThreadCATransaction();
  
-@@ -138,6 +154,16 @@ class nsWindow final : public nsIWidget {
+@@ -138,6 +156,16 @@ class nsWindow final : public nsIWidget {
      mIOSView = aView;
    }
    mozilla::widget::IOSView* GetIOSView() const { return mIOSView; }
@@ -83,7 +102,7 @@ index dd2d9e2be070..87b679d1c6c4 100644
  
   protected:
    virtual ~nsWindow();
-@@ -147,6 +173,8 @@ class nsWindow final : public nsIWidget {
+@@ -147,6 +175,8 @@ class nsWindow final : public nsIWidget {
    nsresult GetCurrentOffset(uint32_t& aOffset, uint32_t& aLength);
    nsresult DeleteRange(int aOffset, int aLen);
  
@@ -92,8 +111,11 @@ index dd2d9e2be070..87b679d1c6c4 100644
    void TearDownView();
  
    ChildView* mNativeView;
-@@ -158,8 +186,12 @@ class nsWindow final : public nsIWidget {
+@@ -156,10 +186,15 @@ class nsWindow final : public nsIWidget {
+   nsWindow* mParent;
+ 
    mozilla::widget::InputContext mInputContext;
++  bool mSoftwareKeyboardSuppressed;
    RefPtr<mozilla::widget::TextInputHandler> mTextInputHandler;
    RefPtr<mozilla::widget::IOSView> mIOSView;
 +  mozilla::widget::PlatformCompositorWidgetDelegate* mCompositorWidgetDelegate =

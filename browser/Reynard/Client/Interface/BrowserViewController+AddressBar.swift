@@ -228,9 +228,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
             return
         }
         
-        let navigationController = UINavigationController(rootViewController: settingsController)
-        navigationController.modalPresentationStyle = .pageSheet
-        present(navigationController, animated: true)
+        presentContentModal(settingsController)
     }
     
     private func presentBookmarkEditor(addToFavorites: Bool) {
@@ -254,8 +252,6 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
             bookmarkController = EditBookmarkViewController(title: title, url: url)
         }
         
-        let navigationController = UINavigationController(rootViewController: bookmarkController)
-        navigationController.modalPresentationStyle = .pageSheet
-        present(navigationController, animated: true)
+        presentContentModal(bookmarkController)
     }
 }

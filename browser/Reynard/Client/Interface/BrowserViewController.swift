@@ -31,6 +31,7 @@ final class BrowserViewController: UIViewController {
     private var preFullscreenOrientation: UIInterfaceOrientation?
     weak var fullscreenSession: GeckoSession?
     private let allowsSidebarHosting: Bool
+    private var shouldRestoreContentFocus = false
     private(set) var browserLayout = BrowserLayout.initial(
         interfaceIdiom: UIDevice.current.userInterfaceIdiom
     )
@@ -158,6 +159,8 @@ final class BrowserViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         performContentLifecycle {
+            shouldRestoreContentFocus =
+            tabManager.selectedTab?.session.engineView?.isFirstResponder == true
             view.endEditing(true)
         }
     }
@@ -169,6 +172,10 @@ final class BrowserViewController: UIViewController {
             browserChrome.syncSidebarButton(splitViewController: splitViewController)
             downloadsCoordinator.syncToolbarButtonState()
             updateBrowserLayout(animated: false)
+            if shouldRestoreContentFocus {
+                shouldRestoreContentFocus = false
+                requestContentKeyboardFocus()
+            }
         }
     }
     
@@ -362,6 +369,7 @@ final class BrowserViewController: UIViewController {
         overlayCoordinator.dismiss(.homepage, on: .detached, animated: false)
         overlayCoordinator.dismiss(.search, on: .detached, animated: false)
         applyBrowserLayout(animated: false)
+        requestContentKeyboardFocus()
     }
     
     func updateBrowserLayoutIfNeeded(
@@ -670,6 +678,51 @@ final class BrowserViewController: UIViewController {
     
     // MARK: - Keyboard
     
+    func requestContentKeyboardFocus(for expectedSession: GeckoSession? = nil) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let presentedController = presentedControllerInHierarchy {
+                guard let transitionCoordinator = presentedController.transitionCoordinator else {
+                    return
+                }
+                transitionCoordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                    self?.requestContentKeyboardFocus(for: expectedSession)
+                }
+                return
+            }
+            restoreContentKeyboardFocus(for: expectedSession)
+        }
+    }
+    
+    private func restoreContentKeyboardFocus(for expectedSession: GeckoSession? = nil) {
+        guard !browserChrome.isAddressBarEditing,
+              let selectedSession = tabManager.selectedTab?.session else {
+            return
+        }
+        if let expectedSession, expectedSession !== selectedSession {
+            return
+        }
+        guard contentView.isDisplaying(session: selectedSession),
+              let engineView = selectedSession.engineView,
+              let window = engineView.window,
+              window.isKeyWindow,
+              window.windowScene?.activationState == .foregroundActive else {
+            return
+        }
+        selectedSession.focusForHardwareKeyboard()
+    }
+    
+    private var presentedControllerInHierarchy: UIViewController? {
+        var controller: UIViewController? = self
+        while let currentController = controller {
+            if let presentedController = currentController.presentedViewController {
+                return presentedController
+            }
+            controller = currentController.parent
+        }
+        return nil
+    }
+    
     @objc private func keyboardFrameWillChange(_ notification: Notification) {
         guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else {
             return
@@ -791,6 +844,7 @@ final class BrowserViewController: UIViewController {
         updateBrowserLayout(animated: true)
         updateFullscreenOrientation(fullScreen)
         UIApplication.shared.isIdleTimerDisabled = fullScreen
+        requestContentKeyboardFocus(for: tabManager.selectedTab?.session)
     }
     
     private func updateFullscreenOrientation(_ fullScreen: Bool) {

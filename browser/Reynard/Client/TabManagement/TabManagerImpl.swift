@@ -24,11 +24,16 @@ final class TabManagerImplementation: NSObject, TabManager {
         return tabs(for: selectedTabMode)[safe: selectedTabIndex]
     }
     
-    private let promptCoordinator = PromptCoordinator(
-        presenter: PromptPresenter()
+    private lazy var requestContentKeyboardFocus: (GeckoSession) -> Void = { [weak self] session in
+        guard let self else { return }
+        self.delegate?.tabManager(self, didRequestContentKeyboardFocusFor: session)
+    }
+    private lazy var promptCoordinator = PromptCoordinator(
+        presenter: PromptPresenter(),
+        onPromptFinished: requestContentKeyboardFocus
     )
-    private let selectionActionCoordinator = SelectionActionCoordinator(
-        presenter: SelectionActionPresenter()
+    private lazy var selectionActionCoordinator = SelectionActionCoordinator(
+        presenter: SelectionActionPresenter(onMenuDismissed: requestContentKeyboardFocus)
     )
     private let permissionCoordinator = PermissionCoordinator(
         promptPresenter: PermissionPromptPresenter()

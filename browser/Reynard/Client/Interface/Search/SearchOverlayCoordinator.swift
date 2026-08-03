@@ -206,6 +206,7 @@ final class SearchOverlayCoordinator {
             setFocused(false, animated: true)
         }
         delegate?.refreshSearchAddressBar()
+        delegate?.endSearchEditing()
     }
     
     // MARK: - Layout
@@ -320,8 +321,8 @@ extension SearchOverlayCoordinator: AddressBarSearchDelegate, SearchViewControll
         if let result,
            result.source == .tab,
            let tabID = result.tabID {
-            delegate?.endSearchEditing()
             switchToTab(id: tabID)
+            delegate?.endSearchEditing()
             return
         }
         

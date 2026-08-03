@@ -1,12 +1,15 @@
 diff --git a/widget/uikit/GeckoPointerSupport.mm b/widget/uikit/GeckoPointerSupport.mm
 new file mode 100644
-index 000000000000..65878442ab00
+index 000000000000..15b615ec23b2
 --- /dev/null
 +++ b/widget/uikit/GeckoPointerSupport.mm
-@@ -0,0 +1,807 @@
+@@ -0,0 +1,810 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
 +
 +#import "GeckoPointerSupport.h"
 +
@@ -781,7 +784,7 @@ index 000000000000..65878442ab00
 +}
 +
 +- (void)tearDownPointerInput {
-+  if (SupportsPointerInput()) {
++  if (SupportsPointerInput() && mPointerInteraction) {
 +    [mView removeGestureRecognizer:mHoverRecognizer];
 +    [mView removeGestureRecognizer:mScrollRecognizer];
 +    [mView removeGestureRecognizer:mPinchRecognizer];

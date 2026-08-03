@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..f68360df5d15 100644
+index e68fca9134c0..4fce8e4c245f 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
 @@ -18,14 +18,55 @@
@@ -58,12 +58,13 @@ index e68fca9134c0..f68360df5d15 100644
  @end
  
  @protocol GeckoProcessExtension <NSObject>
-@@ -56,6 +97,8 @@
+@@ -56,6 +97,9 @@
  
  @protocol GeckoViewWindow <NSObject>
  - (UIView*)view;
 +- (AVSampleBufferDisplayLayer*)pictureInPictureDisplayLayer;
 +- (void)setInputResultDelegate:(id<GeckoViewInputResultDelegate>)delegate;
++- (BOOL)focusForHardwareKeyboard;
  - (void)close;
  @end
  

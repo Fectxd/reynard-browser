@@ -66,6 +66,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func endSearchEditing() {
         view.endEditing(true)
+        requestContentKeyboardFocus()
     }
     
     // MARK: - Homepage Overlay Delegate
@@ -162,6 +163,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func endHomepageEditing() {
         view.endEditing(true)
+        requestContentKeyboardFocus()
     }
     
     func updateHomepageLayout(animated: Bool, duration: TimeInterval) {

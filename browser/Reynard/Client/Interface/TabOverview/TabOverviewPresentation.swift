@@ -174,6 +174,9 @@ final class TabOverviewPresentation {
         }
         context.updateLayout(animated: false, duration: 0)
         context.tabBar.updateLayout()
+        if !visible {
+            context.tabOverviewDidFinishDismissal()
+        }
     }
     
     // MARK: - Presentation Progress
@@ -339,6 +342,7 @@ final class TabOverviewPresentation {
             tabOverview.isHidden = true
             commitPendingTabSelection()
             context.updateLayout(animated: false, duration: 0)
+            context.tabOverviewDidFinishDismissal()
             return
         }
         
@@ -351,6 +355,7 @@ final class TabOverviewPresentation {
             tabOverview.isHidden = true
             commitPendingTabSelection()
             context.updateLayout(animated: false, duration: 0)
+            context.tabOverviewDidFinishDismissal()
             return
         }
         
@@ -399,6 +404,7 @@ final class TabOverviewPresentation {
             self.tabOverview.isHidden = true
             self.tabOverview.bottomToolbar.alpha = 1
             self.state = .dismissed
+            self.context.tabOverviewDidFinishDismissal()
         }
     }
     
@@ -539,6 +545,7 @@ final class TabOverviewPresentation {
             tabOverview.isHidden = true
             commitPendingTabSelection()
             context.updateLayout(animated: false, duration: 0)
+            context.tabOverviewDidFinishDismissal()
             return
         }
         
@@ -551,6 +558,7 @@ final class TabOverviewPresentation {
             tabOverview.isHidden = true
             commitPendingTabSelection()
             context.updateLayout(animated: false, duration: 0)
+            context.tabOverviewDidFinishDismissal()
             return
         }
         
@@ -596,6 +604,7 @@ final class TabOverviewPresentation {
             self.tabOverview.isHidden = true
             self.tabOverview.setActiveToolbarAlpha(1)
             self.state = .dismissed
+            self.context.tabOverviewDidFinishDismissal()
         }
     }
     

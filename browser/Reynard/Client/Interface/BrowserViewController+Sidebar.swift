@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 16/6/26.
 //
 
+import GeckoView
 import UIKit
 
 extension BrowserViewController: SidebarContentController, SidebarCoordinatorHost {
@@ -22,6 +23,13 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
     
     func openExternalURL(_ url: URL) {
         tabManager.openExternalURL(url)
+    }
+    
+    func sidebarDidEndEditing() {
+        guard tabManager.selectedTab?.session.engineView?.isFirstResponder != true else {
+            return
+        }
+        requestContentKeyboardFocus()
     }
     
     var sidebarHostViewController: UIViewController {

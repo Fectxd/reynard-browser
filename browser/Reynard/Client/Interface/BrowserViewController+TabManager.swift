@@ -84,6 +84,10 @@ extension BrowserViewController: TabManagerDelegate {
         addonCoordinator.handleSelectedTabSessionReplacement(from: previousSession, to: replacementSession)
     }
     
+    func tabManager(_ tabManager: TabManager, didRequestContentKeyboardFocusFor session: GeckoSession) {
+        requestContentKeyboardFocus(for: session)
+    }
+    
     func tabManager(_ tabManager: TabManager, captureHistoryThumbnailForTabAt index: Int, mode: TabMode, url: String) {
         captureHistoryThumbnail(forTabAt: index, mode: mode, url: url)
     }

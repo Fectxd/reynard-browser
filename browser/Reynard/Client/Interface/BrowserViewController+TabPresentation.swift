@@ -111,6 +111,10 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         updateBrowserLayout(animated: animated, duration: duration)
     }
     
+    func tabOverviewDidFinishDismissal() {
+        requestContentKeyboardFocus()
+    }
+    
     func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
         if visible {
             if browserChrome.performAfterTransition({ [weak self] in

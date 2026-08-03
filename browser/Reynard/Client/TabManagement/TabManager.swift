@@ -73,6 +73,7 @@ protocol TabManagerDelegate: AnyObject {
     func tabManager(_ tabManager: TabManager, shouldContinueExternalResponseAt localFilePath: String, bytesReceived: Int64) -> Bool
     func tabManager(_ tabManager: TabManager, didCompleteExternalResponseAt localFilePath: String, succeeded: Bool)
     func tabManager(_ tabManager: TabManager, didRequestContextMenuAt point: CGPoint, for element: ContextElement, in session: GeckoSession)
+    func tabManager(_ tabManager: TabManager, didRequestContentKeyboardFocusFor session: GeckoSession)
 }
 
 extension TabManagerDelegate {
