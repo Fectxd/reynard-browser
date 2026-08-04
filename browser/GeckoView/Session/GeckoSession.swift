@@ -316,6 +316,10 @@ public class GeckoSession {
         return window?.focusForHardwareKeyboard() ?? false
     }
     
+    public func isInHardwareKeyboardMode() -> Bool {
+        return window?.isInHardwareKeyboardMode() ?? false
+    }
+    
     // MARK: - Selection Actions
     
     public func executeSelectionAction(actionId: String, commandId: String) {

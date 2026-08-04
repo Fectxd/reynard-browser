@@ -745,7 +745,11 @@ final class BrowserViewController: UIViewController {
             view.bounds.maxY - keyboardFrame.minY - view.safeAreaInsets.bottom
         )
         let animation = keyboardAnimation(from: notification)
-        if !searchOverlayCoordinator.isFocused && !tabOverview.isPresented && keyboardInset > 0 {
+        let isInHardwareKeyboardMode = tabManager.selectedTab?.session.isInHardwareKeyboardMode() == true
+        if !searchOverlayCoordinator.isFocused
+            && !tabOverview.isPresented
+            && keyboardInset > 0
+            && !isInHardwareKeyboardMode {
             contentView.relocateFocusedInput(
                 above: keyboardFrame,
                 animationDuration: animation.duration,
