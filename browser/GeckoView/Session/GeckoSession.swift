@@ -327,4 +327,9 @@ public class GeckoSession {
             ]
         )
     }
+    
+    // Toolbar
+    public func setDynamicToolbarMaxHeight(_ height: CGFloat) {
+        window?.setDynamicToolbarMaxHeight(max(0, height))
+    }
 }

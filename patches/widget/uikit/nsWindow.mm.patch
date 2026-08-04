@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index ffb8da937efa..a1cf287b02f0 100644
+index ffb8da937efa..65aae4577e58 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
 @@ -13,6 +13,7 @@
@@ -1035,15 +1035,15 @@ index ffb8da937efa..a1cf287b02f0 100644
 +      aContext.IsPasswordEditor() &&
 +      (aAction.mFocusChange == InputContextAction::GOT_FOCUS ||
 +       mNativeView->mEditable.mWaitingForPasswordAutofillFocus);
-+
+ 
+-  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
 +  if (shouldWaitForPasswordAutofillFocus) {
 +    mNativeView->mEditable.mWaitingForPasswordAutofillFocus = YES;
 +  } else if (shouldBecomeFirstResponder) {
 +    [mNativeView cancelResponderBlur];
 +    [mNativeView becomeFirstResponder];
 +  }
- 
--  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
++
 +  if ((aAction.UserMightRequestOpenVKB() || changingEnabledState) &&
 +      (hadFirstResponder || shouldBecomeFirstResponder) &&
 +      !shouldWaitForPasswordAutofillFocus) {
@@ -1133,7 +1133,27 @@ index ffb8da937efa..a1cf287b02f0 100644
  int32_t nsWindow::RoundsWidgetCoordinatesTo() {
    if (BackingScaleFactor() == 2.0) {
      return 2;
-@@ -1121,6 +1601,85 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1117,10 +1597,105 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+   return 1;
+ }
+ 
++void nsWindow::UpdateDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
++  if (mDynamicToolbarMaxHeight == aHeight) {
++    return;
++  }
++
++  mDynamicToolbarMaxHeight = aHeight;
++
++  if (mWidgetListener) {
++    mWidgetListener->DynamicToolbarMaxHeightChanged(aHeight);
++  }
++
++  if (mAttachedWidgetListener) {
++    mAttachedWidgetListener->DynamicToolbarMaxHeightChanged(aHeight);
++  }
++}
++
+ layers::NativeLayerRoot* nsWindow::GetNativeLayerRoot() {
    return mNativeLayerRoot;
  }
  
@@ -1219,7 +1239,7 @@ index ffb8da937efa..a1cf287b02f0 100644
  void nsWindow::HandleMainThreadCATransaction() {
    // Trigger a synchronous OMTC composite. This will call NextSurface and
    // NotifySurfaceReady on the compositor thread to update mNativeLayerRoot's
-@@ -1227,6 +1786,129 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1227,6 +1802,129 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return window.forget();
  }
  
@@ -1349,7 +1369,7 @@ index ffb8da937efa..a1cf287b02f0 100644
  NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
  
  nsresult IOSView::GetInitData(JSContext* aCx,
-@@ -1247,6 +1929,17 @@ - (UIView*)view {
+@@ -1247,6 +1945,24 @@ - (UIView*)view {
    return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
  }
  
@@ -1360,6 +1380,13 @@ index ffb8da937efa..a1cf287b02f0 100644
 +  }
 +}
 +
++- (void)setDynamicToolbarMaxHeight:(CGFloat)height {
++  if (mWindow) {
++    mWindow->UpdateDynamicToolbarMaxHeight(
++        ScreenIntCoord(lround(height * mWindow->BackingScaleFactor())));
++  }
++}
++
 +- (BOOL)focusForHardwareKeyboard {
 +  return mWindow && mWindow->FocusForHardwareKeyboard();
 +}
@@ -1367,7 +1394,7 @@ index ffb8da937efa..a1cf287b02f0 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1260,6 +1953,10 @@ - (void)close {
+@@ -1260,6 +1976,10 @@ - (void)close {
      mOuterWindow = nullptr;
    }
  }
@@ -1378,7 +1405,7 @@ index ffb8da937efa..a1cf287b02f0 100644
  @end
  
  id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
-@@ -1302,6 +1999,7 @@ - (void)close {
+@@ -1302,6 +2022,7 @@ - (void)close {
    MOZ_ASSERT(window);
  
    window->SetIOSView(iosView.forget());
