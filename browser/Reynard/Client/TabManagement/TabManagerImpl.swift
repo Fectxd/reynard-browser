@@ -1037,7 +1037,31 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onPaintStatusReset(session: GeckoSession) {}
     
-    func onWebAppManifest(session: GeckoSession, manifest: Any) {}
+    func onWebAppManifest(session: GeckoSession, manifest: Any) {
+        guard let location = tabLocation(for: session),
+              let url = remoteURL(from: tabs(for: location.mode)[location.index].url) else {
+            return
+        }
+        
+        let tab = tabs(for: location.mode)[location.index]
+        let tabID = tab.id
+        let expectedURL = url.absoluteString
+        cancelFaviconTask(for: tabID)
+        faviconTasks[tabID] = Task { [weak self] in
+            guard let self else {
+                return
+            }
+            
+            let image = await self.faviconStore.favicon(for: url, webAppManifest: manifest)
+            guard !Task.isCancelled else {
+                return
+            }
+            
+            await MainActor.run {
+                self.applyResolvedFavicon(image, toTabWithID: tabID, expectedURL: expectedURL)
+            }
+        }
+    }
     
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
         return .halt

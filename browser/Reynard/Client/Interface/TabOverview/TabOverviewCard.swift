@@ -31,6 +31,7 @@ final class TabOverviewCard: UICollectionViewCell {
         static let tabMetadataHeight: CGFloat = 18
         static let tabMetadataItemSpacing: CGFloat = 4
         static let faviconSideLength: CGFloat = 16
+        static let faviconCornerRadius: CGFloat = 3
         static let tabTitleMaximumWidthAdjustment: CGFloat = -24
         static let tabTitleFontSize: CGFloat = 14
         static let reorderLiftAnimationDuration: TimeInterval = 0.18
@@ -130,6 +131,7 @@ final class TabOverviewCard: UICollectionViewCell {
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .secondaryLabel
         imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = UX.faviconCornerRadius
         return imageView
     }()
     

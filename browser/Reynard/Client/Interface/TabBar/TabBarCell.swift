@@ -14,6 +14,7 @@ final class TabBarCell: UICollectionViewCell {
         static let tabTitleFontSize: CGFloat = 14
         static let tabTitleSpacing: CGFloat = 6
         static let tabFaviconSideLength: CGFloat = 16
+        static let tabFaviconCornerRadius: CGFloat = 3
         static let tabCloseButtonSideLength: CGFloat = 22
         static let tabCloseButtonTrailingInset: CGFloat = 6
         static let tabCloseButtonSymbolPointSize: CGFloat = 14
@@ -50,6 +51,7 @@ final class TabBarCell: UICollectionViewCell {
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .secondaryLabel
         imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = UX.tabFaviconCornerRadius
         return imageView
     }()
     
