@@ -200,6 +200,9 @@ extension ContextMenuCoordinator: UIContextMenuInteractionDelegate {
             openInNewPrivateTab: { [weak self] in
                 self?.openLinkPreview(disposition: .newPrivateTab)
             },
+            openInBackground: { [weak self] in
+                self?.openLinkPreview(disposition: .backgroundTab)
+            },
             shareLink: { [weak host] url in
                 host?.contextMenuShareLink(url)
             }

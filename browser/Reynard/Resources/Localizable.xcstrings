@@ -7024,6 +7024,16 @@
         }
       }
     },
+    "Open in Background" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in Background"
+          }
+        }
+      }
+    },
     "Open in Files" : {
       "localizations" : {
         "en" : {
