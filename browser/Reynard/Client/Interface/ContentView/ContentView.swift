@@ -69,6 +69,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     private var session: GeckoSession?
     private var dynamicToolbarMaxHeight: CGFloat = 0
     private var contentBottomOffset: CGFloat = 0
+    private var toolbarTopOffset: CGFloat = 0
     private var maxTopToolbarOffset: CGFloat = 0
     private var focusedInputTask: Task<Void, Never>?
     private var inputBottomRatio: CGFloat?
@@ -152,10 +153,8 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         
         [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
             NSLayoutConstraint.activate([
-                contentView.topAnchor.constraint(equalTo: topAnchor),
                 contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
                 contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
-                contentView.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
         }
     }
@@ -236,13 +235,26 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     }
     
     func applyToolbarOffsets(top: CGFloat, bottom: CGFloat) {
-        webContentView.transform = CGAffineTransform(translationX: 0, y: -top)
+        toolbarTopOffset = top
+        webContentView.transform = toolbarAlignedTransform(
+            translationX: webContentView.transform.tx
+        )
+        historyPreviewImageView.transform = toolbarAlignedTransform(
+            translationX: historyPreviewImageView.transform.tx
+        )
+        historyTransitionOverlayView.transform = toolbarAlignedTransform(
+            translationX: historyTransitionOverlayView.transform.tx
+        )
         let contentBottomOffset = -(top + bottom)
         guard contentBottomOffset != self.contentBottomOffset else {
             return
         }
         self.contentBottomOffset = contentBottomOffset
         session?.setContentBottomOffset(contentBottomOffset)
+    }
+    
+    private func toolbarAlignedTransform(translationX: CGFloat) -> CGAffineTransform {
+        return CGAffineTransform(translationX: translationX, y: -toolbarTopOffset)
     }
     
     func configureLayout(
@@ -253,6 +265,12 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         bottomConstraint.isActive = true
         webContentBottomConstraint = bottomConstraint
         webContentView.extendPageBackground(to: topAnchor)
+        [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
+            NSLayoutConstraint.activate([
+                contentView.topAnchor.constraint(equalTo: topAnchor),
+                contentView.bottomAnchor.constraint(equalTo: webContentView.bottomAnchor),
+            ])
+        }
         overlayContentView.topAnchor.constraint(equalTo: topAnchor).isActive = true
         overlayContentView.bottomAnchor.constraint(equalTo: bottomAnchor).isActive = true
         overlayContentView.configureContentLayout(
@@ -537,17 +555,17 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         case .back:
             insertSubview(historyPreviewImageView, belowSubview: webContentView)
             insertSubview(historyTransitionOverlayView, belowSubview: webContentView)
-            historyPreviewImageView.transform = CGAffineTransform(
-                translationX: -width * UX.historyPreviewParallaxRatio,
-                y: 0
+            historyPreviewImageView.transform = toolbarAlignedTransform(
+                translationX: -width * UX.historyPreviewParallaxRatio
             )
             updateHistoryTransitionOverlay(direction: direction, progress: 0)
         case .forward:
             insertSubview(historyTransitionOverlayView, aboveSubview: webContentView)
             insertSubview(historyPreviewImageView, aboveSubview: historyTransitionOverlayView)
-            historyPreviewImageView.transform = CGAffineTransform(translationX: width, y: 0)
+            historyPreviewImageView.transform = toolbarAlignedTransform(translationX: width)
             updateHistoryTransitionOverlay(direction: direction, progress: 0)
         }
+        historyTransitionOverlayView.transform = toolbarAlignedTransform(translationX: 0)
     }
     
     private func updateHistoryNavigation(
@@ -570,15 +588,13 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         let width = bounds.width
         switch direction {
         case .back:
-            webContentView.transform = CGAffineTransform(translationX: width * progress, y: 0)
-            historyPreviewImageView.transform = CGAffineTransform(
-                translationX: -width * UX.historyPreviewParallaxRatio * (1 - progress),
-                y: 0
+            webContentView.transform = toolbarAlignedTransform(translationX: width * progress)
+            historyPreviewImageView.transform = toolbarAlignedTransform(
+                translationX: -width * UX.historyPreviewParallaxRatio * (1 - progress)
             )
         case .forward:
-            historyPreviewImageView.transform = CGAffineTransform(
-                translationX: width * (1 - progress),
-                y: 0
+            historyPreviewImageView.transform = toolbarAlignedTransform(
+                translationX: width * (1 - progress)
             )
         }
         updateHistoryTransitionOverlay(direction: direction, progress: progress)
@@ -634,26 +650,25 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
                 self.historySwipeState = .settling
                 switch direction {
                 case .back:
-                    self.webContentView.transform = CGAffineTransform(translationX: width, y: 0)
-                    self.historyPreviewImageView.transform = .identity
+                    self.webContentView.transform = self.toolbarAlignedTransform(translationX: width)
+                    self.historyPreviewImageView.transform = self.toolbarAlignedTransform(translationX: 0)
                     self.updateHistoryTransitionOverlay(direction: direction, progress: 1)
                     self.onBack?()
                 case .forward:
-                    self.historyPreviewImageView.transform = .identity
+                    self.historyPreviewImageView.transform = self.toolbarAlignedTransform(translationX: 0)
                     self.updateHistoryTransitionOverlay(direction: direction, progress: 1)
                     self.onForward?()
                 }
             } else {
-                self.webContentView.transform = .identity
+                self.webContentView.transform = self.toolbarAlignedTransform(translationX: 0)
                 switch direction {
                 case .back:
-                    self.historyPreviewImageView.transform = CGAffineTransform(
-                        translationX: -width * UX.historyPreviewParallaxRatio,
-                        y: 0
+                    self.historyPreviewImageView.transform = self.toolbarAlignedTransform(
+                        translationX: -width * UX.historyPreviewParallaxRatio
                     )
                     self.updateHistoryTransitionOverlay(direction: direction, progress: 0)
                 case .forward:
-                    self.historyPreviewImageView.transform = CGAffineTransform(translationX: width, y: 0)
+                    self.historyPreviewImageView.transform = self.toolbarAlignedTransform(translationX: width)
                     self.updateHistoryTransitionOverlay(direction: direction, progress: 0)
                 }
             }
@@ -776,8 +791,9 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     }
     
     private func resetHistoryNavigation() {
-        webContentView.transform = .identity
+        webContentView.transform = toolbarAlignedTransform(translationX: 0)
         historyPreviewImageView.transform = .identity
+        historyTransitionOverlayView.transform = .identity
         historyPreviewImageView.image = nil
         historyPreviewImageView.isHidden = true
         historyTransitionOverlayView.alpha = 0
