@@ -1,0 +1,13 @@
+diff --git a/widget/uikit/ScreenHelperUIKit.h b/widget/uikit/ScreenHelperUIKit.h
+index a719298c4602..7e18294d31a7 100644
+--- a/widget/uikit/ScreenHelperUIKit.h
++++ b/widget/uikit/ScreenHelperUIKit.h
+@@ -16,7 +16,7 @@ class ScreenHelperUIKit final : public ScreenManager::Helper {
+  public:
+   ScreenHelperUIKit();
+ 
+-  void RefreshScreens();
++  static void RefreshScreens();
+ };
+ 
+ }  // namespace widget

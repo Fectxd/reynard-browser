@@ -1,0 +1,13 @@
+diff --git a/widget/uikit/ScreenHelperUIKit.mm b/widget/uikit/ScreenHelperUIKit.mm
+index f597b1d5dffa..ff2d7c2093b0 100644
+--- a/widget/uikit/ScreenHelperUIKit.mm
++++ b/widget/uikit/ScreenHelperUIKit.mm
+@@ -31,7 +31,7 @@
+ 
+   DesktopToLayoutDeviceScale contentsScaleFactor([aScreen scale]);
+   CSSToLayoutDeviceScale defaultCssScaleFactor(contentsScaleFactor.scale);
+-  CGRect bounds = [[aScreen fixedCoordinateSpace] bounds];
++  CGRect bounds = [[aScreen coordinateSpace] bounds];
+   LayoutDeviceIntRect rect;
+   rect.x = NSToIntRound(bounds.origin.x * contentsScaleFactor.scale);
+   rect.y = NSToIntRound(bounds.origin.y * contentsScaleFactor.scale);
