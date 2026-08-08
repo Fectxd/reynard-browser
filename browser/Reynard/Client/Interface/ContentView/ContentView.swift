@@ -9,6 +9,16 @@ import GeckoView
 import UIKit
 
 final class ContentView: UIView, UIGestureRecognizerDelegate {
+    struct ThumbnailGeometry {
+        let fullFrame: CGRect
+        let cropRect: CGRect
+    }
+    
+    struct ThumbnailCaptureGeometry {
+        let size: CGSize
+        let visibleRect: CGRect
+    }
+    
     private enum UX {
         static let phoneSearchFocusedBottomInset: CGFloat = 94
         static let focusedInputBottomClearance: CGFloat = 12
@@ -58,6 +68,8 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     private var layoutState = LayoutState(mode: .standard)
     private var session: GeckoSession?
     private var dynamicToolbarMaxHeight: CGFloat = 0
+    private var contentBottomOffset: CGFloat = 0
+    private var maxTopToolbarOffset: CGFloat = 0
     private var focusedInputTask: Task<Void, Never>?
     private var inputBottomRatio: CGFloat?
     private var focusedInputOffset: CGFloat = 0
@@ -79,13 +91,11 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     var onBack: (() -> Void)?
     var onForward: (() -> Void)?
     var onHistorySwipeBegan: (() -> Void)?
+    var onVerticalScroll: ((CGFloat) -> Void)?
     
     private var topConstraint: NSLayoutConstraint?
     private var bottomConstraint: NSLayoutConstraint?
-    
-    var webContentBottomAnchor: NSLayoutYAxisAnchor {
-        return webContentView.bottomAnchor
-    }
+    private var webContentBottomConstraint: NSLayoutConstraint?
     
     // MARK: - Lifecycle
     
@@ -136,9 +146,11 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
             webContentView.topAnchor.constraint(equalTo: topAnchor),
             webContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
             webContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlayContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            overlayContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
         
-        [historyPreviewImageView, historyTransitionOverlayView, overlayContentView].forEach { contentView in
+        [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
             NSLayoutConstraint.activate([
                 contentView.topAnchor.constraint(equalTo: topAnchor),
                 contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -180,6 +192,9 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         webContentView.onHistorySwipeDidEnd = { [weak self] in
             self?.endTrackpadHistoryNavigation()
         }
+        webContentView.onVerticalScroll = { [weak self] delta in
+            self?.onVerticalScroll?(delta)
+        }
     }
     
     // MARK: - Layout
@@ -207,9 +222,43 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         return previousSize != size
     }
     
-    func setDynamicToolbarMaxHeight(_ height: CGFloat) {
-        dynamicToolbarMaxHeight = height
-        session?.setDynamicToolbarMaxHeight(height)
+    func setToolbarLimits(maxHeight: CGFloat, topOffset: CGFloat) {
+        if maxHeight != dynamicToolbarMaxHeight {
+            dynamicToolbarMaxHeight = maxHeight
+            session?.setDynamicToolbarMaxHeight(maxHeight)
+        }
+        
+        guard abs(topOffset - maxTopToolbarOffset) > 0.5 else {
+            return
+        }
+        maxTopToolbarOffset = topOffset
+        updateContentBottomInset()
+    }
+    
+    func applyToolbarOffsets(top: CGFloat, bottom: CGFloat) {
+        webContentView.transform = CGAffineTransform(translationX: 0, y: -top)
+        let contentBottomOffset = -(top + bottom)
+        guard contentBottomOffset != self.contentBottomOffset else {
+            return
+        }
+        self.contentBottomOffset = contentBottomOffset
+        session?.setContentBottomOffset(contentBottomOffset)
+    }
+    
+    func configureLayout(
+        topAnchor: NSLayoutYAxisAnchor,
+        bottomAnchor: NSLayoutYAxisAnchor
+    ) {
+        let bottomConstraint = webContentView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        bottomConstraint.isActive = true
+        webContentBottomConstraint = bottomConstraint
+        webContentView.extendPageBackground(to: topAnchor)
+        overlayContentView.topAnchor.constraint(equalTo: topAnchor).isActive = true
+        overlayContentView.bottomAnchor.constraint(equalTo: bottomAnchor).isActive = true
+        overlayContentView.configureContentLayout(
+            topAnchor: self.topAnchor,
+            bottomAnchor: self.bottomAnchor
+        )
     }
     
     private func applyLayoutState(
@@ -265,6 +314,11 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         case .fullscreen:
             bottomConstraint?.constant = 0
         }
+        updateContentBottomInset()
+    }
+    
+    private func updateContentBottomInset() {
+        webContentBottomConstraint?.constant = maxTopToolbarOffset - focusedInputOffset
     }
     
     // MARK: - Focused Input Relocation
@@ -387,13 +441,18 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     
     // MARK: - Session
     
-    func setSession(_ session: GeckoSession?) {
+    func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
         resetHistoryNavigation()
-        self.session = session
+        self.session = tab?.session
         resetFocusedInputRelocation()
-        webContentView.setSession(session)
-        session?.setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight)
+        webContentView.setTab(tab, pageBackgroundColor: pageBackgroundColor)
+        tab?.session.setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight)
+        tab?.session.setContentBottomOffset(contentBottomOffset)
         updatePullToRefreshAvailability()
+    }
+    
+    func setPageBackgroundColor(_ color: UIColor) {
+        webContentView.setPageBackgroundColor(color)
     }
     
     func showPageError(for url: String?) {
@@ -817,8 +876,46 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     
     // MARK: - Thumbnail
     
+    func thumbnailGeometry(in view: UIView) -> ThumbnailGeometry? {
+        let fullFrame = webContentView.thumbnailFrame(in: view)
+        let visibleFrame = fullFrame.intersection(frame(in: view))
+        guard fullFrame.width > 1,
+              fullFrame.height > 1,
+              visibleFrame.width > 1,
+              visibleFrame.height > 1 else {
+            return nil
+        }
+        
+        return ThumbnailGeometry(
+            fullFrame: fullFrame,
+            cropRect: CGRect(
+                x: (visibleFrame.minX - fullFrame.minX) / fullFrame.width,
+                y: (visibleFrame.minY - fullFrame.minY) / fullFrame.height,
+                width: visibleFrame.width / fullFrame.width,
+                height: visibleFrame.height / fullFrame.height
+            )
+        )
+    }
+    
+    var thumbnailCaptureGeometry: ThumbnailCaptureGeometry? {
+        guard let geometry = thumbnailGeometry(in: self) else {
+            return nil
+        }
+        
+        let size = geometry.fullFrame.size
+        return ThumbnailCaptureGeometry(
+            size: size,
+            visibleRect: CGRect(
+                x: geometry.cropRect.minX * size.width,
+                y: geometry.cropRect.minY * size.height,
+                width: geometry.cropRect.width * size.width,
+                height: geometry.cropRect.height * size.height
+            )
+        )
+    }
+    
     func makeWebThumbnail() -> UIImage? {
-        return webContentView.makeThumbnail(visibleSize: bounds.size)
+        return webContentView.makeThumbnail()
     }
     
     // MARK: - Overlay Hosting

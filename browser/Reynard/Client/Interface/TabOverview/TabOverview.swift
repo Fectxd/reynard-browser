@@ -95,6 +95,15 @@ final class TabOverview: UIView {
         return max(contentView.bounds.height, 1) / width
     }
     
+    var visiblePreviewCropRect: CGRect? {
+        guard let context = presentationContext else {
+            return nil
+        }
+        return context.contentView
+            .thumbnailGeometry(in: context.containerView)?
+            .cropRect
+    }
+    
     let collection: TabOverviewCollection
     let topToolbar = TabOverviewTopToolbar()
     let bottomToolbar = TabOverviewBottomToolbar()
@@ -234,8 +243,8 @@ final class TabOverview: UIView {
         collection.collectionView(for: mode)
     }
     
-    func itemIndex(forTabAt index: Int, mode: Mode? = nil) -> Int? {
-        collection.itemIndex(forTabAt: index, mode: mode)
+    func itemIndex(forTabAt index: Int) -> Int? {
+        collection.itemIndex(forTabAt: index)
     }
     
     func prepareDismissSelection(to index: Int, mode: TabMode, previewImage: UIImage?) {

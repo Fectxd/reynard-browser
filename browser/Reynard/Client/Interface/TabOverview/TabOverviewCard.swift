@@ -54,8 +54,8 @@ final class TabOverviewCard: UICollectionViewCell {
     private(set) var tabID: UUID?
     
     private static let fallbackFaviconImage = UIImage(named: "reynard.globe")
-    private(set) var transitionState: TransitionState = .visible
     private(set) var reorderState: ReorderState = .resting
+    private(set) var previewImage: UIImage?
     
     private let webpagePreviewShadowView: UIView = {
         let view = UIView()
@@ -179,6 +179,7 @@ final class TabOverviewCard: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         tabID = nil
+        previewImage = nil
         webpagePreviewImageView.image = nil
         faviconImageView.image = Self.fallbackFaviconImage
         onClose = nil
@@ -190,15 +191,49 @@ final class TabOverviewCard: UICollectionViewCell {
     
     // MARK: - Content
     
-    func configure(with tab: Tab) {
+    func configure(
+        with tab: Tab,
+        visiblePreviewCropRect: CGRect?
+    ) {
         tabID = tab.id
         tabTitleLabel.text = tab.title.isEmpty ? NSLocalizedString("Homepage", comment: "") : tab.title
-        webpagePreviewImageView.image = tab.thumbnail
+        previewImage = tab.thumbnail
+        webpagePreviewImageView.image = visiblePreviewImage(
+            from: tab.thumbnail,
+            cropRect: visiblePreviewCropRect
+        )
         faviconImageView.image = tab.favicon ?? Self.fallbackFaviconImage
     }
     
-    var previewImage: UIImage? {
-        return webpagePreviewImageView.image
+    private func visiblePreviewImage(
+        from image: UIImage?,
+        cropRect: CGRect?
+    ) -> UIImage? {
+        guard let image,
+              let cropRect,
+              image.size.width > 0,
+              let cgImage = image.cgImage else {
+            return image
+        }
+        
+        let pixelBounds = CGRect(
+            x: 0,
+            y: 0,
+            width: cgImage.width,
+            height: cgImage.height
+        )
+        let pixelRect = CGRect(
+            x: cropRect.minX * pixelBounds.width,
+            y: cropRect.minY * pixelBounds.height,
+            width: cropRect.width * pixelBounds.width,
+            height: cropRect.height * pixelBounds.height
+        ).intersection(pixelBounds).integral
+        guard pixelRect.width > 1, pixelRect.height > 1,
+              let croppedImage = cgImage.cropping(to: pixelRect) else {
+            return image
+        }
+        
+        return UIImage(cgImage: croppedImage, scale: image.scale, orientation: image.imageOrientation)
     }
     
     // MARK: - Transition Geometry
@@ -223,7 +258,7 @@ final class TabOverviewCard: UICollectionViewCell {
         return webpagePreviewImageView.convert(webpagePreviewImageView.bounds, to: targetView)
     }
     
-    func makeTransitionSnapshot() -> UIView? {
+    func makeTransitionSnapshot() -> UIView {
         layoutIfNeeded()
         contentView.layoutIfNeeded()
         
@@ -246,10 +281,34 @@ final class TabOverviewCard: UICollectionViewCell {
         return snapshotImageView
     }
     
+    func makeCloseButtonTransitionSnapshot(
+        in targetView: UIView,
+        containerFrame: CGRect
+    ) -> UIView {
+        layoutIfNeeded()
+        contentView.layoutIfNeeded()
+        
+        let rendererFormat = UIGraphicsImageRendererFormat()
+        rendererFormat.scale = UIScreen.main.scale
+        rendererFormat.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: closeTabButton.bounds.size, format: rendererFormat)
+        let snapshotImage = renderer.image { _ in
+            closeTabButton.drawHierarchy(in: closeTabButton.bounds, afterScreenUpdates: true)
+        }
+        
+        let snapshotView = UIView(frame: containerFrame)
+        snapshotView.isUserInteractionEnabled = false
+        let closeButtonSnapshotView = UIImageView(image: snapshotImage)
+        closeButtonSnapshotView.frame = closeTabButton
+            .convert(closeTabButton.bounds, to: targetView)
+            .offsetBy(dx: -containerFrame.minX, dy: -containerFrame.minY)
+        snapshotView.addSubview(closeButtonSnapshotView)
+        return snapshotView
+    }
+    
     // MARK: - State Updates
     
     func setTransitionState(_ state: TransitionState) {
-        transitionState = state
         contentView.alpha = state == .visible ? 1 : 0
     }
     

@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.h b/widget/uikit/nsWindow.h
-index dd2d9e2be070..400c765ae5bd 100644
+index dd2d9e2be070..6951d8e7a620 100644
 --- a/widget/uikit/nsWindow.h
 +++ b/widget/uikit/nsWindow.h
 @@ -21,11 +21,14 @@ typedef struct objc_object ChildView;
@@ -36,13 +36,16 @@ index dd2d9e2be070..400c765ae5bd 100644
    void Resize(const DesktopSize&, bool aRepaint) override;
    void Resize(const DesktopRect&, bool aRepaint) override;
    void DoResize(double aX, double aY, double aWidth, double aHeight,
-@@ -77,8 +84,13 @@ class nsWindow final : public nsIWidget {
+@@ -77,8 +84,16 @@ class nsWindow final : public nsIWidget {
      // XXX: terrible
      return 326.0f;
    }
 +  uint32_t GetMaxTouchPoints() const override;
    double GetDefaultScaleInternal() override { return BackingScaleFactor(); }
    int32_t RoundsWidgetCoordinatesTo() override;
++  void NotifyCompositorScrollUpdate(
++      const mozilla::layers::CompositorScrollUpdate& aUpdate) override;
++  void UpdateDynamicToolbarOffset(mozilla::ScreenIntCoord aOffset);
 +  void UpdateDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight) override;
 +  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const override {
 +    return mDynamicToolbarMaxHeight;
@@ -50,7 +53,7 @@ index dd2d9e2be070..400c765ae5bd 100644
  
    nsresult SetTitle(const nsAString& aTitle) override { return NS_OK; }
  
-@@ -93,22 +105,32 @@ class nsWindow final : public nsIWidget {
+@@ -93,22 +108,32 @@ class nsWindow final : public nsIWidget {
    void SetInputContext(const InputContext& aContext,
                         const InputContextAction& aAction) override;
    InputContext GetInputContext() override;
@@ -91,7 +94,7 @@ index dd2d9e2be070..400c765ae5bd 100644
  
    void HandleMainThreadCATransaction();
  
-@@ -138,6 +160,16 @@ class nsWindow final : public nsIWidget {
+@@ -138,6 +163,16 @@ class nsWindow final : public nsIWidget {
      mIOSView = aView;
    }
    mozilla::widget::IOSView* GetIOSView() const { return mIOSView; }
@@ -108,7 +111,7 @@ index dd2d9e2be070..400c765ae5bd 100644
  
   protected:
    virtual ~nsWindow();
-@@ -147,6 +179,8 @@ class nsWindow final : public nsIWidget {
+@@ -147,6 +182,8 @@ class nsWindow final : public nsIWidget {
    nsresult GetCurrentOffset(uint32_t& aOffset, uint32_t& aLength);
    nsresult DeleteRange(int aOffset, int aLen);
  
@@ -117,7 +120,7 @@ index dd2d9e2be070..400c765ae5bd 100644
    void TearDownView();
  
    ChildView* mNativeView;
-@@ -156,13 +190,19 @@ class nsWindow final : public nsIWidget {
+@@ -156,13 +193,19 @@ class nsWindow final : public nsIWidget {
    nsWindow* mParent;
  
    mozilla::widget::InputContext mInputContext;

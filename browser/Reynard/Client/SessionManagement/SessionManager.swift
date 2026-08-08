@@ -25,6 +25,7 @@ final class SessionManager {
     let trackingProtection: TrackingProtectionManager
     
     private var sessionsRequestedActive: [ObjectIdentifier: GeckoSession] = [:]
+    private var pageBackgroundColors: [ObjectIdentifier: UIColor] = [:]
     private var isApplicationForeground = true
     private(set) var isApplicationActive = true
     private weak var pictureInPictureSession: GeckoSession?
@@ -229,6 +230,7 @@ final class SessionManager {
         deactivate(session)
         trackingProtection.removeSession(session)
         permissionStore.removePrivateActions(for: session)
+        pageBackgroundColors.removeValue(forKey: ObjectIdentifier(session))
         session.close()
     }
     
@@ -242,6 +244,16 @@ final class SessionManager {
             history.removeHistory(for: tabID)
         }
         closeImmediately(session)
+    }
+    
+    // MARK: - Page Background Color
+    
+    func pageBackgroundColor(for session: GeckoSession) -> UIColor {
+        return pageBackgroundColors[ObjectIdentifier(session)] ?? .systemBackground
+    }
+    
+    func setPageBackgroundColor(_ color: UIColor, for session: GeckoSession) {
+        pageBackgroundColors[ObjectIdentifier(session)] = color
     }
     
     // MARK: - Addon Tab State

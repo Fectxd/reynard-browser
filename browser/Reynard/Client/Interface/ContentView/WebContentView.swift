@@ -34,8 +34,11 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private var refreshingSession: GeckoSession?
     private var isTrackingPullProgress = false
     private var pullToRefreshRecognizer: PullToRefreshGestureRecognizer?
+    private var lastScrollState: (position: CGFloat, zoomScale: CGFloat)?
+    private var pageBackgroundTopConstraint: NSLayoutConstraint?
     
     private let webView = GeckoView()
+    private let pageBackgroundView = UIView()
     private let errorLabel = UILabel()
     private let scrollToTopTriggerView = UIScrollView() // For scrolling up when tap the iOS status bar
     private let refreshIndicatorContainer = UIView()
@@ -46,6 +49,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     var onHistorySwipeDidUpdate: ((CGFloat) -> Void)?
     var onHistorySwipeDidComplete: ((GeckoHistorySwipeDirections) -> Void)?
     var onHistorySwipeDidEnd: (() -> Void)?
+    var onVerticalScroll: ((CGFloat) -> Void)?
     
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -72,7 +76,9 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     private func configureHierarchy() {
+        backgroundColor = .systemBackground
         webView.translatesAutoresizingMaskIntoConstraints = false
+        pageBackgroundView.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
         scrollToTopTriggerView.translatesAutoresizingMaskIntoConstraints = false
         refreshIndicatorContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -81,6 +87,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         scrollToTopTriggerView.showsVerticalScrollIndicator = false
         scrollToTopTriggerView.contentInsetAdjustmentBehavior = .never
         webView.inputResultDelegate = self
+        pageBackgroundView.backgroundColor = .systemBackground
         errorLabel.font = .preferredFont(forTextStyle: .body)
         errorLabel.adjustsFontForContentSizeCategory = true
         errorLabel.numberOfLines = 0
@@ -90,6 +97,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         refreshIndicator.hidesWhenStopped = false
         refreshIndicatorContainer.addSubview(refreshIndicator)
         addSubview(scrollToTopTriggerView)
+        addSubview(pageBackgroundView)
         addSubview(refreshIndicatorContainer)
         addSubview(webView)
         addSubview(errorLabel)
@@ -98,11 +106,19 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     private func configureConstraints() {
+        let topConstraint = pageBackgroundView.topAnchor.constraint(equalTo: topAnchor)
+        topConstraint.isActive = true
+        pageBackgroundTopConstraint = topConstraint
+        
         NSLayoutConstraint.activate([
             scrollToTopTriggerView.topAnchor.constraint(equalTo: topAnchor),
             scrollToTopTriggerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollToTopTriggerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             scrollToTopTriggerView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
+            pageBackgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            pageBackgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            pageBackgroundView.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             webView.topAnchor.constraint(equalTo: topAnchor),
             webView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -133,6 +149,13 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         ])
     }
     
+    func extendPageBackground(to topAnchor: NSLayoutYAxisAnchor) {
+        pageBackgroundTopConstraint?.isActive = false
+        let constraint = pageBackgroundView.topAnchor.constraint(equalTo: topAnchor)
+        constraint.isActive = true
+        pageBackgroundTopConstraint = constraint
+    }
+    
     func setVisibility(_ visibility: VisibilityState) {
         guard self.visibility != visibility else {
             return
@@ -152,14 +175,21 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         return false
     }
     
-    func setSession(_ session: GeckoSession?) {
+    func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
         hidePageError()
-        guard webView.session !== session else {
+        pageBackgroundView.backgroundColor = pageBackgroundColor ?? .systemBackground
+        
+        guard webView.session !== tab?.session else {
             return
         }
+        lastScrollState = nil
         refreshingSession = nil
         pullToRefreshRecognizer?.cancelPull()
-        webView.session = session
+        webView.session = tab?.session
+    }
+    
+    func setPageBackgroundColor(_ color: UIColor) {
+        pageBackgroundView.backgroundColor = color
     }
     
     func showPageError(for url: String?) {
@@ -218,16 +248,27 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         webView.addInteraction(interaction)
     }
     
-    func makeThumbnail(visibleSize: CGSize) -> UIImage? {
+    func thumbnailFrame(in view: UIView) -> CGRect {
         layoutIfNeeded()
-        guard visibleSize.width > 1, visibleSize.height > 1 else {
+        return convert(thumbnailBounds, to: view)
+    }
+    
+    func makeThumbnail() -> UIImage? {
+        layoutIfNeeded()
+        let captureBounds = thumbnailBounds
+        guard captureBounds.width > 1, captureBounds.height > 1 else {
             return nil
         }
         
-        let renderer = UIGraphicsImageRenderer(size: visibleSize)
+        let renderer = UIGraphicsImageRenderer(size: captureBounds.size)
         return renderer.image { context in
+            context.cgContext.translateBy(x: -captureBounds.minX, y: -captureBounds.minY)
             layer.render(in: context.cgContext)
         }
+    }
+    
+    private var thumbnailBounds: CGRect {
+        return bounds.union(pageBackgroundView.frame)
     }
     
     private func installPullToRefreshRecognizer() {
@@ -364,6 +405,21 @@ extension WebContentView: GeckoViewInputResultDelegate {
     }
     
     func touchSequenceDidEnd(_ sequenceID: UInt64) {}
+    
+    func compositorScrollPositionDidChange(_ scrollY: Double, zoom: Double) {
+        let currentState = (position: CGFloat(scrollY), zoomScale: CGFloat(zoom))
+        defer {
+            lastScrollState = currentState
+        }
+        guard let previousState = lastScrollState,
+              currentState.zoomScale == previousState.zoomScale || currentState.zoomScale == 1 else {
+            return
+        }
+        let scrollDelta = currentState.position - previousState.position
+        if scrollDelta != 0 {
+            onVerticalScroll?(scrollDelta)
+        }
+    }
     
     func allowedHistorySwipeDirections() -> GeckoHistorySwipeDirections {
         return historySwipeDirectionsProvider?() ?? []

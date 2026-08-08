@@ -466,6 +466,18 @@ final class BrowserChrome: UIView {
         return topToolbar.convert(topToolbar.bounds, to: view)
     }
     
+    func setToolbarTransition(
+        topOffset: CGFloat,
+        bottomOffset: CGFloat,
+        topContentAlpha: CGFloat,
+        bottomContentAlpha: CGFloat
+    ) {
+        topToolbar.transform = CGAffineTransform(translationX: 0, y: topOffset)
+        topToolbar.setContentAlpha(topContentAlpha)
+        bottomToolbar.transform = CGAffineTransform(translationX: 0, y: bottomOffset)
+        bottomToolbar.setContentAlpha(bottomContentAlpha)
+    }
+    
     func setChromeTransition(topAlpha: CGFloat, bottomAlpha: CGFloat, bottomTranslationY: CGFloat = 0) {
         topToolbar.alpha = topAlpha
         bottomToolbar.alpha = bottomAlpha

@@ -56,6 +56,7 @@ enum TabManagerUpdateReason {
     case navigationState
     case loading
     case thumbnail
+    case pageBackgroundColor
 }
 
 protocol TabManagerDelegate: AnyObject {

@@ -332,8 +332,12 @@ public class GeckoSession {
         )
     }
     
-    // Toolbar
+    // MARK: - Toolbar
     public func setDynamicToolbarMaxHeight(_ height: CGFloat) {
         window?.setDynamicToolbarMaxHeight(max(0, height))
+    }
+    
+    public func setContentBottomOffset(_ offset: CGFloat) {
+        window?.setFixedBottomOffset(offset)
     }
 }

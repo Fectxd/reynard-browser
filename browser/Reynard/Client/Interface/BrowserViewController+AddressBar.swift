@@ -138,6 +138,10 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
         return tabManager.activeTabs
     }
     
+    func pageBackgroundColor(for tab: Tab) -> UIColor {
+        return sessionManager.pageBackgroundColor(for: tab.session)
+    }
+    
     func selectTabFromGesture(at index: Int, mode: TabMode) {
         tabManager.selectTab(at: index, mode: mode)
     }
@@ -154,7 +158,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
         }
         
         if let tab = tabManager.activeTabs[safe: index],
-           let previewImage = homepageOverlayCoordinator.previewImage(for: tab, size: contentView.bounds.size) {
+           let previewImage = homepageOverlayCoordinator.previewImage(for: tab) {
             tabManager.updateThumbnail(previewImage, forTabAt: index, mode: mode)
         }
         
@@ -177,7 +181,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
     private func captureTabThumbnailIfNeeded() {
         if let tab = tabManager.activeTabs[safe: tabManager.selectedTabIndex],
            homepageOverlayCoordinator.needsHomepageThumbnail(for: tab) {
-            if let thumbnail = homepageOverlayCoordinator.previewImage(for: tab, size: contentView.bounds.size) {
+            if let thumbnail = homepageOverlayCoordinator.previewImage(for: tab) {
                 tabManager.updateThumbnail(thumbnail, forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
             }
             return

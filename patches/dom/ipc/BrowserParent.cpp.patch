@@ -1,8 +1,19 @@
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index ba640fdbc080..fe637cc0b3ea 100644
+index ba640fdbc080..4515e0723b99 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
-@@ -793,6 +793,21 @@ mozilla::ipc::IPCResult BrowserParent::RecvEnsureLayersConnected(
+@@ -139,6 +139,10 @@
+ #  include "FxRWindowManager.h"
+ #endif
+ 
++#ifdef XP_IOS
++#  include "mozilla/widget/BackgroundColor.h"
++#endif
++
+ #if defined(XP_WIN) && defined(ACCESSIBILITY)
+ #  include "mozilla/a11y/AccessibleWrap.h"
+ #  include "mozilla/a11y/Compatibility.h"
+@@ -793,6 +797,21 @@ mozilla::ipc::IPCResult BrowserParent::RecvEnsureLayersConnected(
      Maybe<CompositorOptions>* aCompositorOptions) {
    if (mRemoteLayerTreeOwner.IsInitialized()) {
      mRemoteLayerTreeOwner.EnsureLayersConnected(*aCompositorOptions);
@@ -24,7 +35,7 @@ index ba640fdbc080..fe637cc0b3ea 100644
    }
    return IPC_OK();
  }
-@@ -1020,7 +1035,7 @@ void BrowserParent::InitRendering() {
+@@ -1020,13 +1039,19 @@ void BrowserParent::InitRendering() {
          widget->SupportsUnadjustedMovement());
    }
  
@@ -33,7 +44,36 @@ index ba640fdbc080..fe637cc0b3ea 100644
    MOZ_ASSERT(widget);
  
    if (GetBrowsingContext()->IsTopContent()) {
-@@ -2554,14 +2569,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyIMEPositionChange(
+     (void)SendDynamicToolbarMaxHeightChanged(
+         widget->GetDynamicToolbarMaxHeight());
+   }
++
++#ifdef XP_IOS
++  if (mBackgroundColor) {
++    mozilla::widget::DispatchBackgroundColor(widget, *mBackgroundColor);
++  }
++#endif
+ #endif
+ }
+ 
+@@ -2404,6 +2429,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
+   return IPC_OK();
+ }
+ 
++mozilla::ipc::IPCResult BrowserParent::RecvUpdateBackgroundColor(
++    const nscolor& aColor) {
++#ifdef XP_IOS
++  mBackgroundColor = Some(aColor);
++  nsCOMPtr<nsIWidget> widget = GetWidget();
++  mozilla::widget::DispatchBackgroundColor(widget, aColor);
++#endif
++  return IPC_OK();
++}
++
+ mozilla::ipc::IPCResult BrowserParent::RecvSetLinkStatus(
+     const nsString& aStatus) {
+   nsCOMPtr<nsIXULBrowserWindow> xulBrowserWindow = GetXULBrowserWindow();
+@@ -2554,14 +2589,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyIMEPositionChange(
      const ContentCache& aContentCache,
      const IMENotification& aIMENotification) {
    nsCOMPtr<nsIWidget> widget = GetTextInputHandlingWidget();
@@ -59,7 +99,7 @@ index ba640fdbc080..fe637cc0b3ea 100644
    return IPC_OK();
  }
  
-@@ -3223,18 +3246,31 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
+@@ -3223,18 +3266,31 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
        NS_WARN_IF(aEvent.Failed())) {
      return true;
    }

@@ -111,33 +111,37 @@ final class HomepageOverlayCoordinator {
         )
     }
     
-    func captureHomepageThumbnail(_ tab: Tab, size: CGSize, completion: @escaping (UIImage?) -> Void) {
-        guard let delegate else {
+    func captureHomepageThumbnail(_ tab: Tab, completion: @escaping (UIImage?) -> Void) {
+        guard let delegate,
+              let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
             completion(nil)
             return
         }
         
         homepageThumbnailRenderer.capture(
-            size: size,
+            size: geometry.size,
+            visibleRect: geometry.visibleRect,
             contentMode: embeddedContentMode(layout: delegate.homepageLayout),
             isPrivateBrowsing: tab.isPrivate,
             completion: completion
         )
     }
     
-    func previewImage(for tab: Tab, size: CGSize) -> UIImage? {
+    func previewImage(for tab: Tab) -> UIImage? {
         guard let delegate,
-              needsHomepageThumbnail(for: tab) else {
+              needsHomepageThumbnail(for: tab),
+              let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
             return nil
         }
-
+        
         return homepageThumbnailRenderer.snapshot(
-            size: size,
+            size: geometry.size,
+            visibleRect: geometry.visibleRect,
             contentMode: embeddedContentMode(layout: delegate.homepageLayout),
             isPrivateBrowsing: tab.isPrivate
         )
     }
-
+    
     // MARK: - Presentation
     
     private func presentHomepage(_ presentation: HomepagePresentation, animated: Bool) {

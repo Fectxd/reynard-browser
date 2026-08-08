@@ -1037,6 +1037,18 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onPaintStatusReset(session: GeckoSession) {}
     
+    func onPageBackgroundColorChange(session: GeckoSession, color: UIColor) {
+        sessionManager.setPageBackgroundColor(color, for: session)
+        guard let location = tabLocation(for: session) else {
+            return
+        }
+        
+        guard location.mode == selectedTabMode else {
+            return
+        }
+        delegate?.tabManager(self, didUpdateTabAt: location.index, reason: .pageBackgroundColor)
+    }
+    
     func onWebAppManifest(session: GeckoSession, manifest: Any) {
         guard let location = tabLocation(for: session),
               let url = remoteURL(from: tabs(for: location.mode)[location.index].url) else {

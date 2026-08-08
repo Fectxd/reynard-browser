@@ -42,6 +42,12 @@ final class BrowserViewController: UIViewController {
     let tabOverview = TabOverview()
     let contentView = ContentView()
     lazy var browserChrome = BrowserChrome()
+    private lazy var toolbarController = ToolbarController(
+        browserChrome: browserChrome,
+        tabBar: tabBar,
+        contentView: contentView,
+        rootView: view
+    )
     
     lazy var overlayCoordinator = OverlayCoordinator(host: self)
     lazy var homepageOverlayCoordinator = HomepageOverlayCoordinator(
@@ -181,7 +187,10 @@ final class BrowserViewController: UIViewController {
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        updateDynamicToolbarMaxHeight()
+        toolbarController.updateLayout(
+            chromeMode: browserLayout.chromeMode,
+            isToolbarEnabled: !isShowingFullscreenMedia
+        )
         invalidateNavigationThumbnailsIfNeeded()
     }
     
@@ -250,14 +259,16 @@ final class BrowserViewController: UIViewController {
         view.addSubview(tabBar)
         view.addSubview(browserChrome)
         view.addSubview(tabOverview)
+        contentView.configureLayout(
+            topAnchor: view.topAnchor,
+            bottomAnchor: view.bottomAnchor
+        )
         
         NSLayoutConstraint.activate([
             contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             contentView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor).withPriority(.defaultHigh),
             contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
-            contentView.webContentBottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
             browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             browserChrome.topAnchor.constraint(equalTo: view.topAnchor),
@@ -432,15 +443,6 @@ final class BrowserViewController: UIViewController {
             bottomAnchor: browserChrome.bottomToolbarTopAnchor
         )
         setTabBarVisible(false)
-    }
-    
-    private func updateDynamicToolbarMaxHeight() {
-        let hasBottomToolbar = !isShowingFullscreenMedia &&
-        browserLayout.chromeMode != .pad &&
-        !(searchOverlayCoordinator.isFocused && !tabOverview.isPresented)
-        let toolbarFrame = browserChrome.bottomToolbarTransitionFrame(in: view)
-        let height = hasBottomToolbar ? max(0, view.bounds.maxY - toolbarFrame.minY) : 0
-        contentView.setDynamicToolbarMaxHeight(height)
     }
     
     private func applyPadLayout() {

@@ -1,8 +1,8 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..1d0f2fd388c8 100644
+index e68fca9134c0..9193e5d82d96 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
-@@ -18,14 +18,55 @@
+@@ -18,14 +18,56 @@
  #endif
  
  #import <Foundation/Foundation.h>
@@ -42,6 +42,7 @@ index e68fca9134c0..1d0f2fd388c8 100644
 +       scrollableEdges:(GeckoScrollableEdges)scrollableEdges
 +        overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
 +- (void)touchSequenceDidEnd:(uint64_t)sequenceId;
++- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom;
 +- (GeckoHistorySwipeDirections)allowedHistorySwipeDirections;
 +- (void)historySwipeDidStart:(GeckoHistorySwipeDirections)direction;
 +- (void)historySwipeDidUpdate:(double)progress;
@@ -58,7 +59,7 @@ index e68fca9134c0..1d0f2fd388c8 100644
  @end
  
  @protocol GeckoProcessExtension <NSObject>
-@@ -55,8 +96,22 @@
+@@ -55,8 +97,23 @@
  @end
  
  @protocol GeckoViewWindow <NSObject>
@@ -74,6 +75,7 @@ index e68fca9134c0..1d0f2fd388c8 100644
 +
 +// Layout
 +- (void)setDynamicToolbarMaxHeight:(CGFloat)height;
++- (void)setFixedBottomOffset:(CGFloat)offset;
 +
 +// Keyboard
 +- (BOOL)focusForHardwareKeyboard;

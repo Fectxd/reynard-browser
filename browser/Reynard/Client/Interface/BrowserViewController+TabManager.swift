@@ -12,10 +12,13 @@ extension BrowserViewController: TabManagerDelegate {
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
         if let selectedTab = tabManager.selectedTab {
             if !contentView.isDisplaying(session: selectedTab.session) {
-                contentView.setSession(selectedTab.session)
+                contentView.setTab(
+                    selectedTab,
+                    pageBackgroundColor: sessionManager.pageBackgroundColor(for: selectedTab.session)
+                )
             }
         } else {
-            contentView.setSession(nil)
+            contentView.setTab(nil)
         }
         refreshAddressBar()
         
@@ -60,7 +63,10 @@ extension BrowserViewController: TabManagerDelegate {
         browserChrome.updatePageZoomLevel(selectedTab.session.settings.pageZoom.level)
         updateNavigationButtons()
         
-        contentView.setSession(selectedTab.session)
+        contentView.setTab(
+            selectedTab,
+            pageBackgroundColor: sessionManager.pageBackgroundColor(for: selectedTab.session)
+        )
         addonCoordinator.handleTabSelectionChange(selectedIndex: index, previousIndex: previousIndex)
         
         if !tabOverview.isPresented && !tabOverview.isTransitionRunning {
@@ -79,7 +85,12 @@ extension BrowserViewController: TabManagerDelegate {
     
     func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
         if contentView.isDisplaying(session: previousSession) {
-            contentView.setSession(replacementSession)
+            contentView.setTab(
+                tabManager.selectedTab,
+                pageBackgroundColor: tabManager.selectedTab.map {
+                    sessionManager.pageBackgroundColor(for: $0.session)
+                }
+            )
         }
         addonCoordinator.handleSelectedTabSessionReplacement(from: previousSession, to: replacementSession)
     }
@@ -180,6 +191,13 @@ extension BrowserViewController: TabManagerDelegate {
             tabOverview.isPresented
             ? tabOverview.refreshTab(at: index, mode: tabManager.selectedTabMode)
             : tabOverview.reloadTabs()
+            
+        case .pageBackgroundColor:
+            guard index == tabManager.selectedTabIndex else {
+                return
+            }
+            let tab = tabManager.activeTabs[index]
+            contentView.setPageBackgroundColor(sessionManager.pageBackgroundColor(for: tab.session))
         }
     }
     
@@ -277,7 +295,7 @@ extension BrowserViewController {
         
         let targetTabID = targetTab.id
         if homepageOverlayCoordinator.needsHomepageThumbnail(for: targetTab) {
-            homepageOverlayCoordinator.captureHomepageThumbnail(targetTab, size: contentView.bounds.size) { [weak self] thumbnail in
+            homepageOverlayCoordinator.captureHomepageThumbnail(targetTab) { [weak self] thumbnail in
                 guard let self,
                       let thumbnail,
                       (mode == .private ? self.tabManager.privateTabs : self.tabManager.regularTabs)[safe: index]?.id == targetTabID else {
