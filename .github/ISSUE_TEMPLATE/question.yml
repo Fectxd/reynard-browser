@@ -14,6 +14,7 @@ body:
     options:
       - label: This is not a bug.
       - label: This question has not been asked before.
+      - label: This question has not been answered in the FAQ.
   validations:
     required: true
 
