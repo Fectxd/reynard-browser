@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoKeyboardSupport.mm b/widget/uikit/GeckoKeyboardSupport.mm
 new file mode 100644
-index 000000000000..b5c9997dd1a0
+index 000000000000..9e081aa995a4
 --- /dev/null
 +++ b/widget/uikit/GeckoKeyboardSupport.mm
-@@ -0,0 +1,728 @@
+@@ -0,0 +1,841 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,6 +15,7 @@ index 000000000000..b5c9997dd1a0
 +
 +#include "GeckoKeyboardSupport.h"
 +
++#include "GeckoEditableSupport.h"
 +#include "TextInputHandler.h"
 +#include "mozilla/BasicEvents.h"
 +#include "mozilla/MacStringHelpers.h"
@@ -732,3 +733,115 @@ index 000000000000..b5c9997dd1a0
 +}
 +
 +}  // namespace mozilla::widget
++
++// MARK: - ChildView (Keyboard)
++
++@interface UIResponder (Private)
++- (void)_handleKeyUIEvent:(UIEvent*)event;
++@end
++
++@interface UIEvent (Private)
++- (void*)_hidEvent;
++@end
++
++@interface ChildView : UIView {
++ @public
++  nsWindow* mGeckoChild;
++  GeckoEditableState mEditable;
++}
++@end
++
++@interface ChildView (Keyboard)
++- (BOOL)_requiresKeyboardWhenFirstResponder;
++- (BOOL)_requiresKeyboardResetOnReload;
++- (void)_handleKeyUIEvent:(UIEvent*)event;
++- (BOOL)requiresKeyEvents;
++- (void)handleKeyWebEvent:(WebEvent*)event;
++- (void)handleKeyWebEvent:(WebEvent*)event
++    withCompletionHandler:
++        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler;
++- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
++                                to:(UIKeyModifierFlags)newFlags;
++- (void)pressesCancelled:(NSSet<UIPress*>*)presses
++               withEvent:(UIPressesEvent*)event;
++@end
++
++@implementation ChildView (Keyboard)
++
++- (BOOL)_requiresKeyboardWhenFirstResponder {
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return NO;
++  }
++  return mGeckoChild->GetInputContext().mIMEState.mEnabled !=
++             mozilla::widget::IMEEnabled::Disabled ||
++         mEditable.mSeenHardwareKeyDownInNonEditableContent;
++}
++
++- (BOOL)_requiresKeyboardResetOnReload {
++  return YES;
++}
++
++- (void)_handleKeyUIEvent:(UIEvent*)event {
++  BOOL isHardwareKeyboardEvent = [event _hidEvent] != nullptr;
++  if ([self isFirstResponder] && isHardwareKeyboardEvent && mGeckoChild &&
++      !mGeckoChild->Destroyed() &&
++      mGeckoChild->GetInputContext().mIMEState.mEnabled ==
++          mozilla::widget::IMEEnabled::Disabled &&
++      !mEditable.mSeenHardwareKeyDownInNonEditableContent) {
++    mEditable.mSeenHardwareKeyDownInNonEditableContent = YES;
++    [self reloadInputViews];
++  }
++  [super _handleKeyUIEvent:event];
++}
++
++- (BOOL)requiresKeyEvents {
++  return mGeckoChild && !mGeckoChild->Destroyed();
++}
++
++- (void)handleKeyWebEvent:(WebEvent*)event {
++  BOOL handled = NO;
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handled = handler->HandleKeyEvent(event);
++    }
++  }
++  event.wasHandled = handled;
++}
++
++- (void)handleKeyWebEvent:(WebEvent*)event
++    withCompletionHandler:
++        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler {
++  BOOL handled = NO;
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handled = handler->HandleKeyEvent(event);
++    }
++  }
++  completionHandler(event, handled);
++}
++
++- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
++                                to:(UIKeyModifierFlags)newFlags {
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return;
++  }
++  if (mozilla::widget::TextInputHandler* handler =
++          mGeckoChild->GetTextInputHandler()) {
++    handler->HandleModifierFlagsChanged(oldFlags, newFlags);
++  }
++}
++
++- (void)pressesCancelled:(NSSet<UIPress*>*)presses
++               withEvent:(UIPressesEvent*)event {
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handler->ReleasePhysicalKeys();
++    }
++  }
++  [super pressesCancelled:presses withEvent:event];
++}
++
++@end

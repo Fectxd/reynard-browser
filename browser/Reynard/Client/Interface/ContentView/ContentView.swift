@@ -694,22 +694,22 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         return min(max(distance / max(bounds.width, 1), 0), 1)
     }
     
-    private func allowedTrackpadHistorySwipeDirections() -> GeckoHistorySwipeDirections {
+    private func allowedTrackpadHistorySwipeDirections() -> GeckoEdgeSwipeDirections {
         guard canBeginHistoryNavigation else {
             return []
         }
         
-        var directions: GeckoHistorySwipeDirections = []
+        var directions: GeckoEdgeSwipeDirections = []
         if canGoBack {
-            directions.insert(.back)
+            directions.insert(.left)
         }
         if canGoForward {
-            directions.insert(.forward)
+            directions.insert(.right)
         }
         return directions
     }
     
-    private func beginTrackpadHistoryNavigation(_ direction: GeckoHistorySwipeDirections) {
+    private func beginTrackpadHistoryNavigation(_ direction: GeckoEdgeSwipeDirections) {
         guard let direction = historySwipeDirection(from: direction) else {
             return
         }
@@ -726,7 +726,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         )
     }
     
-    private func completeTrackpadHistoryNavigation(_ direction: GeckoHistorySwipeDirections) {
+    private func completeTrackpadHistoryNavigation(_ direction: GeckoEdgeSwipeDirections) {
         guard let direction = historySwipeDirection(from: direction),
               direction == activeHistorySwipeDirection,
               case .swiping(let activeDirection) = historySwipeState,
@@ -749,12 +749,12 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     }
     
     private func historySwipeDirection(
-        from direction: GeckoHistorySwipeDirections
+        from direction: GeckoEdgeSwipeDirections
     ) -> HistorySwipeDirection? {
-        if direction.contains(.back) {
+        if direction.contains(.left) {
             return .back
         }
-        if direction.contains(.forward) {
+        if direction.contains(.right) {
             return .forward
         }
         return nil

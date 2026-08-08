@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoPointerSupport.h b/widget/uikit/GeckoPointerSupport.h
 new file mode 100644
-index 000000000000..b07b73f44422
+index 000000000000..d79ba43796fb
 --- /dev/null
 +++ b/widget/uikit/GeckoPointerSupport.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,45 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,6 +16,8 @@ index 000000000000..b07b73f44422
 +
 +#import <UIKit/UIKit.h>
 +
++#include "GeckoViewSwiftSupport.h"
++
 +class nsWindow;
 +
 +namespace mozilla {
@@ -23,7 +25,6 @@ index 000000000000..b07b73f44422
 +}
 +
 +@class ChildView;
-+@protocol GeckoViewInputResultDelegate;
 +
 +@interface GeckoPointerSupport
 +    : NSObject <UIGestureRecognizerDelegate, UIPointerInteractionDelegate>
@@ -31,16 +32,18 @@ index 000000000000..b07b73f44422
 +- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild;
 +- (void)requireTextInteractionsToFail:
 +    (NSArray<UITextInteraction*>*)textInteractions;
-+- (void)setInputResultDelegate:
-+    (id<GeckoViewInputResultDelegate>)inputResultDelegate;
-+- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches;
-+- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
-+- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
-+- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
-+- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate;
++- (void)handlePointerInputBegan:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event;
++- (void)handlePointerInputCancelled:(NSSet<UITouch*>*)pointerTouches;
++- (void)handlePointerInputEnded:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event;
++- (void)handlePointerInputMoved:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event;
 +- (void)releasePointerButtons;
 +- (void)invalidatePointerInteraction;
-+- (BOOL)handleHistorySwipeEvent:(mozilla::WidgetSimpleGestureEvent&)event;
++- (BOOL)handleEdgeSwipeEvent:(mozilla::WidgetSimpleGestureEvent&)event;
 +- (void)widgetDestroyed;
 +
 +@end

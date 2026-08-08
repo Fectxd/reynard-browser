@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..8ebc61669720
+index 000000000000..24eeaa8bd3a6
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4198 @@
+@@ -0,0 +1,4250 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -392,14 +392,8 @@ index 000000000000..8ebc61669720
 +
 +@interface ChildView : UIView {
 + @public
-+  // Redeclarations
 +  nsWindow* mGeckoChild;
-+  BOOL mWaitingForPaint;
-+  NSMapTable<UITouch*, NSNumber*>* mTouches;
-+  int mNextTouchID;
 +  GeckoEditableState mEditable;
-+  CALayer* mRootCALayer;
-+  BOOL mIsUpdatingLayer;
 +}
 +@end
 +
@@ -410,6 +404,7 @@ index 000000000000..8ebc61669720
 +
 +- (void)setupTextInput;
 +- (void)teardownTextInput;
++- (void)handleTap:(UITapGestureRecognizer*)aSender;
 +- (widget::TextInputHandler*)textHandler;
 +- (NSRange)selectedRange;
 +- (NSUInteger)clampOffset:(NSUInteger)aOffset;
@@ -654,6 +649,63 @@ index 000000000000..8ebc61669720
 +
 +  [self teardownModernTextInput];
 +  [self resetHandleState];
++}
++
++- (void)handleTap:(UITapGestureRecognizer*)aSender {
++  // UIKit text interactions already handle taps that are placing or
++  // adjusting the caret. Replaying the same tap as a Gecko click resets the
++  // selection after UIKit has positioned it.
++  if (aSender.state != UIGestureRecognizerStateEnded ||
++      mEditable.mTextInteractionInProgress) {
++    return;
++  }
++
++  BOOL wasFirstResponder = [self isFirstResponder];
++
++  // Save the caret offset before sending events to Gecko so we can detect
++  // whether the caret actually moved once Gecko responds.
++  NSRange preSel = [self selectedRange];
++  NSUInteger preOffset =
++      (wasFirstResponder && preSel.location != NSNotFound && preSel.length == 0)
++          ? preSel.location
++          : NSNotFound;
++
++  BOOL tapInsideEditor = NO;
++  // When re-tapping an already-focused editable field with a
++  // collapsed caret, arm the pending caret-menu flag. Gecko processes mouse
++  // events asynchronously, so we resolve the flag later:
++  //   - If NOTIFY_IME_OF_POSITION_CHANGE arrives (caret moved),
++  //     selectionGeometryChanged cancels the pending menu.
++  //   - If no notification arrives (caret stayed), the fallback timer
++  //     fires and shows the menu.
++  if (preOffset != NSNotFound && mGeckoChild && [self isFirstResponder]) {
++    LayoutDeviceIntRect editorDevRect;
++    widget::TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
++    if (handler && handler->EditorRect(editorDevRect)) {
++      CGRect editorRect =
++          DevPixelsToUIKitPoints(editorDevRect, [self contentScaleFactor]);
++      if (ClipCGRectToBounds(editorRect, self.bounds)) {
++        tapInsideEditor = CGRectContainsPoint(CGRectStandardize(editorRect),
++                                              [aSender locationInView:self]);
++      }
++    }
++  }
++
++  if (preOffset == NSNotFound || !tapInsideEditor) {
++    return;
++  }
++
++  mEditable.mPreTapCaretOffset = preOffset;
++  mEditable.mPendingCaretMenu = YES;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [self performSelector:@selector(resolveCaretMenuIfPending)
++             withObject:nil
++             afterDelay:0.1
++                inModes:@[ NSRunLoopCommonModes ]];
 +}
 +
 +// Returns the live Gecko text-input bridge for this view.

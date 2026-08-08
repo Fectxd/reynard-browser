@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..9193e5d82d96 100644
+index e68fca9134c0..3f617d05c3a6 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
 @@ -18,14 +18,56 @@
@@ -30,12 +30,12 @@ index e68fca9134c0..9193e5d82d96 100644
 +  GeckoOverscrollAxisVertical = 1 << 1,
 +};
 +
-+typedef NS_OPTIONS(NSUInteger, GeckoHistorySwipeDirections) {
-+  GeckoHistorySwipeDirectionsBack = 1 << 0,
-+  GeckoHistorySwipeDirectionsForward = 1 << 1,
++typedef NS_OPTIONS(NSUInteger, GeckoEdgeSwipeDirections) {
++  GeckoEdgeSwipeDirectionLeft = 1 << 0,
++  GeckoEdgeSwipeDirectionRight = 1 << 1,
 +};
 +
-+@protocol GeckoViewInputResultDelegate <NSObject>
++@protocol GeckoViewInteractionDelegate <NSObject>
 +- (void)touchSequenceDidBegin:(uint64_t)sequenceId;
 +- (void)touchSequence:(uint64_t)sequenceId
 +    didResolveHandling:(GeckoInputHandling)handling
@@ -43,11 +43,11 @@ index e68fca9134c0..9193e5d82d96 100644
 +        overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
 +- (void)touchSequenceDidEnd:(uint64_t)sequenceId;
 +- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom;
-+- (GeckoHistorySwipeDirections)allowedHistorySwipeDirections;
-+- (void)historySwipeDidStart:(GeckoHistorySwipeDirections)direction;
-+- (void)historySwipeDidUpdate:(double)progress;
-+- (void)historySwipeDidComplete:(GeckoHistorySwipeDirections)direction;
-+- (void)historySwipeDidEnd;
++- (GeckoEdgeSwipeDirections)allowedEdgeSwipeDirections;
++- (void)edgeSwipeDidStart:(GeckoEdgeSwipeDirections)direction;
++- (void)edgeSwipeDidUpdate:(double)progress;
++- (void)edgeSwipeDidComplete:(GeckoEdgeSwipeDirections)direction;
++- (void)edgeSwipeDidEnd;
 +@end
 +
  @protocol SwiftGeckoViewRuntime <NSObject>
@@ -67,8 +67,8 @@ index e68fca9134c0..9193e5d82d96 100644
  - (UIView*)view;
  - (void)close;
 +
-+// Gestures
-+- (void)setInputResultDelegate:(id<GeckoViewInputResultDelegate>)delegate;
++// Interaction
++- (void)setInteractionDelegate:(id<GeckoViewInteractionDelegate>)delegate;
 +
 +// PiP
 +- (AVSampleBufferDisplayLayer*)pictureInPictureDisplayLayer;

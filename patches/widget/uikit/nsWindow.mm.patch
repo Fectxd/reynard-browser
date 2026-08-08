@@ -1,43 +1,53 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index ffb8da937efa..9adba62b73b7 100644
+index ffb8da937efa..f8bf2f38357d 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
-@@ -13,6 +13,7 @@
- #import <UIKit/UIViewController.h>
+@@ -2,15 +2,12 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+-#import <UIKit/UIEvent.h>
+ #import <UIKit/UIKit.h>
+ #import <UIKit/UIGraphics.h>
+-#import <UIKit/UIInterface.h>
+ #import <UIKit/UIScreen.h>
+ #import <UIKit/UITapGestureRecognizer.h>
+ #import <UIKit/UITouch.h>
+ #import <UIKit/UIView.h>
+-#import <UIKit/UIViewController.h>
  #import <UIKit/UIWindow.h>
  #import <QuartzCore/QuartzCore.h>
-+#import <objc/message.h>
  
- #include "nsWindow.h"
- #include "ScreenHelperUIKit.h"
-@@ -26,6 +27,7 @@
+@@ -25,56 +22,55 @@
+ #endif
  
  #include "nsWidgetsCID.h"
- #include "nsGfxCIID.h"
+-#include "nsGfxCIID.h"
 +#include "nsLookAndFeel.h"
  
  #include "gfxPlatform.h"
  #include "gfxQuartzSurface.h"
-@@ -36,21 +38,53 @@
+ #include "gfxUtils.h"
+-#include "gfxImageSurface.h"
+ #include "gfxContext.h"
+ #include "nsObjCExceptions.h"
  #include "nsQueryObject.h"
  #include "nsRegion.h"
  #include "nsTArray.h"
 +#include "GeckoEditableSupport.h"
-+#include "GeckoKeyboardSupport.h"
 +#include "GeckoPointerSupport.h"
++#include "GeckoTouchSupport.h"
 +#include "InputData.h"
 +#include "PictureInPictureSupport.h"
  #include "TextInputHandler.h"
- #include "UIKitUtils.h"
+-#include "UIKitUtils.h"
  
  #include "mozilla/BasicEvents.h"
  #include "mozilla/EventForwards.h"
  #include "mozilla/ProfilerLabels.h"
 +#include "mozilla/SwipeTracker.h"
  #include "mozilla/TouchEvents.h"
- #include "mozilla/dom/MouseEventBinding.h"
-+#include "mozilla/dom/BrowsingContext.h"
-+#include "mozilla/dom/WindowContext.h"
+-#include "mozilla/dom/MouseEventBinding.h"
  #include "mozilla/gfx/Logging.h"
 +#include "mozilla/gfx/GPUProcessManager.h"
 +#include "mozilla/Monitor.h"
@@ -56,14 +66,6 @@ index ffb8da937efa..9adba62b73b7 100644
  #  include "mozilla/a11y/MUIRootAccessibleProtocol.h"
  #endif
  
-+@interface UIResponder (GeckoKeyEventsPrivate)
-+- (void)_handleKeyUIEvent:(UIEvent*)event;
-+@end
-+
-+@interface UIEvent (GeckoKeyEventsPrivate)
-+- (void*)_hidEvent;
-+@end
-+
 +@interface UIKeyboardImpl : NSObject
 ++ (instancetype)sharedInstance;
 +- (BOOL)isInHardwareKeyboardMode;
@@ -72,10 +74,10 @@ index ffb8da937efa..9adba62b73b7 100644
  using namespace mozilla;
  using namespace mozilla::gfx;
  using namespace mozilla::layers;
-@@ -58,24 +92,6 @@
- using mozilla::dom::Touch;
- using mozilla::widget::UIKitUtils;
- 
+ using namespace mozilla::widget;
+-using mozilla::dom::Touch;
+-using mozilla::widget::UIKitUtils;
+-
 -#define ALOG(args...)    \
 -  fprintf(stderr, args); \
 -  fprintf(stderr, "\n")
@@ -93,11 +95,10 @@ index ffb8da937efa..9adba62b73b7 100644
 -                    (CGFloat)aRect.width / aBackingScale,
 -                    (CGFloat)aRect.height / aBackingScale);
 -}
--
+ 
  // Used to retain a Cocoa object for the remainder of a method's execution.
  class nsAutoRetainUIKitObject {
-  public:
-@@ -87,15 +103,19 @@ static CGRect DevPixelsToUIKitPoints(const LayoutDeviceIntRect& aRect,
+@@ -87,15 +83,16 @@ static CGRect DevPixelsToUIKitPoints(const LayoutDeviceIntRect& aRect,
  };
  
  #ifdef ACCESSIBILITY
@@ -110,59 +111,47 @@ index ffb8da937efa..9adba62b73b7 100644
   @public
    nsWindow* mGeckoChild;  // weak ref
    BOOL mWaitingForPaint;
-   NSMapTable<UITouch*, NSNumber*>* mTouches;
-   int mNextTouchID;
-+  uint64_t mTouchSequenceID;
-+  id<GeckoViewInputResultDelegate> mInputResultDelegate;  // weak
+-  NSMapTable<UITouch*, NSNumber*>* mTouches;
+-  int mNextTouchID;
 +  GeckoEditableState mEditable;
 +  GeckoPointerSupport* mPointerSupport;
++  GeckoTouchSupport* mTouchSupport;
  
    // The CALayer that wraps Gecko's rendered contents. It's a sublayer of
    // mPixelHostingView's backing layer. Always non-null.
-@@ -110,9 +130,6 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild;
+@@ -110,24 +107,16 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild;
  - (void)widgetDestroyed;
  // Tear down this ChildView
  - (void)delayedTearDown;
 -- (void)sendMouseEvent:(EventMessage)aType
 -                 point:(LayoutDeviceIntPoint)aPoint
 -                widget:(nsWindow*)aWindow;
- - (void)handleTap:(UITapGestureRecognizer*)sender;
- - (BOOL)isUsingMainThreadOpenGL;
- - (void)drawUsingOpenGL;
-@@ -120,13 +137,32 @@ - (void)drawUsingOpenGLCallback;
- - (void)sendTouchEvent:(EventMessage)aType
-                touches:(NSSet*)aTouches
-                 widget:(nsWindow*)aWindow;
-+- (void)setInputResultDelegate:(id<GeckoViewInputResultDelegate>)delegate;
-+- (void)resolveTouchSequence:(uint64_t)sequenceId
-+                    handling:(GeckoInputHandling)handling
-+             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
-+              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
- // Event handling (UIResponder)
- - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
- - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
- - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
- - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
-+- (void)_handleKeyUIEvent:(UIEvent*)event;
-+- (BOOL)requiresKeyEvents;
-+- (void)handleKeyWebEvent:(WebEvent*)event;
-+- (void)handleKeyWebEvent:(WebEvent*)event
-+    withCompletionHandler:
-+        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler;
-+- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
-+                                to:(UIKeyModifierFlags)newFlags;
-+- (void)pressesCancelled:(NSSet<UIPress*>*)presses
-+               withEvent:(UIPressesEvent*)event;
-+- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom;
+-- (void)handleTap:(UITapGestureRecognizer*)sender;
+-- (BOOL)isUsingMainThreadOpenGL;
+-- (void)drawUsingOpenGL;
+-- (void)drawUsingOpenGLCallback;
+-- (void)sendTouchEvent:(EventMessage)aType
+-               touches:(NSSet*)aTouches
+-                widget:(nsWindow*)aWindow;
+-// Event handling (UIResponder)
+-- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+-- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+-- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
+-- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)setInteractionDelegate:(id<GeckoViewInteractionDelegate>)delegate;
  // Reacts to the view being resized.
  - (void)layoutSubviews;
 +- (void)updateSafeAreaInsets;
 +- (void)safeAreaInsetsDidChange;
 +- (void)traitCollectionDidChange:(UITraitCollection*)previousTraitCollection;
  
++- (BOOL)isUsingMainThreadOpenGL;
++- (void)drawUsingOpenGL;
++- (void)drawUsingOpenGLCallback;
  - (void)markLayerForDisplay;
  - (CALayer*)rootCALayer;
-@@ -155,12 +191,31 @@ - (UIAccessibilityContainerType)accessibilityContainerType;
+ - (void)updateRootCALayer;
+@@ -155,12 +144,30 @@ - (UIAccessibilityContainerType)accessibilityContainerType;
  
  @end
  
@@ -173,10 +162,6 @@ index ffb8da937efa..9adba62b73b7 100644
 +- (void)scheduleResponderBlur;
 +- (void)cancelResponderBlur;
 +- (void)updateEditMenu;
-+- (void)resolveCaretMenuIfPending;
-+- (void)setSelectionHandlesVisible:(BOOL)aVisible;
-+- (NSRange)selectedRange;
-+- (void)showEditMenuForSecondaryClick;
 +@end
 +
 +@interface ChildView (Modern)
@@ -184,6 +169,9 @@ index ffb8da937efa..9adba62b73b7 100644
 +@end
 +
  @implementation ChildView
++
++// MARK: - Lifecycle
++
  - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
    self.multipleTouchEnabled = YES;
    if ((self = [super initWithFrame:inFrame])) {
@@ -194,7 +182,7 @@ index ffb8da937efa..9adba62b73b7 100644
      mRootCALayer = [[CALayer layer] retain];
      mRootCALayer.position = CGPointZero;
      mRootCALayer.bounds = CGRectZero;
-@@ -168,8 +223,6 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
+@@ -168,8 +175,6 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
      mRootCALayer.contentsGravity = kCAGravityTopLeft;
      [[self layer] addSublayer:mRootCALayer];
    }
@@ -203,7 +191,7 @@ index ffb8da937efa..9adba62b73b7 100644
    self.opaque = YES;
    self.alpha = 1.0;
  
-@@ -177,10 +230,21 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
+@@ -177,10 +182,22 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
        [[UITapGestureRecognizer alloc] initWithTarget:self
                                                action:@selector(handleTap:)];
    tapRecognizer.numberOfTapsRequired = 1;
@@ -214,10 +202,13 @@ index ffb8da937efa..9adba62b73b7 100644
 +      @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
    [self addGestureRecognizer:tapRecognizer];
  
+-  mTouches = [[NSMapTable alloc] init];
+-  mNextTouchID = 0;
 +  mPointerSupport = [[GeckoPointerSupport alloc] initWithView:self
 +                                                   geckoChild:inChild];
-   mTouches = [[NSMapTable alloc] init];
-   mNextTouchID = 0;
++  mTouchSupport = [[GeckoTouchSupport alloc] initWithView:self
++                                               geckoChild:inChild
++                                           pointerSupport:mPointerSupport];
 +  [self setupTextInput];
 +  [mPointerSupport requireTextInteractionsToFail:@[
 +    mEditable.mEditableTextInteraction, mEditable.mNonEditableTextInteraction
@@ -225,56 +216,27 @@ index ffb8da937efa..9adba62b73b7 100644
  
    // This is managed with weak references by the notification center so that we
    // do not need to call removeObserver.
-@@ -199,19 +263,58 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
-   return self;
+@@ -200,18 +217,28 @@ - (id)initWithFrame:(CGRect)inFrame geckoChild:(nsWindow*)inChild {
  }
  
-+- (void)traitCollectionDidChange:(UITraitCollection*)previousTraitCollection {
-+  [super traitCollectionDidChange:previousTraitCollection];
-+
-+  self.backgroundColor = [UIColor systemBackgroundColor];
-+
-+  if (previousTraitCollection &&
-+      self.traitCollection.userInterfaceStyle ==
-+          previousTraitCollection.userInterfaceStyle) {
-+    return;
-+  }
-+
-+  nsLookAndFeel::SetSystemUsesDarkTheme(
-+      self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
-+}
-+
  - (void)widgetDestroyed {
 +  [mPointerSupport widgetDestroyed];
++  [mTouchSupport widgetDestroyed];
    mGeckoChild = nullptr;
-+  mInputResultDelegate = nil;
+-  [mTouches release];
 +  [NSObject cancelPreviousPerformRequestsWithTarget:self];
-   [mTouches release];
-+  mTouches = nil;
 +  [self teardownTextInput];
 +}
 +
-+- (void)setInputResultDelegate:(id<GeckoViewInputResultDelegate>)delegate {
-+  mInputResultDelegate = delegate;
-+  [mPointerSupport setInputResultDelegate:delegate];
-+}
-+
-+- (void)resolveTouchSequence:(uint64_t)sequenceId
-+                    handling:(GeckoInputHandling)handling
-+             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
-+              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes {
-+  if (sequenceId != mTouchSequenceID || mTouches.count == 0) {
-+    return;
-+  }
-+
-+  [mInputResultDelegate touchSequence:sequenceId
-+                   didResolveHandling:handling
-+                      scrollableEdges:scrollableEdges
-+                       overscrollAxes:overscrollAxes];
++- (void)setInteractionDelegate:(id<GeckoViewInteractionDelegate>)delegate {
++  [mPointerSupport setInteractionDelegate:delegate];
++  [mTouchSupport setInteractionDelegate:delegate];
  }
  
  - (void)delayedTearDown {
    [self removeFromSuperview];
++  [mTouchSupport release];
++  mTouchSupport = nil;
 +  [mPointerSupport release];
 +  mPointerSupport = nil;
    [self release];
@@ -286,7 +248,7 @@ index ffb8da937efa..9adba62b73b7 100644
    if (!mGeckoChild) {
      return;
    }
-@@ -222,41 +325,71 @@ - (void)activateWindow:(NSNotification*)notification {
+@@ -222,119 +249,67 @@ - (void)activateWindow:(NSNotification*)notification {
  }
  
  - (void)deactivateWindow:(NSNotification*)notification {
@@ -321,250 +283,121 @@ index ffb8da937efa..9adba62b73b7 100644
 -  aWindow->DispatchEvent(&event);
 -}
 -
- - (void)handleTap:(UITapGestureRecognizer*)sender {
-   if (sender.state == UIGestureRecognizerStateEnded) {
+-- (void)handleTap:(UITapGestureRecognizer*)sender {
+-  if (sender.state == UIGestureRecognizerStateEnded) {
 -    ALOG("[ChildView[%p] handleTap]", self);
 -    LayoutDeviceIntPoint lp = UIKitPointsToDevPixels(
 -        [sender locationInView:self], [self contentScaleFactor]);
 -    [self sendMouseEvent:eMouseMove point:lp widget:mGeckoChild];
 -    [self sendMouseEvent:eMouseDown point:lp widget:mGeckoChild];
 -    [self sendMouseEvent:eMouseUp point:lp widget:mGeckoChild];
-+    // UIKit text interactions already handle taps that are placing or
-+    // adjusting the caret. Replaying the same tap as a Gecko click resets the
-+    // selection after UIKit has positioned it.
-+    if (mEditable.mTextInteractionInProgress) {
-+      return;
-+    }
-+
-+    BOOL wasFirstResponder = [self isFirstResponder];
-+
-+    // Save the caret offset before sending events to Gecko so we can
-+    // detect whether the caret actually moved once Gecko responds.
-+    NSRange preSel = [self selectedRange];
-+    NSUInteger preOffset = (wasFirstResponder &&
-+                            preSel.location != NSNotFound && preSel.length == 0)
-+                               ? preSel.location
-+                               : NSNotFound;
-+
-+    // When re-tapping an already-focused editable field with a
-+    // collapsed caret, arm the pending caret-menu flag. Gecko processes mouse
-+    // events asynchronously, so we resolve the flag later:
-+    //   - If NOTIFY_IME_OF_POSITION_CHANGE arrives (caret moved),
-+    //     selectionGeometryChanged cancels the pending menu.
-+    //   - If no notification arrives (caret stayed), the fallback timer
-+    //     fires and shows the menu.
-+    BOOL tapInsideEditor = NO;
-+    if (preOffset != NSNotFound && mGeckoChild && [self isFirstResponder]) {
-+      LayoutDeviceIntRect editorDevRect;
-+      TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
-+      if (handler && handler->EditorRect(editorDevRect)) {
-+        CGRect editorRect =
-+            DevPixelsToUIKitPoints(editorDevRect, [self contentScaleFactor]);
-+        if (ClipCGRectToBounds(editorRect, self.bounds)) {
-+          tapInsideEditor = CGRectContainsPoint(CGRectStandardize(editorRect),
-+                                                [sender locationInView:self]);
-+        }
-+      }
-+    }
-+    if (preOffset != NSNotFound && tapInsideEditor) {
-+      mEditable.mPreTapCaretOffset = preOffset;
-+      mEditable.mPendingCaretMenu = YES;
-+      [NSObject
-+          cancelPreviousPerformRequestsWithTarget:self
-+                                         selector:@selector(
-+                                                      resolveCaretMenuIfPending)
-+                                           object:nil];
-+      [self performSelector:@selector(resolveCaretMenuIfPending)
-+                 withObject:nil
-+                 afterDelay:0.1
-+                    inModes:@[ NSRunLoopCommonModes ]];
-+    }
-   }
- }
- 
-@@ -284,57 +417,172 @@ - (void)sendTouchEvent:(EventMessage)aType
-     event.mRefPoint = loc;
-     event.mTouches.AppendElement(t);
-   }
+-  }
+-}
+-
+-- (void)sendTouchEvent:(EventMessage)aType
+-               touches:(NSSet*)aTouches
+-                widget:(nsWindow*)aWindow {
+-  WidgetTouchEvent event(true, aType, aWindow);
+-  // XXX: I think nativeEvent.timestamp * 1000 is probably usable here but
+-  // I don't care that much right now.
+-  event.mTouches.SetCapacity(aTouches.count);
+-  for (UITouch* touch in aTouches) {
+-    LayoutDeviceIntPoint loc = UIKitPointsToDevPixels(
+-        [touch locationInView:self], [self contentScaleFactor]);
+-    LayoutDeviceIntPoint radius = UIKitPointsToDevPixels(
+-        CGPointMake([touch majorRadius], [touch majorRadius]),
+-        [self contentScaleFactor]);
+-    NSNumber* value = [mTouches objectForKey:touch];
+-    if (value == nil) {
+-      // This shouldn't happen.
+-      NS_ASSERTION(false, "Got a touch that we didn't know about");
+-      continue;
+-    }
+-    int id = [value intValue];
+-    auto t = MakeRefPtr<Touch>(id, loc, radius, 0.0f, 1.0f);
+-    event.mRefPoint = loc;
+-    event.mTouches.AppendElement(t);
+-  }
 -  aWindow->DispatchInputEvent(&event);
-+  if (aType == eTouchStart) {
-+    aWindow->DispatchTouchStart(&event, mTouchSequenceID);
-+  } else {
-+    aWindow->DispatchInputEvent(&event);
-+  }
- }
+-}
++// MARK: - Window and layout
  
- - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+-- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
 -  ALOG("[ChildView[%p] touchesBegan", self);
-+  NSSet<UITouch*>* directTouches =
-+      [mPointerSupport directTouchesFromTouches:touches];
-+  BOOL hasDirectTouch = NO;
-+  for (UITouch* touch in touches) {
-+    if (touch.type == UITouchTypeDirect) {
-+      hasDirectTouch = YES;
-+      break;
-+    }
-+  }
-+  BOOL hasPrimaryPointerPress = NO;
-+  if ([event respondsToSelector:@selector(buttonMask)]) {
-+    UIEventButtonMask buttonMask =
-+        reinterpret_cast<UIEventButtonMask (*)(id, SEL)>(objc_msgSend)(
-+            event, @selector(buttonMask));
-+    hasPrimaryPointerPress = buttonMask & 1;
-+  }
-+  if (hasDirectTouch || hasPrimaryPointerPress) {
-+    [self becomeFirstResponder];
-+  }
-+  if (touches.count > 0) {
-+    [self setSelectionHandlesVisible:directTouches.count > 0];
-+  }
-+
-+  [super touchesBegan:touches withEvent:event];
-+
-+  // Dismiss the caret callout on any touch-down so that scrolling or
-+  // tap-to-reposition hides it immediately. Also cancel any pending
-+  // caret-menu resolution.
-+  if (mEditable.mCaretMenuActive) {
-+    mEditable.mCaretMenuActive = NO;
-+    [[UIMenuController sharedMenuController] hideMenuFromView:self];
-+  }
-+  if (mEditable.mPendingCaretMenu) {
-+    mEditable.mPendingCaretMenu = NO;
-+    [NSObject
-+        cancelPreviousPerformRequestsWithTarget:self
-+                                       selector:@selector(
-+                                                    resolveCaretMenuIfPending)
-+                                         object:nil];
-+  }
-+
-   if (!mGeckoChild) return;
+-  if (!mGeckoChild) return;
++- (void)didMoveToWindow {
++  [super didMoveToWindow];
  
 -  for (UITouch* touch : touches) {
-+  [mPointerSupport touchesBegan:touches withEvent:event];
-+
-+  if (directTouches.count == 0 || !mGeckoChild) {
+-    [mTouches setObject:[NSNumber numberWithInt:mNextTouchID] forKey:touch];
+-    mNextTouchID++;
++  if (!mGeckoChild) {
 +    return;
-+  }
-+
-+  if (mTouches.count == 0) {
-+    [mInputResultDelegate touchSequenceDidBegin:++mTouchSequenceID];
-+  }
-+
-+  for (UITouch* touch : directTouches) {
-     [mTouches setObject:[NSNumber numberWithInt:mNextTouchID] forKey:touch];
-     mNextTouchID++;
    }
 -  [self sendTouchEvent:eTouchStart
 -               touches:[event allTouches]
 -                widget:mGeckoChild];
-+  [self
-+      sendTouchEvent:eTouchStart
-+             touches:[mPointerSupport directTouchesFromTouches:event.allTouches]
-+              widget:mGeckoChild];
- }
+-}
  
- - (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+-- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
 -  ALOG("[ChildView[%p] touchesCancelled", self);
 -  [self sendTouchEvent:eTouchCancel touches:touches widget:mGeckoChild];
 -  for (UITouch* touch : touches) {
-+  [super touchesCancelled:touches withEvent:event];
-+
-+  [mPointerSupport touchesCancelled:touches withEvent:event];
-+
-+  NSSet<UITouch*>* directTouches =
-+      [mPointerSupport directTouchesFromTouches:touches];
-+  if (directTouches.count == 0 || !mGeckoChild) {
-+    return;
-+  }
-+
-+  [self sendTouchEvent:eTouchCancel touches:directTouches widget:mGeckoChild];
-+  for (UITouch* touch : directTouches) {
-     [mTouches removeObjectForKey:touch];
-   }
-   if (mTouches.count == 0) {
-     mNextTouchID = 0;
-+    [mInputResultDelegate touchSequenceDidEnd:mTouchSequenceID];
-   }
- }
- 
- - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
--  ALOG("[ChildView[%p] touchesEnded", self);
-+  [super touchesEnded:touches withEvent:event];
-+
-   if (!mGeckoChild) return;
- 
--  [self sendTouchEvent:eTouchEnd touches:touches widget:mGeckoChild];
--  for (UITouch* touch : touches) {
-+  [mPointerSupport touchesEnded:touches withEvent:event];
-+
-+  NSSet<UITouch*>* directTouches =
-+      [mPointerSupport directTouchesFromTouches:touches];
-+  if (directTouches.count == 0 || !mGeckoChild) {
-+    return;
-+  }
-+
-+  [self sendTouchEvent:eTouchEnd touches:directTouches widget:mGeckoChild];
-+  for (UITouch* touch : directTouches) {
-     [mTouches removeObjectForKey:touch];
-   }
-   if (mTouches.count == 0) {
-     mNextTouchID = 0;
-+    [mInputResultDelegate touchSequenceDidEnd:mTouchSequenceID];
-   }
- }
- 
- - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
--  ALOG("[ChildView[%p] touchesMoved", self);
-+  [super touchesMoved:touches withEvent:event];
-+
-   if (!mGeckoChild) return;
- 
--  [self sendTouchEvent:eTouchMove
--               touches:[event allTouches]
--                widget:mGeckoChild];
-+  [mPointerSupport touchesMoved:touches withEvent:event];
-+
-+  NSSet<UITouch*>* directTouches =
-+      [mPointerSupport directTouchesFromTouches:event.allTouches];
-+  if (directTouches.count == 0 || !mGeckoChild) {
-+    return;
-+  }
-+
-+  [self sendTouchEvent:eTouchMove touches:directTouches widget:mGeckoChild];
-+}
-+
-+- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom {
-+  [mInputResultDelegate compositorScrollPositionDidChange:scrollY zoom:zoom];
-+}
-+
-+- (void)didMoveToWindow {
-+  [super didMoveToWindow];
-+
-+  if (!mGeckoChild) {
-+    return;
-+  }
-+
+-    [mTouches removeObjectForKey:touch];
 +  // Ensure a detached ChildView does not keep stale responder state
 +  // while we mirror activation on ChildView attach/detach transitions.
 +  if (![self window] && [self isFirstResponder]) {
 +    [self resignFirstResponder];
-+  }
+   }
+-  if (mTouches.count == 0) {
+-    mNextTouchID = 0;
 +  if (![self window]) {
 +    [mPointerSupport releasePointerButtons];
 +    if (TextInputHandler* handler = mGeckoChild->GetTextInputHandler()) {
 +      handler->ReleasePhysicalKeys();
 +    }
-+  }
-+
+   }
+-}
+ 
+-- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+-  ALOG("[ChildView[%p] touchesEnded", self);
+-  if (!mGeckoChild) return;
+-
+-  [self sendTouchEvent:eTouchEnd touches:touches widget:mGeckoChild];
+-  for (UITouch* touch : touches) {
+-    [mTouches removeObjectForKey:touch];
 +  if ([self window]) {
 +    [self updateSafeAreaInsets];
-+  }
+   }
+-  if (mTouches.count == 0) {
+-    mNextTouchID = 0;
 +
 +  if ([self window] && [self window].isKeyWindow && !self.hidden) {
 +    mGeckoChild->NotifyWindowActivationState(true);
 +  } else if (![self window]) {
 +    mGeckoChild->NotifyWindowActivationState(false);
+   }
+ }
+ 
+-- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+-  ALOG("[ChildView[%p] touchesMoved", self);
+-  if (!mGeckoChild) return;
++- (void)traitCollectionDidChange:(UITraitCollection*)previousTraitCollection {
++  [super traitCollectionDidChange:previousTraitCollection];
++
++  self.backgroundColor = [UIColor systemBackgroundColor];
++
++  if (previousTraitCollection &&
++      self.traitCollection.userInterfaceStyle ==
++          previousTraitCollection.userInterfaceStyle) {
++    return;
 +  }
+ 
+-  [self sendTouchEvent:eTouchMove
+-               touches:[event allTouches]
+-                widget:mGeckoChild];
++  nsLookAndFeel::SetSystemUsesDarkTheme(
++      self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark);
  }
  
  - (void)layoutSubviews {
@@ -572,13 +405,13 @@ index ffb8da937efa..9adba62b73b7 100644
    if (!mGeckoChild ||
        mGeckoChild->GetWindowType() != nsIWidget::WindowType::TopLevel) {
      return;
-@@ -345,19 +593,152 @@ - (void)layoutSubviews {
+@@ -345,19 +320,84 @@ - (void)layoutSubviews {
                          self.frame.origin.y * scaleFactor,
                          self.frame.size.width * scaleFactor,
                          self.frame.size.height * scaleFactor, false);
 +  [self updateSafeAreaInsets];
-+}
-+
+ }
+ 
 +- (void)updateSafeAreaInsets {
 +  UIWindow* window = self.window;
 +  if (!mGeckoChild || !window || !window.screen) {
@@ -615,21 +448,26 @@ index ffb8da937efa..9adba62b73b7 100644
 +- (void)safeAreaInsetsDidChange {
 +  [super safeAreaInsetsDidChange];
 +  [self updateSafeAreaInsets];
- }
- 
++}
++
++// MARK: - First responder
++
  - (BOOL)canBecomeFirstResponder {
    if (!mGeckoChild) {
      return NO;
    }
 +  return YES;
 +}
-+
+ 
+-  if (mGeckoChild->IsVirtualKeyboardDisabled()) {
+-    return NO;
 +- (BOOL)becomeFirstResponder {
 +  BOOL didBecomeFirstResponder = [super becomeFirstResponder];
 +  if (didBecomeFirstResponder &&
 +      mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateSelectionActivation];
-+  }
+   }
+-  return YES;
 +  return didBecomeFirstResponder;
 +}
 +
@@ -648,85 +486,14 @@ index ffb8da937efa..9adba62b73b7 100644
 +    [self updateEditMenu];
 +  }
 +  return didResignFirstResponder;
-+}
- 
--  if (mGeckoChild->IsVirtualKeyboardDisabled()) {
-+- (BOOL)_requiresKeyboardWhenFirstResponder {
-+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
-     return NO;
-   }
-+  return mGeckoChild->GetInputContext().mIMEState.mEnabled !=
-+             IMEEnabled::Disabled ||
-+         mEditable.mSeenHardwareKeyDownInNonEditableContent;
-+}
-+
-+- (BOOL)_requiresKeyboardResetOnReload {
-   return YES;
  }
  
-+- (void)_handleKeyUIEvent:(UIEvent*)event {
-+  BOOL isHardwareKeyboardEvent = [event _hidEvent] != nullptr;
-+  if ([self isFirstResponder] && isHardwareKeyboardEvent && mGeckoChild &&
-+      !mGeckoChild->Destroyed() &&
-+      mGeckoChild->GetInputContext().mIMEState.mEnabled ==
-+          IMEEnabled::Disabled &&
-+      !mEditable.mSeenHardwareKeyDownInNonEditableContent) {
-+    mEditable.mSeenHardwareKeyDownInNonEditableContent = YES;
-+    [self reloadInputViews];
-+  }
-+  [super _handleKeyUIEvent:event];
-+}
-+
-+- (BOOL)requiresKeyEvents {
-+  return mGeckoChild && !mGeckoChild->Destroyed();
-+}
-+
-+- (void)handleKeyWebEvent:(WebEvent*)event {
-+  BOOL handled = NO;
-+  if (mGeckoChild && !mGeckoChild->Destroyed()) {
-+    if (TextInputHandler* handler = mGeckoChild->GetTextInputHandler()) {
-+      handled = handler->HandleKeyEvent(event);
-+    }
-+  }
-+  event.wasHandled = handled;
-+}
-+
-+- (void)handleKeyWebEvent:(WebEvent*)event
-+    withCompletionHandler:
-+        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler {
-+  BOOL handled = NO;
-+  if (mGeckoChild && !mGeckoChild->Destroyed()) {
-+    if (TextInputHandler* handler = mGeckoChild->GetTextInputHandler()) {
-+      handled = handler->HandleKeyEvent(event);
-+    }
-+  }
-+  completionHandler(event, handled);
-+}
-+
-+- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
-+                                to:(UIKeyModifierFlags)newFlags {
-+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
-+    return;
-+  }
-+  if (TextInputHandler* handler = mGeckoChild->GetTextInputHandler()) {
-+    handler->HandleModifierFlagsChanged(oldFlags, newFlags);
-+  }
-+}
-+
-+- (void)pressesCancelled:(NSSet<UIPress*>*)presses
-+               withEvent:(UIPressesEvent*)event {
-+  if (mGeckoChild && !mGeckoChild->Destroyed()) {
-+    if (TextInputHandler* handler = mGeckoChild->GetTextInputHandler()) {
-+      handler->ReleasePhysicalKeys();
-+    }
-+  }
-+  [super pressesCancelled:presses withEvent:event];
-+}
++// MARK: - Rendering
 +
  - (void)setNeedsDisplayInRect:(CGRect)aRect {
    if ([self isUsingMainThreadOpenGL]) {
      // Draw without calling drawRect. This prevent us from
-@@ -405,7 +786,6 @@ - (BOOL)isUsingMainThreadOpenGL {
+@@ -405,7 +445,6 @@ - (BOOL)isUsingMainThreadOpenGL {
  }
  
  - (void)drawUsingOpenGL {
@@ -734,7 +501,7 @@ index ffb8da937efa..9adba62b73b7 100644
    AUTO_PROFILER_LABEL("ChildView::drawUsingOpenGL", OTHER);
  
    if (!mGeckoChild->IsVisible()) return;
-@@ -549,86 +929,6 @@ - (void)updateLayer {
+@@ -549,85 +588,7 @@ - (void)updateLayer {
    [(ChildView*)[self superview] updateRootCALayer];
  }
  
@@ -817,11 +584,17 @@ index ffb8da937efa..9adba62b73b7 100644
 -  }
 -  return NO;
 -}
--
++// MARK: - Accessibility
+ 
  #ifdef ACCESSIBILITY
  // MUIRootAccessible
+@@ -738,47 +699,58 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
  
-@@ -742,13 +1042,69 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+ NS_IMPL_ISUPPORTS_INHERITED(nsWindow, nsIWidget, nsWindow);
+ 
++// MARK: - nsWindow lifecycle
++
+ nsWindow::nsWindow()
      : mNativeView(nullptr),
        mVisible(false),
        mSizeMode(nsSizeMode_Normal),
@@ -835,6 +608,82 @@ index ffb8da937efa..9adba62b73b7 100644
 +
    [mNativeView widgetDestroyed];  // Safe if mNativeView is nil.
    TearDownView();                 // Safe if called twice.
+ }
+ 
+-void nsWindow::TearDownView() {
+-  if (!mNativeView) return;
+-
+-  [mNativeView performSelectorOnMainThread:@selector(delayedTearDown)
+-                                withObject:nil
+-                             waitUntilDone:false];
+-  mNativeView = nil;
+-}
+-
+ bool nsWindow::IsTopLevel() {
+   return mWindowType == WindowType::TopLevel ||
+          mWindowType == WindowType::Dialog ||
+          mWindowType == WindowType::Invisible;
+ }
+ 
+-//
+-// nsIWidget
+-//
++already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow() {
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
++
++already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow() {
++  nsCOMPtr<nsIWidget> window = new nsWindow();
++  return window.forget();
++}
++
++/* static */
++already_AddRefed<nsWindow> nsWindow::From(nsPIDOMWindowOuter* aDOMWindow) {
++  nsCOMPtr<nsIWidget> widget = WidgetUtils::DOMWindowToWidget(aDOMWindow);
++  return From(widget);
++}
++
++/* static */
++already_AddRefed<nsWindow> nsWindow::From(nsIWidget* aWidget) {
++  RefPtr<nsWindow> window = do_QueryObject(aWidget);
++  return window.forget();
++}
++
++// nsIWidget lifecycle and lookup
+ 
+ nsresult nsWindow::Create(nsIWidget* aParent, const LayoutDeviceIntRect& aRect,
+                           const widget::InitData& aInitData) {
+-  ALOG("nsWindow[%p]::Create %p [%d %d %d %d]", (void*)this, (void*)aParent,
+-       aRect.x, aRect.y, aRect.width, aRect.height);
+   nsWindow* parent = (nsWindow*)aParent;
+-
+   mBounds = aRect;
+ 
+-  ALOG("nsWindow[%p]::Create bounds: %d %d %d %d", (void*)this, mBounds.x,
+-       mBounds.y, mBounds.width, mBounds.height);
+-
+   // Set defaults which can be overriden from aInitData in BaseCreate
+   mWindowType = WindowType::TopLevel;
+   mBorderStyle = BorderStyle::Default;
+@@ -826,6 +798,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+   }
+   mTextInputHandler = nullptr;
+ 
++  CloseNativeLayerRemoteParent(true);
++
+   [mNativeView widgetDestroyed];
+ 
+   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
+@@ -834,14 +808,85 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+ 
+   // ReportDestroyEvent();
+ 
++  DestroyNativeLayerRoot();
++
+   TearDownView();
+ 
+   nsIWidget::OnDestroy();
  }
  
 +void nsWindow::CloseNativeLayerRemoteParent(bool aWaitUntilClosed) {
@@ -889,44 +738,17 @@ index ffb8da937efa..9adba62b73b7 100644
 +  mNativeLayerRoot = nullptr;
 +}
 +
- void nsWindow::TearDownView() {
-   if (!mNativeView) return;
- 
-@@ -770,15 +1126,9 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
- 
- nsresult nsWindow::Create(nsIWidget* aParent, const LayoutDeviceIntRect& aRect,
-                           const widget::InitData& aInitData) {
--  ALOG("nsWindow[%p]::Create %p [%d %d %d %d]", (void*)this, (void*)aParent,
--       aRect.x, aRect.y, aRect.width, aRect.height);
-   nsWindow* parent = (nsWindow*)aParent;
--
-   mBounds = aRect;
- 
--  ALOG("nsWindow[%p]::Create bounds: %d %d %d %d", (void*)this, mBounds.x,
--       mBounds.y, mBounds.width, mBounds.height);
--
-   // Set defaults which can be overriden from aInitData in BaseCreate
-   mWindowType = WindowType::TopLevel;
-   mBorderStyle = BorderStyle::Default;
-@@ -826,6 +1176,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
-   }
-   mTextInputHandler = nullptr;
- 
-+  CloseNativeLayerRemoteParent(true);
++void nsWindow::TearDownView() {
++  if (!mNativeView) return;
 +
-   [mNativeView widgetDestroyed];
- 
-   nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
-@@ -834,6 +1186,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
- 
-   // ReportDestroyEvent();
- 
-+  DestroyNativeLayerRoot();
++  [mNativeView performSelectorOnMainThread:@selector(delayedTearDown)
++                                withObject:nil
++                             waitUntilDone:false];
++  mNativeView = nil;
++}
 +
-   TearDownView();
- 
-   nsIWidget::OnDestroy();
-@@ -842,6 +1196,12 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
++// Visibility and activation
++
  void nsWindow::Show(bool aState) {
    if (aState != mVisible) {
      mNativeView.hidden = aState ? NO : YES;
@@ -939,7 +761,7 @@ index ffb8da937efa..9adba62b73b7 100644
      if (aState) {
        if (mParent) {
          [mParent->mNativeView bringSubviewToFront:mNativeView];
-@@ -852,6 +1212,24 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -852,6 +897,27 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    }
  }
  
@@ -961,22 +783,38 @@ index ffb8da937efa..9adba62b73b7 100644
 +    mAttachedWidgetListener->WindowDeactivated();
 +  }
 +}
++
++// Window state and geometry
++
  void nsWindow::Move(const DesktopPoint& aPoint) {
    if (!mNativeView || (mBounds.x == aPoint.x && mBounds.y == aPoint.y)) {
      return;
-@@ -940,6 +1318,31 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -940,22 +1006,28 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    ReportSizeModeEvent(aMode);
  }
  
+-void nsWindow::Invalidate(const LayoutDeviceIntRect& aRect) {
+-  if (!mNativeView || !mVisible) return;
+-
+-  [mNativeView setNeedsLayout];
+-  [mNativeView setNeedsDisplayInRect:DevPixelsToUIKitPoints(
+-                                         mBounds, BackingScaleFactor())];
 +nsresult nsWindow::MakeFullScreen(bool aFullScreen) {
 +  MOZ_ASSERT(NS_IsMainThread());
 +  EnteredFullScreen(aFullScreen);
 +  return NS_OK;
-+}
-+
+ }
+ 
+-void nsWindow::SetFocus(Raise, mozilla::dom::CallerType) {
+-  [[mNativeView window] makeKeyWindow];
+-  [mNativeView becomeFirstResponder];
+-}
 +void nsWindow::EnteredFullScreen(bool aFullScreen) {
 +  MOZ_ASSERT(NS_IsMainThread());
-+
+ 
+-void nsWindow::PaintWindow() {
+-  if (mWidgetListener) {
+-    mWidgetListener->PaintWindow(this);
 +  if (EventDispatcher* dispatcher = GetEventDispatcher()) {
 +    dispatcher->Dispatch(aFullScreen ? u"GeckoView:FullScreenEnter"_ns
 +                                     : u"GeckoView:FullScreenExit"_ns,
@@ -990,35 +828,10 @@ index ffb8da937efa..9adba62b73b7 100644
 +  if (nsIWidgetListener* listener = GetWidgetListener()) {
 +    mSizeMode = aFullScreen ? nsSizeMode_Fullscreen : nsSizeMode_Normal;
 +    listener->SizeModeChanged(mSizeMode);
-+  }
-+}
-+
- void nsWindow::Invalidate(const LayoutDeviceIntRect& aRect) {
-   if (!mNativeView || !mVisible) return;
- 
-@@ -953,6 +1356,21 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
-   [mNativeView becomeFirstResponder];
+   }
  }
  
-+bool nsWindow::FocusForHardwareKeyboard() {
-+  if (!mNativeView || ![mNativeView window]) {
-+    return false;
-+  }
-+
-+  const bool wasSuppressed = mSoftwareKeyboardSuppressed;
-+  mSoftwareKeyboardSuppressed = true;
-+  if (![mNativeView becomeFirstResponder]) {
-+    mSoftwareKeyboardSuppressed = wasSuppressed;
-+    return false;
-+  }
-+  [mNativeView reloadInputViews];
-+  return true;
-+}
-+
- void nsWindow::PaintWindow() {
-   if (mWidgetListener) {
-     mWidgetListener->PaintWindow(this);
-@@ -982,6 +1400,10 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -982,6 +1054,10 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
  void nsWindow::ReportSizeEvent() {
    LayoutDeviceIntRect innerBounds = GetClientBounds();
  
@@ -1029,7 +842,7 @@ index ffb8da937efa..9adba62b73b7 100644
    if (mWidgetListener) {
      mWidgetListener->WindowResized(this, innerBounds.Size());
    }
-@@ -992,24 +1414,39 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -992,45 +1068,163 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
  }
  
  LayoutDeviceIntRect nsWindow::GetScreenBounds() {
@@ -1049,38 +862,79 @@ index ffb8da937efa..9adba62b73b7 100644
  }
  
  LayoutDeviceIntPoint nsWindow::WidgetToScreenOffset() {
--  LayoutDeviceIntPoint offset(0, 0);
--  if (mParent) {
--    offset = mParent->WidgetToScreenOffset();
--  }
--
--  CGPoint temp = [mNativeView convertPoint:temp toView:nil];
 +  if (mNativeView && mNativeView.window) {
 +    UIScreen* screen = mNativeView.window.screen;
 +    CGPoint origin = [mNativeView convertPoint:CGPointZero
 +                             toCoordinateSpace:screen.coordinateSpace];
- 
--  if (!mParent && mNativeView.window) {
--    // convert to screen coords
--    temp = [mNativeView.window convertPoint:temp toWindow:nil];
++
 +    const CGFloat scaleFactor = [screen scale];
 +    return LayoutDeviceIntPoint(NSToIntRound(origin.x * scaleFactor),
 +                                NSToIntRound(origin.y * scaleFactor));
-   }
- 
--  offset.x += static_cast<int32_t>(temp.x);
--  offset.y += static_cast<int32_t>(temp.y);
-+  LayoutDeviceIntPoint offset(0, 0);
++  }
++
+   LayoutDeviceIntPoint offset(0, 0);
+-  if (mParent) {
+-    offset = mParent->WidgetToScreenOffset();
 +  for (nsWindow* window = this; window; window = window->mParent) {
 +    offset += window->mBounds.TopLeft();
 +    if (window->IsTopLevel()) {
 +      break;
 +    }
-+  }
+   }
  
-   return offset;
+-  CGPoint temp = [mNativeView convertPoint:temp toView:nil];
++  return offset;
++}
+ 
+-  if (!mParent && mNativeView.window) {
+-    // convert to screen coords
+-    temp = [mNativeView.window convertPoint:temp toWindow:nil];
++// Focus and input
++
++void nsWindow::SetFocus(Raise, mozilla::dom::CallerType) {
++  [[mNativeView window] makeKeyWindow];
++  [mNativeView becomeFirstResponder];
++}
++
++bool nsWindow::FocusForHardwareKeyboard() {
++  if (!mNativeView || ![mNativeView window]) {
++    return false;
+   }
+ 
+-  offset.x += static_cast<int32_t>(temp.x);
+-  offset.y += static_cast<int32_t>(temp.y);
++  const bool wasSuppressed = mSoftwareKeyboardSuppressed;
++  mSoftwareKeyboardSuppressed = true;
++  if (![mNativeView becomeFirstResponder]) {
++    mSoftwareKeyboardSuppressed = wasSuppressed;
++    return false;
++  }
++  [mNativeView reloadInputViews];
++  return true;
++}
+ 
+-  return offset;
++// Rendering
++
++void nsWindow::Invalidate(const LayoutDeviceIntRect& aRect) {
++  if (!mNativeView || !mVisible) return;
++
++  [mNativeView setNeedsLayout];
++  [mNativeView setNeedsDisplayInRect:DevPixelsToUIKitPoints(
++                                         mBounds, BackingScaleFactor())];
  }
-@@ -1020,17 +1457,80 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+ 
++void nsWindow::PaintWindow() {
++  if (mWidgetListener) {
++    mWidgetListener->PaintWindow(this);
++  }
++}
++
++// Text input
++
+ void nsWindow::SetInputContext(const InputContext& aContext,
+                                const InputContextAction& aAction) {
+   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
  
    const bool changingEnabledState =
        aContext.IsInputAttributeChanged(mInputContext);
@@ -1143,14 +997,14 @@ index ffb8da937efa..9adba62b73b7 100644
 +      hadFirstResponder || aAction.UserMightRequestOpenVKB() ||
 +      (aAction.mFocusChange == InputContextAction::GOT_FOCUS &&
 +       (focusFromPointerInput || focusFromKeyboardInput));
- 
--  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
++
 +  const bool shouldWaitForPasswordAutofillFocus =
 +      shouldBecomeFirstResponder && !hadFirstResponder &&
 +      aContext.IsPasswordEditor() &&
 +      (aAction.mFocusChange == InputContextAction::GOT_FOCUS ||
 +       mNativeView->mEditable.mWaitingForPasswordAutofillFocus);
-+
+ 
+-  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
 +  if (shouldWaitForPasswordAutofillFocus) {
 +    mNativeView->mEditable.mWaitingForPasswordAutofillFocus = YES;
 +  } else if (shouldBecomeFirstResponder) {
@@ -1164,10 +1018,12 @@ index ffb8da937efa..9adba62b73b7 100644
      // TODO(m_kato):
      // It is unnecessary to call reloadInputViews with changingEnabledState if
      // virtual keyboard is disappeared.
-@@ -1050,16 +1550,59 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1050,16 +1244,65 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return mInputContext;
  }
  
++// Compositor widget
++
 +void nsWindow::SetCompositorWidgetDelegate(
 +    mozilla::widget::CompositorWidgetDelegate* aDelegate) {
 +  if (aDelegate) {
@@ -1186,6 +1042,8 @@ index ffb8da937efa..9adba62b73b7 100644
 +    }
 +  }
 +}
++
++// Text event dispatch
 +
  widget::TextEventDispatcherListener*
  nsWindow::GetNativeTextEventDispatcherListener() {
@@ -1221,10 +1079,12 @@ index ffb8da937efa..9adba62b73b7 100644
 +         mTextInputHandler->GetEditCommands(aEvent, aCommands);
 +}
 +
++// Native view and display
++
  void nsWindow::SetBackgroundColor(const nscolor& aColor) {
    mNativeView.backgroundColor = [UIColor colorWithRed:NS_GET_R(aColor)
                                                  green:NS_GET_G(aColor)
-@@ -1067,6 +1610,13 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1067,6 +1310,13 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
                                                  alpha:NS_GET_A(aColor)];
  }
  
@@ -1238,7 +1098,7 @@ index ffb8da937efa..9adba62b73b7 100644
  void* nsWindow::GetNativeData(uint32_t aDataType) {
    void* retVal = nullptr;
  
-@@ -1110,6 +1660,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1110,6 +1360,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return [UIScreen mainScreen].scale;
  }
  
@@ -1247,10 +1107,12 @@ index ffb8da937efa..9adba62b73b7 100644
  int32_t nsWindow::RoundsWidgetCoordinatesTo() {
    if (BackingScaleFactor() == 2.0) {
      return 2;
-@@ -1117,10 +1669,148 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1117,10 +1369,156 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return 1;
  }
  
++// Toolbar and safe-area state
++
 +void nsWindow::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
 +  if (mWidgetListener) {
 +    mWidgetListener->DynamicToolbarOffsetChanged(aOffset);
@@ -1270,7 +1132,11 @@ index ffb8da937efa..9adba62b73b7 100644
 +
 +void nsWindow::NotifyCompositorScrollUpdate(
 +    const CompositorScrollUpdate& aUpdate) {
-+  [mNativeView
++  if (!mNativeView) {
++    return;
++  }
++
++  [mNativeView->mTouchSupport
 +      compositorScrollPositionDidChange:aUpdate.mMetrics.mVisualScrollOffset.y *
 +                                        aUpdate.mMetrics.mZoom.scale /
 +                                        BackingScaleFactor()
@@ -1309,6 +1175,8 @@ index ffb8da937efa..9adba62b73b7 100644
 +    mAttachedWidgetListener->SafeAreaInsetsChanged(aSafeAreaInsets);
 +  }
 +}
++
++// Compositing
 +
  layers::NativeLayerRoot* nsWindow::GetNativeLayerRoot() {
    return mNativeLayerRoot;
@@ -1396,10 +1264,22 @@ index ffb8da937efa..9adba62b73b7 100644
  void nsWindow::HandleMainThreadCATransaction() {
    // Trigger a synchronous OMTC composite. This will call NextSurface and
    // NotifySurfaceReady on the compositor thread to update mNativeLayerRoot's
-@@ -1227,6 +1917,129 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
-   return window.forget();
+@@ -1198,6 +1596,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+   }
  }
  
++// Event dispatch and APZ
++
+ EventDispatcher* nsWindow::GetEventDispatcher() const {
+   if (mIOSView) {
+     return mIOSView->mEventDispatcher;
+@@ -1205,28 +1605,131 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+   return nullptr;
+ }
+ 
+-already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow() {
+-  nsCOMPtr<nsIWidget> window = new nsWindow();
+-  return window.forget();
 +bool nsWindow::DispatchWindowEvent(WidgetGUIEvent& aEvent) {
 +  switch (aEvent.mMessage) {
 +    case eSwipeGestureMayStart:
@@ -1409,7 +1289,7 @@ index ffb8da937efa..9adba62b73b7 100644
 +    case eSwipeGestureEnd:
 +      if (mNativeView) {
 +        return [mNativeView->mPointerSupport
-+            handleHistorySwipeEvent:*aEvent.AsSimpleGestureEvent()];
++            handleEdgeSwipeEvent:*aEvent.AsSimpleGestureEvent()];
 +      }
 +      break;
 +    default:
@@ -1417,8 +1297,11 @@ index ffb8da937efa..9adba62b73b7 100644
 +  }
 +
 +  return nsIWidget::DispatchWindowEvent(aEvent);
-+}
-+
+ }
+ 
+-already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow() {
+-  nsCOMPtr<nsIWidget> window = new nsWindow();
+-  return window.forget();
 +void nsWindow::DispatchPanGestureInput(PanGestureInput& aInput) {
 +  MOZ_ASSERT(NS_IsMainThread());
 +
@@ -1446,8 +1329,12 @@ index ffb8da937efa..9adba62b73b7 100644
 +  }
 +
 +  ProcessUntransformedAPZEvent(&event, result);
-+}
-+
+ }
+ 
+-/* static */
+-already_AddRefed<nsWindow> nsWindow::From(nsPIDOMWindowOuter* aDOMWindow) {
+-  nsCOMPtr<nsIWidget> widget = WidgetUtils::DOMWindowToWidget(aDOMWindow);
+-  return From(widget);
 +void nsWindow::DispatchTouchStart(WidgetTouchEvent* aEvent,
 +                                  uint64_t aSequenceId) {
 +  MOZ_ASSERT(NS_IsMainThread());
@@ -1472,8 +1359,12 @@ index ffb8da937efa..9adba62b73b7 100644
 +  if (result.GetHandledResult()) {
 +    NotifyAPZInputResult(aSequenceId, result.GetHandledResult().ref());
 +  }
-+}
-+
+ }
+ 
+-/* static */
+-already_AddRefed<nsWindow> nsWindow::From(nsIWidget* aWidget) {
+-  RefPtr<nsWindow> window = do_QueryObject(aWidget);
+-  return window.forget();
 +void nsWindow::NotifyAPZInputResult(uint64_t aSequenceId,
 +                                    const APZHandledResult& aHandledResult) {
 +  if (!mNativeView) {
@@ -1517,23 +1408,25 @@ index ffb8da937efa..9adba62b73b7 100644
 +    overscrollAxes |= GeckoOverscrollAxisVertical;
 +  }
 +
-+  [mNativeView resolveTouchSequence:aSequenceId
-+                           handling:handling
-+                    scrollableEdges:scrollableEdges
-+                     overscrollAxes:overscrollAxes];
-+}
++  [mNativeView->mTouchSupport resolveTouchSequence:aSequenceId
++                                          handling:handling
++                                   scrollableEdges:scrollableEdges
++                                    overscrollAxes:overscrollAxes];
+ }
+ 
++// GeckoView integration
 +
  NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
  
  nsresult IOSView::GetInitData(JSContext* aCx,
-@@ -1247,6 +2060,39 @@ - (UIView*)view {
+@@ -1247,6 +1750,39 @@ - (UIView*)view {
    return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
  }
  
-+- (void)setInputResultDelegate:(id<GeckoViewInputResultDelegate>)delegate {
++- (void)setInteractionDelegate:(id<GeckoViewInteractionDelegate>)delegate {
 +  if (mWindow) {
 +    [(ChildView*)mWindow->GetNativeData(NS_NATIVE_WIDGET)
-+        setInputResultDelegate:delegate];
++        setInteractionDelegate:delegate];
 +  }
 +}
 +
@@ -1566,7 +1459,7 @@ index ffb8da937efa..9adba62b73b7 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1260,6 +2106,10 @@ - (void)close {
+@@ -1260,6 +1796,10 @@ - (void)close {
      mOuterWindow = nullptr;
    }
  }
@@ -1577,7 +1470,7 @@ index ffb8da937efa..9adba62b73b7 100644
  @end
  
  id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
-@@ -1302,6 +2152,7 @@ - (void)close {
+@@ -1302,6 +1842,7 @@ - (void)close {
    MOZ_ASSERT(window);
  
    window->SetIOSView(iosView.forget());

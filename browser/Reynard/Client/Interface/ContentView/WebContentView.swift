@@ -44,10 +44,10 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private let refreshIndicatorContainer = UIView()
     private let refreshIndicator = UIActivityIndicatorView(style: .large)
     
-    var historySwipeDirectionsProvider: (() -> GeckoHistorySwipeDirections)?
-    var onHistorySwipeDidStart: ((GeckoHistorySwipeDirections) -> Void)?
+    var historySwipeDirectionsProvider: (() -> GeckoEdgeSwipeDirections)?
+    var onHistorySwipeDidStart: ((GeckoEdgeSwipeDirections) -> Void)?
     var onHistorySwipeDidUpdate: ((CGFloat) -> Void)?
-    var onHistorySwipeDidComplete: ((GeckoHistorySwipeDirections) -> Void)?
+    var onHistorySwipeDidComplete: ((GeckoEdgeSwipeDirections) -> Void)?
     var onHistorySwipeDidEnd: (() -> Void)?
     var onVerticalScroll: ((CGFloat) -> Void)?
     
@@ -63,7 +63,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     deinit {
-        webView.inputResultDelegate = nil
+        webView.interactionDelegate = nil
     }
     
     override func layoutSubviews() {
@@ -86,7 +86,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         scrollToTopTriggerView.delegate = self
         scrollToTopTriggerView.showsVerticalScrollIndicator = false
         scrollToTopTriggerView.contentInsetAdjustmentBehavior = .never
-        webView.inputResultDelegate = self
+        webView.interactionDelegate = self
         pageBackgroundView.backgroundColor = .systemBackground
         errorLabel.font = .preferredFont(forTextStyle: .body)
         errorLabel.adjustsFontForContentSizeCategory = true
@@ -385,7 +385,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
 }
 
-extension WebContentView: GeckoViewInputResultDelegate {
+extension WebContentView: GeckoViewInteractionDelegate {
     func touchSequenceDidBegin(_ sequenceID: UInt64) {
         pullToRefreshRecognizer?.beginInputSequence(sequenceID)
     }
@@ -421,23 +421,23 @@ extension WebContentView: GeckoViewInputResultDelegate {
         }
     }
     
-    func allowedHistorySwipeDirections() -> GeckoHistorySwipeDirections {
+    func allowedEdgeSwipeDirections() -> GeckoEdgeSwipeDirections {
         return historySwipeDirectionsProvider?() ?? []
     }
     
-    func historySwipeDidStart(_ direction: GeckoHistorySwipeDirections) {
+    func edgeSwipeDidStart(_ direction: GeckoEdgeSwipeDirections) {
         onHistorySwipeDidStart?(direction)
     }
     
-    func historySwipeDidUpdate(_ progress: Double) {
+    func edgeSwipeDidUpdate(_ progress: Double) {
         onHistorySwipeDidUpdate?(CGFloat(progress))
     }
     
-    func historySwipeDidComplete(_ direction: GeckoHistorySwipeDirections) {
+    func edgeSwipeDidComplete(_ direction: GeckoEdgeSwipeDirections) {
         onHistorySwipeDidComplete?(direction)
     }
     
-    func historySwipeDidEnd() {
+    func edgeSwipeDidEnd() {
         onHistorySwipeDidEnd?()
     }
 }
