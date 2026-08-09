@@ -49,6 +49,7 @@ extension BrowserViewController: TabManagerDelegate {
     }
     
     func tabManager(_ tabManager: TabManager, didSelectTabAt index: Int, previousIndex: Int?) {
+        toolbarController.reset()
         tabBar.setPendingExpansion(at: nil)
         
         guard let selectedTab = tabManager.activeTabs[safe: index] else {
