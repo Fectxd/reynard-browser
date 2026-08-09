@@ -112,7 +112,14 @@ extension BrowserViewController: TabManagerDelegate {
         if element.type == .image,
            let source = element.srcUri?.trimmingCharacters(in: .whitespacesAndNewlines),
            let url = URL(string: source) {
-            contextMenuCoordinator.present(at: point, target: .image(url), allowsPreview: !element.isMouseInput)
+            let linkURL = element.linkUri
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { URL(string: $0) }
+            contextMenuCoordinator.present(
+                at: point,
+                target: .image(url, linkURL: linkURL),
+                allowsPreview: !element.isMouseInput
+            )
             return
         }
         
