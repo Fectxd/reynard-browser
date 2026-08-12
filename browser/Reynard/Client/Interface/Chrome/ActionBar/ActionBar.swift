@@ -23,7 +23,18 @@ final class ActionBar: UIView {
     static let height: CGFloat = 62
     
     enum Item: Equatable {
+        case findInPage
         case pageZoom
+    }
+    
+    var onFindInPage: ((_ query: String?, _ backwards: Bool) async -> (current: Int, total: Int)?)? {
+        get { return findInPageActionBar.onFind }
+        set { findInPageActionBar.onFind = newValue }
+    }
+    
+    var onClearFindInPage: (() -> Void)? {
+        get { return findInPageActionBar.onClear }
+        set { findInPageActionBar.onClear = newValue }
     }
     
     var onPageZoomOut: (() -> Void)? {
@@ -45,7 +56,13 @@ final class ActionBar: UIView {
     
     private(set) var item: Item?
     
+    var isShowingFindInPage: Bool {
+        return item == .findInPage && !isHidden
+    }
+    
+    private let findInPageActionBar = FindInPageActionBar()
     private let pageZoomActionBar = PageZoomActionBar()
+    private var hasPreparedFindInPageDismissal = false
     
     private let closeShadowView: UIView = {
         let view = UIView()
@@ -118,9 +135,26 @@ final class ActionBar: UIView {
     // MARK: - Presentation
     
     func setItem(_ item: Item?) {
+        if item != .findInPage {
+            prepareForDismissal()
+        }
+        if item == .findInPage, self.item != .findInPage {
+            hasPreparedFindInPageDismissal = false
+            findInPageActionBar.prepareForPresentation()
+        }
         self.item = item
         isHidden = item == nil
+        findInPageActionBar.isHidden = item != .findInPage
         pageZoomActionBar.isHidden = item != .pageZoom
+    }
+    
+    func prepareForDismissal() {
+        guard item == .findInPage, !hasPreparedFindInPageDismissal else {
+            return
+        }
+        
+        hasPreparedFindInPageDismissal = true
+        findInPageActionBar.prepareForDismissal()
     }
     
     func setPageZoomLevel(_ level: Int) {
@@ -149,6 +183,7 @@ final class ActionBar: UIView {
     }
     
     private func configureHierarchy() {
+        addSubview(findInPageActionBar)
         addSubview(pageZoomActionBar)
         addSubview(closeShadowView)
         closeShadowView.addSubview(closeBackground)
@@ -163,6 +198,11 @@ final class ActionBar: UIView {
             pageZoomActionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             pageZoomActionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
             pageZoomActionBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
+            findInPageActionBar.topAnchor.constraint(equalTo: topAnchor),
+            findInPageActionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            findInPageActionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            findInPageActionBar.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             closeShadowView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalInset),
             closeShadowView.centerYAnchor.constraint(equalTo: centerYAnchor),
