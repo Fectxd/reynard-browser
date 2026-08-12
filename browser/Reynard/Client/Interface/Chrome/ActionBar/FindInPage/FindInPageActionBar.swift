@@ -114,12 +114,12 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     }()
     
     private lazy var previousMatchButton = makeControlButton(
-        imageName: "chevron.up",
+        imageName: "reynard.chevron.up",
         action: #selector(previousMatchTapped)
     )
     
     private lazy var nextMatchButton = makeControlButton(
-        imageName: "chevron.down",
+        imageName: "reynard.chevron.down",
         action: #selector(nextMatchTapped)
     )
     
