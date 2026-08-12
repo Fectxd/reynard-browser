@@ -8,6 +8,18 @@
 import UIKit
 
 final class ActionBar: UIView {
+    private enum UX {
+        static let closeButtonSize: CGFloat = 28
+        static let closeButtonCornerRadius: CGFloat = 14
+        static let horizontalInset: CGFloat = 13
+        static let closeSymbolPointSize: CGFloat = 10
+        static let backgroundAlpha: CGFloat = 0.34
+        static let shadowOpacity: Float = 0.14
+        static let shadowRadius: CGFloat = 8
+        static let shadowOffset = CGSize(width: 0, height: 3)
+        static let borderWidth: CGFloat = 0.5
+    }
+    
     static let height: CGFloat = 62
     
     enum Item: Equatable {
@@ -29,14 +41,45 @@ final class ActionBar: UIView {
         set { pageZoomActionBar.onReset = newValue }
     }
     
-    var onClose: (() -> Void)? {
-        get { return pageZoomActionBar.onClose }
-        set { pageZoomActionBar.onClose = newValue }
-    }
+    var onClose: (() -> Void)?
     
     private(set) var item: Item?
     
     private let pageZoomActionBar = PageZoomActionBar()
+    
+    private let closeShadowView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .clear
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.closeButtonCornerRadius
+        view.layer.shadowOpacity = UX.shadowOpacity
+        view.layer.shadowRadius = UX.shadowRadius
+        view.layer.shadowOffset = UX.shadowOffset
+        return view
+    }()
+    
+    private let closeBackground: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.contentView.backgroundColor = UIColor.systemBackground.withAlphaComponent(UX.backgroundAlpha)
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.closeButtonCornerRadius
+        view.layer.borderWidth = UX.borderWidth
+        view.clipsToBounds = true
+        return view
+    }()
+    
+    private lazy var closeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let configuration = UIImage.SymbolConfiguration(pointSize: UX.closeSymbolPointSize, weight: .regular)
+        button.setImage(UIImage(named: "reynard.xmark", in: .main, with: configuration), for: .normal)
+        button.tintColor = .secondaryLabel
+        button.backgroundColor = .clear
+        button.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        return button
+    }()
     
     // MARK: - Lifecycle
     
@@ -45,11 +88,31 @@ final class ActionBar: UIView {
         configureAppearance()
         configureHierarchy()
         configureConstraints()
+        updateShadowColor()
+        updateBorderColor()
         setItem(nil)
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        closeShadowView.layer.shadowPath = UIBezierPath(
+            roundedRect: closeShadowView.bounds,
+            cornerRadius: UX.closeButtonCornerRadius
+        ).cgPath
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
+            return
+        }
+        
+        updateShadowColor()
+        updateBorderColor()
     }
     
     // MARK: - Presentation
@@ -72,6 +135,12 @@ final class ActionBar: UIView {
         return pageZoomActionBar.previousZoomLevel()
     }
     
+    // MARK: - Actions
+    
+    @objc private func closeTapped() {
+        onClose?()
+    }
+    
     // MARK: - View Setup
     
     private func configureAppearance() {
@@ -81,6 +150,9 @@ final class ActionBar: UIView {
     
     private func configureHierarchy() {
         addSubview(pageZoomActionBar)
+        addSubview(closeShadowView)
+        closeShadowView.addSubview(closeBackground)
+        closeShadowView.addSubview(closeButton)
     }
     
     private func configureConstraints() {
@@ -91,6 +163,31 @@ final class ActionBar: UIView {
             pageZoomActionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             pageZoomActionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
             pageZoomActionBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
+            closeShadowView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalInset),
+            closeShadowView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            closeShadowView.widthAnchor.constraint(equalToConstant: UX.closeButtonSize),
+            closeShadowView.heightAnchor.constraint(equalToConstant: UX.closeButtonSize),
+            
+            closeBackground.topAnchor.constraint(equalTo: closeShadowView.topAnchor),
+            closeBackground.leadingAnchor.constraint(equalTo: closeShadowView.leadingAnchor),
+            closeBackground.trailingAnchor.constraint(equalTo: closeShadowView.trailingAnchor),
+            closeBackground.bottomAnchor.constraint(equalTo: closeShadowView.bottomAnchor),
+            
+            closeButton.topAnchor.constraint(equalTo: closeShadowView.topAnchor),
+            closeButton.leadingAnchor.constraint(equalTo: closeShadowView.leadingAnchor),
+            closeButton.trailingAnchor.constraint(equalTo: closeShadowView.trailingAnchor),
+            closeButton.bottomAnchor.constraint(equalTo: closeShadowView.bottomAnchor),
         ])
+    }
+    
+    private func updateShadowColor() {
+        let color: UIColor = traitCollection.userInterfaceStyle == .dark ? .white : .black
+        closeShadowView.layer.shadowColor = color.cgColor
+    }
+    
+    private func updateBorderColor() {
+        let color = UIColor.separator.withAlphaComponent(0.2)
+        closeBackground.layer.borderColor = color.cgColor
     }
 }
