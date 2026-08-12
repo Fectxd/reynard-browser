@@ -1,8 +1,8 @@
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 275d0ce1d33e..9cec490501c0 100644
+index 723b4c0a54a8..002f9506ab5f 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
-@@ -5623,23 +5623,35 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+@@ -5629,23 +5629,35 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
    return NS_OK;
  }
  
@@ -44,7 +44,7 @@ index 275d0ce1d33e..9cec490501c0 100644
  
    // DocumentChannel adds redirect chain to global history in the parent
    // process. The redirect chain can't be queried from the content process, so
-@@ -5688,6 +5700,8 @@ void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
+@@ -5694,6 +5706,8 @@ void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
        mLoadType & (LOAD_CMD_RELOAD | LOAD_CMD_HISTORY)) {
      mLoadType = LOAD_NORMAL_REPLACE;
    }
@@ -53,7 +53,7 @@ index 275d0ce1d33e..9cec490501c0 100644
  }
  
  NS_IMETHODIMP
-@@ -8446,6 +8460,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
+@@ -8452,6 +8466,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
    }
  }
  
@@ -95,7 +95,7 @@ index 275d0ce1d33e..9cec490501c0 100644
  // InternalLoad performs several of the steps from
  // https://html.spec.whatwg.org/#navigate.
  nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
-@@ -8499,6 +8548,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -8505,6 +8554,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
  
    MOZ_TRY(CheckDisallowedJavascriptLoad(aLoadState));
  
