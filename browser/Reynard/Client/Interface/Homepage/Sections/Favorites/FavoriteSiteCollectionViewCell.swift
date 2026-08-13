@@ -103,8 +103,9 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
         updateShadowColor()
     }
     
-    func configure(favorite: BookmarkSnapshot) {
+    func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {
         titleLabel.text = favorite.title
+        titleLabel.textColor = titleColor
         iconView.configure(bookmark: favorite)
     }
     
