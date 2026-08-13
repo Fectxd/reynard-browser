@@ -3167,6 +3167,29 @@
         }
       }
     },
+    "Close %d Tabs" : {
+      "comment" : "Tab count",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Close %d Tab"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "new",
+                  "value" : "Close %d Tabs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Close All Tabs" : {
       "localizations" : {
         "en" : {
