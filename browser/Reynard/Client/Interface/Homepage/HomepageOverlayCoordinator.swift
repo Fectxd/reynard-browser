@@ -12,6 +12,7 @@ protocol HomepageOverlayCoordinatorDelegate: AnyObject {
     var homepageGridWidth: HomepageGridWidth { get }
     var homepageSelectedTab: Tab? { get }
     var isHomepageTabOverviewPresented: Bool { get }
+    var isHomepageTabOverviewTransitionRunning: Bool { get }
     var isHomepageShowingFullscreenMedia: Bool { get }
     var homepageChrome: BrowserChrome { get }
     var homepageContentView: ContentView { get }
@@ -142,6 +143,8 @@ final class HomepageOverlayCoordinator {
             visibleRect: geometry.visibleRect,
             contentMode: embeddedContentMode(layout: delegate.homepageLayout),
             isPrivateBrowsing: tab.isPrivate,
+            capturesWindow: !delegate.isHomepageTabOverviewPresented &&
+            !delegate.isHomepageTabOverviewTransitionRunning,
             completion: completion
         )
     }
@@ -157,7 +160,8 @@ final class HomepageOverlayCoordinator {
             size: geometry.size,
             visibleRect: geometry.visibleRect,
             contentMode: embeddedContentMode(layout: delegate.homepageLayout),
-            isPrivateBrowsing: tab.isPrivate
+            isPrivateBrowsing: tab.isPrivate,
+            capturesWindow: false
         )
     }
     
