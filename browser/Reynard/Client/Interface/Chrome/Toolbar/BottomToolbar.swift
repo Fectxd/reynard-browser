@@ -19,6 +19,7 @@ final class BottomToolbar: UIView {
         static let bottomToolbarButtonStackTopSpacing: CGFloat = 7
         static let bottomToolbarButtonSpacing: CGFloat = 8
         static let backgroundViewHorizontalExtension: CGFloat = 16
+        static let keyboardDockedBlurTopExtension: CGFloat = 24
     }
     
     enum LayoutState {
@@ -52,6 +53,14 @@ final class BottomToolbar: UIView {
         }
         let view = UIVisualEffectView(effect: effect)
         view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let keyboardDockedBlurView: UIView = {
+        let view = VariableBlurView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.direction = .up
+        view.isHidden = true
         return view
     }()
     
@@ -147,6 +156,7 @@ final class BottomToolbar: UIView {
             contentHeightConstraint.constant = contentHeight
             isHidden = state == .hidden || state == .collapsed
             backgroundView.isHidden = state == .focused
+            updateKeyboardDockedBlurVisibility()
             
             let isCompact = state == .compact || state == .collapsed
             standardButtonsTopConstraint?.isActive = !isCompact
@@ -169,6 +179,7 @@ final class BottomToolbar: UIView {
     func setVerticalOffset(_ offset: CGFloat) {
         verticalOffset = offset
         topConstraint.constant = offset - contentHeightConstraint.constant
+        updateKeyboardDockedBlurVisibility()
     }
     
     func setContentAlpha(_ alpha: CGFloat) {
@@ -204,6 +215,7 @@ final class BottomToolbar: UIView {
     }
     
     private func configureHierarchy() {
+        addSubview(keyboardDockedBlurView)
         addSubview(backgroundView)
         addSubview(contentView)
         contentView.addSubview(buttons)
@@ -229,10 +241,24 @@ final class BottomToolbar: UIView {
             buttons.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.bottomToolbarButtonStackHorizontalInset),
             buttonsHeightConstraint,
         ])
+        
+        NSLayoutConstraint.activate([
+            keyboardDockedBlurView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
+            keyboardDockedBlurView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: UX.backgroundViewHorizontalExtension),
+            keyboardDockedBlurView.topAnchor.constraint(
+                equalTo: contentView.topAnchor,
+                constant: -UX.keyboardDockedBlurTopExtension
+            ),
+            keyboardDockedBlurView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
     }
     
     private func configureInitialState() {
         shareButton.isEnabled = false
         downloadButton.isHidden = true
+    }
+    
+    private func updateKeyboardDockedBlurVisibility() {
+        keyboardDockedBlurView.isHidden = verticalOffset == 0 || !backgroundView.isHidden
     }
 }
