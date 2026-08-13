@@ -133,6 +133,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
                 return
             }
             
+            browserChrome.dismissActionBar(animated: false)
             dismissAddressBarEditingAndOverlays()
             contentView.resetFocusedInputRelocation()
             homepageOverlayCoordinator.tabOverviewWillPresent()

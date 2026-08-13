@@ -908,7 +908,7 @@ final class AddressBarGestures: NSObject {
             return
         }
         
-        delegate.addressBarTransitionWillBegin(prepareForGesture: true)
+        delegate.addressBarTransitionWillBegin(prepareForGesture: false)
         delegate.presentTabOverviewFromGesture(animated: true)
         delegate.addressBarTransitionDidEnd()
     }
