@@ -233,22 +233,23 @@ final class TabOverviewPresentation {
         let selectedIndex = dataSource.selectedIndex
         context.containerView.layoutIfNeeded()
         let bottomChromeView = context.browserChrome.bottomToolbarTransitionView()
-        bottomChromeView?.frame = context.browserChrome.bottomToolbarTransitionFrame(in: context.containerView)
-        if let bottomChromeView {
-            context.containerView.addSubview(bottomChromeView)
-        }
-        context.updateLayout(animated: false, duration: 0)
+        context.prepareTabOverviewPresentation()
         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode) { [weak self] _ in
             guard let self, self.presentationToken == token else {
                 bottomChromeView?.removeFromSuperview()
                 return
             }
             
+            if let bottomChromeView {
+                bottomChromeView.frame = self.context.browserChrome.bottomToolbarTransitionFrame(in: self.context.containerView)
+                self.context.containerView.addSubview(bottomChromeView)
+            }
             self.animatePhonePresentation(selectedIndex: selectedIndex, bottomChromeView: bottomChromeView)
         }
     }
     
     private func animatePhonePresentation(selectedIndex: Int, bottomChromeView: UIView?) {
+        tabOverview.applyLayout(toolbarPosition: context.browserLayout.tabOverviewToolbarPosition, animated: false)
         tabOverview.invalidateCollectionLayouts()
         tabOverview.reloadTabs()
         tabOverview.isHidden = false
@@ -479,22 +480,23 @@ final class TabOverviewPresentation {
         let selectedIndex = dataSource.selectedIndex
         context.containerView.layoutIfNeeded()
         let topChromeView = context.browserChrome.topToolbarTransitionView()
-        topChromeView?.frame = context.browserChrome.topToolbarTransitionFrame(in: context.containerView)
-        if let topChromeView {
-            context.containerView.addSubview(topChromeView)
-        }
-        context.updateLayout(animated: false, duration: 0)
+        context.prepareTabOverviewPresentation()
         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode) { [weak self] _ in
             guard let self, self.presentationToken == token else {
                 topChromeView?.removeFromSuperview()
                 return
             }
             
+            if let topChromeView {
+                topChromeView.frame = self.context.browserChrome.topToolbarTransitionFrame(in: self.context.containerView)
+                self.context.containerView.addSubview(topChromeView)
+            }
             self.animatePadPresentation(selectedIndex: selectedIndex, topChromeView: topChromeView)
         }
     }
     
     private func animatePadPresentation(selectedIndex: Int, topChromeView: UIView?) {
+        tabOverview.applyLayout(toolbarPosition: context.browserLayout.tabOverviewToolbarPosition, animated: false)
         tabOverview.invalidateCollectionLayouts()
         tabOverview.reloadTabs()
         tabOverview.isHidden = false
@@ -593,6 +595,7 @@ final class TabOverviewPresentation {
             self.tabOverview.setActiveToolbarAlpha(1)
             selectedCollection.transform = standardCollectionTransform
             self.context.browserChrome.setChromeTransition(topAlpha: 0, bottomAlpha: 1, bottomTranslationY: 0)
+            self.context.tabBar.setPresentationAlpha(0)
         } completion: { _ in
             guard self.activePresentationTransition === activePresentationTransition else {
                 return
@@ -672,6 +675,7 @@ final class TabOverviewPresentation {
         context.contentView.setTransitionHidden(true)
         context.browserChrome.setChromeTransition(topAlpha: 0, bottomAlpha: 0, bottomTranslationY: 0)
         context.tabBar.setPresentationAlpha(0)
+        context.containerView.bringSubviewToFront(context.tabBar)
         bringBrowserChromeToFrontForDismissal()
         
         UIView.animate(withDuration: UX.dismissalAnimationDuration, delay: 0, usingSpringWithDamping: UX.dismissalSpringDamping, initialSpringVelocity: 1, options: [.curveEaseInOut]) {

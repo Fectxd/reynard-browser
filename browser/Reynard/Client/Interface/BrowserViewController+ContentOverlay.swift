@@ -93,10 +93,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
         return tabOverview.isPresented
     }
     
-    var isHomepageTabOverviewTransitionRunning: Bool {
-        return tabOverview.isTransitionRunning
-    }
-    
     var isHomepageShowingFullscreenMedia: Bool {
         return isShowingFullscreenMedia
     }

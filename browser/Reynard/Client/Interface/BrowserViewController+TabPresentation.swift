@@ -114,6 +114,11 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         updateBrowserLayout(animated: animated, duration: duration)
     }
     
+    func prepareTabOverviewPresentation() {
+        homepageOverlayCoordinator.updatePresentation(animated: false)
+        view.layoutIfNeeded()
+    }
+    
     func tabOverviewDidFinishDismissal() {
         toolbarController.unlock(for: .tabOverview)
         requestContentKeyboardFocus()
