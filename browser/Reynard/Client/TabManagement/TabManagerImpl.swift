@@ -372,6 +372,7 @@ final class TabManagerImplementation: NSObject, TabManager {
                 ),
                 title: snapshot.title,
                 url: snapshot.url,
+                createdAt: snapshot.createdAt,
                 favicon: cachedFavicon(for: snapshot.url),
                 thumbnail: snapshot.thumbnail,
                 isPrivate: false
@@ -392,6 +393,7 @@ final class TabManagerImplementation: NSObject, TabManager {
                 ),
                 title: snapshot.title,
                 url: snapshot.url,
+                createdAt: snapshot.createdAt,
                 favicon: cachedFavicon(for: snapshot.url),
                 thumbnail: snapshot.thumbnail,
                 isPrivate: true

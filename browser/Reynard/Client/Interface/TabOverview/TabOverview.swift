@@ -21,6 +21,7 @@ protocol TabOverviewDataSource: AnyObject {
 
 protocol TabOverviewDelegate: AnyObject {
     func tabOverviewDidRequestClearTabs(_ tabOverview: TabOverview)
+    func tabOverviewDidRequestClearTabsOlderThan(_ tabOverview: TabOverview, age: TabOverviewClearTabsMenu.Age)
     func tabOverviewDidRequestNewTab(_ tabOverview: TabOverview)
     func tabOverviewDidRequestDone(_ tabOverview: TabOverview)
     func tabOverviewDidRequestDismiss(_ tabOverview: TabOverview, animated: Bool)
@@ -319,6 +320,8 @@ final class TabOverview: UIView {
         bottomToolbar.onTabModeChange = { [weak self] mode in self?.handleTabModeChange(mode) }
         topToolbar.onClearTabs = { [weak self] in self?.requestClearTabs() }
         bottomToolbar.onClearTabs = { [weak self] in self?.requestClearTabs() }
+        topToolbar.onClearTabsOlderThan = { [weak self] age in self?.requestClearTabsOlderThan(age) }
+        bottomToolbar.onClearTabsOlderThan = { [weak self] age in self?.requestClearTabsOlderThan(age) }
         topToolbar.onAddTab = { [weak self] in self?.requestNewTab() }
         bottomToolbar.onAddTab = { [weak self] in self?.requestNewTab() }
         topToolbar.onDone = { [weak self] in self?.requestDone() }
@@ -329,6 +332,10 @@ final class TabOverview: UIView {
     
     private func requestClearTabs() {
         delegate?.tabOverviewDidRequestClearTabs(self)
+    }
+    
+    private func requestClearTabsOlderThan(_ age: TabOverviewClearTabsMenu.Age) {
+        delegate?.tabOverviewDidRequestClearTabsOlderThan(self, age: age)
     }
     
     private func handleTabModeChange(_ mode: Mode) {

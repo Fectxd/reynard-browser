@@ -3228,6 +3228,17 @@
         }
       }
     },
+    "Close Old Tabs..." : {
+      "comment" : "Tab age menu",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Old Tabs..."
+          }
+        }
+      }
+    },
     "Compatibility" : {
       "localizations" : {
         "en" : {
@@ -6980,6 +6991,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "好"
+          }
+        }
+      }
+    },
+    "Older Than 1 Day" : {
+      "comment" : "Tab age",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older Than 1 Day"
+          }
+        }
+      }
+    },
+    "Older Than 1 Month" : {
+      "comment" : "Tab age",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older Than 1 Month"
+          }
+        }
+      }
+    },
+    "Older Than 1 Week" : {
+      "comment" : "Tab age",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Older Than 1 Week"
           }
         }
       }
