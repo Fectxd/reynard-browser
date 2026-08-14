@@ -590,13 +590,13 @@ final class TabManagerImplementation: NSObject, TabManager {
             }
         }
         
-        delegate?.tabManagerDidChangeTabs(self)
-        
         if selecting {
             selectTab(at: index, mode: mode)
         } else {
             persistState()
         }
+        
+        delegate?.tabManagerDidChangeTabs(self)
         
         return index
     }
@@ -734,13 +734,11 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
         
         if regularTabs.isEmpty && privateTabs.isEmpty {
-            delegate?.tabManagerDidChangeTabs(self)
             persistState()
+            delegate?.tabManagerDidChangeTabs(self)
             sessionManager.discard(removedTab.session, forTab: removedTab.id, keepingHistory: mode == .regular)
             return
         }
-        
-        delegate?.tabManagerDidChangeTabs(self)
         
         if wasSelected {
             if !tabs(for: mode).isEmpty {
@@ -749,9 +747,12 @@ final class TabManagerImplementation: NSObject, TabManager {
                 let fallbackMode: TabMode = mode == .regular ? .private : .regular
                 selectTab(at: max(selectedIndex(for: fallbackMode), 0), mode: fallbackMode)
             }
-        } else {
+        }
+        
+        if !wasSelected {
             persistState()
         }
+        delegate?.tabManagerDidChangeTabs(self)
         
         sessionManager.discard(removedTab.session, forTab: removedTab.id, keepingHistory: mode == .regular)
     }
@@ -776,19 +777,14 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
         removedTabs.forEach { saveClosedTabIfNeeded($0, mode: mode) }
         removedTabs.forEach { cancelFaviconTask(for: $0.id) }
-        delegate?.tabManagerDidChangeTabs(self)
-        
-        if mode == selectedTabMode {
-            if mode == .private && !regularTabs.isEmpty {
-                selectTab(at: max(selectedRegularTabIndex, 0), mode: .regular)
-            } else if mode == .regular && !privateTabs.isEmpty {
-                selectTab(at: max(selectedPrivateTabIndex, 0), mode: .private)
-            } else {
-                persistState()
-            }
+        let fallbackMode: TabMode = mode == .regular ? .private : .regular
+        if mode == selectedTabMode,
+           !tabs(for: fallbackMode).isEmpty {
+            selectTab(at: max(selectedIndex(for: fallbackMode), 0), mode: fallbackMode)
         } else {
             persistState()
         }
+        delegate?.tabManagerDidChangeTabs(self)
         
         removedTabs.forEach { sessionManager.discard($0.session, forTab: $0.id, keepingHistory: mode == .regular) }
     }

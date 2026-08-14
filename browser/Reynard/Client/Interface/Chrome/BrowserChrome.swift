@@ -71,6 +71,7 @@ final class BrowserChrome: UIView {
         return view
     }()
     
+    let tabBar = TabBar()
     private let topToolbar: TopToolbar
     private let bottomToolbar: BottomToolbar
     private let overlayDismissView: UIView = {
@@ -131,6 +132,10 @@ final class BrowserChrome: UIView {
     
     var topToolbarBottomAnchor: NSLayoutYAxisAnchor {
         return topToolbar.bottomAnchor
+    }
+    
+    var tabBarBottomAnchor: NSLayoutYAxisAnchor {
+        return tabBar.bottomAnchor
     }
     
     var bottomToolbarTopAnchor: NSLayoutYAxisAnchor {
@@ -610,6 +615,7 @@ final class BrowserChrome: UIView {
     
     private func configureHierarchy() {
         addSubview(topToolbar)
+        addSubview(tabBar)
         addSubview(bottomToolbar)
         addSubview(overlayDismissView)
         addSubview(overlayContentView)
@@ -624,11 +630,15 @@ final class BrowserChrome: UIView {
             topToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
             topToolbar.topAnchor.constraint(equalTo: topAnchor),
             
+            tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tabBar.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
+            
             bottomToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottomToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
             bottomToolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
             
-            overlayDismissView.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
+            overlayDismissView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
             overlayDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
             overlayDismissView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
@@ -639,6 +649,7 @@ final class BrowserChrome: UIView {
             actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
+        topToolbar.extendBackground(to: tabBar.bottomAnchor)
         bottomToolbar.configureTopAnchor(to: safeAreaLayoutGuide.bottomAnchor)
     }
     

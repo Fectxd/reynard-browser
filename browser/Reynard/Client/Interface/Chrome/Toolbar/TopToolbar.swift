@@ -125,6 +125,7 @@ final class TopToolbar: UIView {
     
     private var heightConstraint: NSLayoutConstraint!
     private var contentTopConstraint: NSLayoutConstraint!
+    private var backgroundBottomConstraint: NSLayoutConstraint!
     private var leadingWidthConstraint: NSLayoutConstraint!
     private var trailingWidthConstraint: NSLayoutConstraint!
     private var standardAddressBarConstraints: [NSLayoutConstraint] = []
@@ -188,6 +189,12 @@ final class TopToolbar: UIView {
     func detachAddressBar() {
         NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
         isUsingStandardAddressBarWidthLimit = false
+    }
+    
+    func extendBackground(to bottomAnchor: NSLayoutYAxisAnchor) {
+        backgroundBottomConstraint.isActive = false
+        backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        backgroundBottomConstraint.isActive = true
     }
     
     func apply(
@@ -346,6 +353,7 @@ final class TopToolbar: UIView {
     private func configureConstraints() {
         heightConstraint = heightAnchor.constraint(equalToConstant: UX.topToolbarContentHeight)
         contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
+        backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
         leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
         trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
         
@@ -353,7 +361,7 @@ final class TopToolbar: UIView {
             backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
             backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: UX.backgroundViewHorizontalExtension),
             backgroundView.topAnchor.constraint(equalTo: topAnchor),
-            backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            backgroundBottomConstraint,
             
             heightConstraint,
             contentTopConstraint,

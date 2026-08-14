@@ -43,10 +43,11 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     // MARK: - Views And Coordinators
     
-    let tabBar = TabBar()
     let tabOverview = TabOverview()
     let contentView = ContentView()
     lazy var browserChrome = BrowserChrome()
+    var tabBar: TabBar { return browserChrome.tabBar }
+    
     private(set) lazy var toolbarController = ToolbarController(
         browserChrome: browserChrome,
         tabBar: tabBar,
@@ -270,7 +271,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         tabOverview.configure(dataSource: self, delegate: self, presentationContext: self)
         
         view.addSubview(contentView)
-        view.addSubview(tabBar)
         view.addSubview(browserChrome)
         view.addSubview(tabOverview)
         contentView.configureLayout(
@@ -287,10 +287,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             browserChrome.topAnchor.constraint(equalTo: view.topAnchor),
             browserChrome.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            
-            tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            tabBar.topAnchor.constraint(equalTo: browserChrome.topToolbarBottomAnchor),
             
             tabOverview.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tabOverview.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -524,7 +520,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             case .compact:
                 applyCompactLayout()
             case .pad:
-                applyPadLayout()
+                applyPadLayout(animated: animated)
             }
         }
         
@@ -551,7 +547,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             ? view.safeAreaLayoutGuide.bottomAnchor
             : browserChrome.bottomToolbarTopAnchor
         )
-        setTabBarVisible(false)
+        tabBar.setVisibility(.hidden, animated: false)
     }
     
     private func applyCompactLayout() {
@@ -560,19 +556,16 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             topAnchor: browserChrome.topToolbarBottomAnchor,
             bottomAnchor: browserChrome.bottomToolbarTopAnchor
         )
-        setTabBarVisible(false)
+        tabBar.setVisibility(.hidden, animated: false)
     }
     
-    private func applyPadLayout() {
+    private func applyPadLayout(animated: Bool) {
         contentView.applyLayout(
             ContentView.LayoutState(mode: .standard),
-            topAnchor: tabBar.bottomAnchor,
+            topAnchor: browserChrome.tabBarBottomAnchor,
             bottomAnchor: view.bottomAnchor
         )
-        let showsTabBar = browserLayout.interfaceIdiom == .pad
-        ? visibleTabCount > 1
-        : visibleTabCount > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
-        setTabBarVisible(showsTabBar)
+        tabBar.setVisibility(targetTabBarVisibility, animated: animated)
     }
     
     private var visibleTabCount: Int {
@@ -582,11 +575,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         return tabs.count
     }
     
-    private func setTabBarVisible(_ visible: Bool) {
-        tabBar.setVisibility(
-            visible ? (tabOverview.isPresented ? .layoutReserved : .visible) : .hidden,
-            animated: false
-        )
+    var targetTabBarVisibility: TabBar.Visibility {
+        guard browserLayout.chromeMode == .pad else {
+            return .hidden
+        }
+        
+        let showsTabBar = browserLayout.interfaceIdiom == .pad
+        ? visibleTabCount > 1
+        : visibleTabCount > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
+        guard showsTabBar else {
+            return .hidden
+        }
+        return tabOverview.isPresented ? .layoutReserved : .visible
     }
     
     private func applyTabOverviewLayout() {
