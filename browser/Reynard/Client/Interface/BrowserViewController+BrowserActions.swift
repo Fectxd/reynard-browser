@@ -19,13 +19,13 @@ extension BrowserViewController {
     }
     
     func presentLibrary(initialSection: LibrarySection = .bookmarks) {
-        if initialSection == .downloads {
-            DownloadStore.shared.markCompletedAsViewed()
-            if browserLayout.interfaceIdiom == .pad,
-               browserLayout.chromeMode == .pad {
-                sidebarCoordinator.showSection(.downloads)
-                return
+        if browserLayout.interfaceIdiom == .pad,
+           browserLayout.chromeMode == .pad {
+            if initialSection == .downloads {
+                DownloadStore.shared.markCompletedAsViewed()
             }
+            sidebarCoordinator.showSection(initialSection)
+            return
         }
         
         let libraryController = LibraryViewController(

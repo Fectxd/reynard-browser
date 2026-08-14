@@ -347,6 +347,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
                 }
             }
         )
+        browserChrome.configureLibraryMenus { [weak self] section in
+            self?.presentLibrary(initialSection: section)
+        }
         browserChrome.onShare = { [weak self] in
             self?.presentShareSheet()
         }

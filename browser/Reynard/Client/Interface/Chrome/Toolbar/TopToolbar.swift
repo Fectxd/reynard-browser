@@ -255,6 +255,13 @@ final class TopToolbar: UIView {
         )
     }
     
+    func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
+        buttonMenus.installLibraryMenus(
+            on: [sidebarButton, libraryButton],
+            onSelect: onSelect
+        )
+    }
+    
     func updateDownload(_ summary: DownloadStoreSummary) {
         downloadButton.applyDownloadSummary(summary)
         updateDownloadButtonVisibility()

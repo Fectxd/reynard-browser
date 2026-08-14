@@ -460,6 +460,11 @@ final class BrowserChrome: UIView {
         bottomToolbar.configureNavigationMenus(itemsProvider: itemsProvider, onSelect: onSelect)
     }
     
+    func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
+        topToolbar.configureLibraryMenus(onSelect: onSelect)
+        bottomToolbar.configureLibraryMenus(onSelect: onSelect)
+    }
+    
     func updateDownload(_ summary: DownloadStoreSummary) {
         bottomToolbar.updateDownload(summary)
         topToolbar.updateDownload(summary)

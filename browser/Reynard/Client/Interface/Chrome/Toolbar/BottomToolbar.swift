@@ -189,6 +189,10 @@ final class BottomToolbar: UIView {
         )
     }
     
+    func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
+        buttonMenus.installLibraryMenus(on: [libraryButton], onSelect: onSelect)
+    }
+    
     func setVerticalOffset(_ offset: CGFloat) {
         verticalOffset = offset
         topConstraint.constant = offset - contentHeightConstraint.constant

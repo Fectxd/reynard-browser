@@ -77,7 +77,31 @@ final class ToolbarButtonMenus {
         }
     }
     
+    private final class LibraryMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
+        private let onSelect: (LibrarySection) -> Void
+        
+        init(onSelect: @escaping (LibrarySection) -> Void) {
+            self.onSelect = onSelect
+        }
+        
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configurationForMenuAtLocation location: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            let actions = LibrarySection.allCases.map { section in
+                UIAction(title: section.title, image: section.tabBarItem.image) { [onSelect] _ in
+                    onSelect(section)
+                }
+            }
+            let menu = UIMenu(title: "", children: actions)
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                menu
+            }
+        }
+    }
+    
     private var navigationMenuDelegates: [NavigationMenuDelegate] = []
+    private var libraryMenuDelegates: [LibraryMenuDelegate] = []
     
     func installNavigationMenus(
         on backButton: ToolbarButton,
@@ -97,6 +121,17 @@ final class ToolbarButtonMenus {
             itemsProvider: itemsProvider,
             onSelect: onSelect
         )
+    }
+    
+    func installLibraryMenus(
+        on buttons: [ToolbarButton],
+        onSelect: @escaping (LibrarySection) -> Void
+    ) {
+        buttons.forEach { button in
+            let delegate = LibraryMenuDelegate(onSelect: onSelect)
+            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+            libraryMenuDelegates.append(delegate)
+        }
     }
     
     private func installNavigationMenu(
