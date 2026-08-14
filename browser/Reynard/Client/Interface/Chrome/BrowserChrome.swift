@@ -452,6 +452,14 @@ final class BrowserChrome: UIView {
         bottomToolbar.updateNavigation(canGoBack: canGoBack, canGoForward: canGoForward, canShare: canShare)
     }
     
+    func configureNavigationMenus(
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
+    ) {
+        topToolbar.configureNavigationMenus(itemsProvider: itemsProvider, onSelect: onSelect)
+        bottomToolbar.configureNavigationMenus(itemsProvider: itemsProvider, onSelect: onSelect)
+    }
+    
     func updateDownload(_ summary: DownloadStoreSummary) {
         bottomToolbar.updateDownload(summary)
         topToolbar.updateDownload(summary)

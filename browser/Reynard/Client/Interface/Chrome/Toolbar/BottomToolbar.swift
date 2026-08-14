@@ -70,6 +70,7 @@ final class BottomToolbar: UIView {
     private lazy var libraryButton = ToolbarButton(buttonType: .library, target: self, action: #selector(libraryTapped))
     private lazy var downloadButton = ToolbarButton(buttonType: .download, target: self, action: #selector(downloadsTapped))
     private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
+    private let buttonMenus = ToolbarButtonMenus()
     
     private lazy var buttons: UIStackView = {
         let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, libraryButton, downloadButton, tabOverviewButton])
@@ -174,6 +175,18 @@ final class BottomToolbar: UIView {
         backButton.isEnabled = canGoBack
         forwardButton.isEnabled = canGoForward
         shareButton.isEnabled = canShare
+    }
+    
+    func configureNavigationMenus(
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
+    ) {
+        buttonMenus.installNavigationMenus(
+            on: backButton,
+            forwardButton: forwardButton,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
     }
     
     func setVerticalOffset(_ offset: CGFloat) {

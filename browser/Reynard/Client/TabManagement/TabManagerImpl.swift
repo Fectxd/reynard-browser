@@ -191,9 +191,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         )
     }
     
-    private func recordNavigation(_ url: String, for tab: Tab) {
+    private func recordNavigation(_ url: String, title: String? = nil, for tab: Tab) {
         tab.state.navigationState = sessionManager.recordNavigation(
             to: url,
+            title: title ?? tab.title,
             for: tab.id,
             sessionState: tab.state.sessionNavigationAvailability
         )
@@ -850,9 +851,49 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
     }
     
+    func goBack(to index: Int) {
+        guard let tab = selectedTab,
+              let transition = sessionManager.goBack(
+                to: index,
+                for: tab.id,
+                sessionState: tab.state.sessionNavigationAvailability
+              ) else {
+            return
+        }
+        
+        tab.state.navigationState = transition.availability
+        delegate?.tabManager(self, didUpdateTabAt: selectedTabIndex, reason: .navigationState)
+        switch transition.action {
+        case .session:
+            tab.session.goBack()
+        case let .load(url):
+            loadURL(url, in: tab)
+        }
+    }
+    
     func goForward() {
         guard let tab = selectedTab,
               let transition = sessionManager.goForward(
+                for: tab.id,
+                sessionState: tab.state.sessionNavigationAvailability
+              ) else {
+            return
+        }
+        
+        tab.state.navigationState = transition.availability
+        delegate?.tabManager(self, didUpdateTabAt: selectedTabIndex, reason: .navigationState)
+        switch transition.action {
+        case .session:
+            tab.session.goForward()
+        case let .load(url):
+            loadURL(url, in: tab)
+        }
+    }
+    
+    func goForward(to index: Int) {
+        guard let tab = selectedTab,
+              let transition = sessionManager.goForward(
+                to: index,
                 for: tab.id,
                 sessionState: tab.state.sessionNavigationAvailability
               ) else {
@@ -931,6 +972,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         sessionManager.updateCurrentHistoryThumbnail(image, for: tab.id, matching: url)
     }
     
+    func navigationHistory(for tab: Tab) -> NavigationHistoryStore.Snapshot {
+        return sessionManager.navigationHistory(for: tab.id)
+    }
+    
     func navigationPreviewImages(for tab: Tab) -> NavigationPreviewImages {
         return sessionManager.navigationPreviewImages(for: tab.id)
     }
@@ -965,6 +1010,9 @@ extension TabManagerImplementation: ContentDelegate {
         
         let tab = tabs(for: location.mode)[location.index]
         tab.title = title
+        if let url = tab.url {
+            sessionManager.updateCurrentHistoryTitle(title, for: tab.id, matching: url)
+        }
         if !tab.isPrivate,
            let url = remoteURL(from: tab.url) {
             historyStore.updatePageTitle(for: url, title: title)
@@ -1151,7 +1199,8 @@ extension TabManagerImplementation: NavigationDelegate {
         }
         
         if let url {
-            if let currentURL = tab.url,
+            let currentURL = tab.url
+            if let currentURL,
                currentURL != url {
                 delegate?.tabManager(
                     self,
@@ -1162,7 +1211,7 @@ extension TabManagerImplementation: NavigationDelegate {
             }
             
             tab.url = url
-            recordNavigation(url, for: tab)
+            recordNavigation(url, title: currentURL == url ? tab.title : "", for: tab)
         } else {
             tab.url = url
         }

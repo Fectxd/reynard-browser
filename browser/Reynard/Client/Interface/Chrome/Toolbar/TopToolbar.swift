@@ -94,6 +94,7 @@ final class TopToolbar: UIView {
         target: self,
         action: #selector(tabOverviewTapped)
     )
+    private let buttonMenus = ToolbarButtonMenus()
     
     private lazy var leadingButtons: UIStackView = {
         downloadButton.isHidden = true
@@ -240,6 +241,18 @@ final class TopToolbar: UIView {
         backButton.isEnabled = canGoBack
         forwardButton.isEnabled = canGoForward
         shareButton.isEnabled = canShare
+    }
+    
+    func configureNavigationMenus(
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
+    ) {
+        buttonMenus.installNavigationMenus(
+            on: backButton,
+            forwardButton: forwardButton,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
     }
     
     func updateDownload(_ summary: DownloadStoreSummary) {

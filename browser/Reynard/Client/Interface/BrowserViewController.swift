@@ -317,6 +317,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             self?.captureOutgoingHistoryThumbnail()
             self?.tabManager.goForward()
         }
+        browserChrome.configureNavigationMenus(
+            itemsProvider: { [weak self] direction in
+                guard let self,
+                      let tab = self.tabManager.selectedTab else {
+                    return []
+                }
+                
+                let snapshot = self.tabManager.navigationHistory(for: tab)
+                switch direction {
+                case .back:
+                    return snapshot.backHistory
+                case .forward:
+                    return snapshot.forwardHistory
+                }
+            },
+            onSelect: { [weak self] direction, index in
+                guard let self else {
+                    return
+                }
+                
+                self.toolbarController.reset()
+                self.captureOutgoingHistoryThumbnail()
+                switch direction {
+                case .back:
+                    self.tabManager.goBack(to: index)
+                case .forward:
+                    self.tabManager.goForward(to: index)
+                }
+            }
+        )
         browserChrome.onShare = { [weak self] in
             self?.presentShareSheet()
         }
