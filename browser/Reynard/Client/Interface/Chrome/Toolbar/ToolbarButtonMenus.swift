@@ -188,10 +188,11 @@ final class ToolbarButtonMenus {
             _ interaction: UIContextMenuInteraction,
             configurationForMenuAtLocation location: CGPoint
         ) -> UIContextMenuConfiguration? {
+            let tabCount = tabCountProvider()
             let closeAllTabsAction = UIAction(
                 title: String.localizedStringWithFormat(
                     NSLocalizedString("Close %d Tabs", comment: "Tab count"),
-                    tabCountProvider()
+                    tabCount
                 ),
                 image: UIImage(named: "reynard.xmark"),
                 attributes: .destructive
@@ -217,12 +218,15 @@ final class ToolbarButtonMenus {
             ) { [onNewTab] _ in
                 onNewTab()
             }
-            let menu = UIMenu(title: "", children: [
-                closeAllTabsAction,
+            var menuChildren: [UIMenuElement] = [
                 closeTabAction,
                 newPrivateTabAction,
                 newTabAction,
-            ])
+            ]
+            if tabCount > 1 {
+                menuChildren.insert(closeAllTabsAction, at: 0)
+            }
+            let menu = UIMenu(title: "", children: menuChildren)
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
                 menu
             }
