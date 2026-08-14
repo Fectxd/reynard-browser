@@ -91,9 +91,6 @@ extension BrowserViewController {
     }
     
     func createNewTabAnimated(mode: TabMode) {
-        toolbarController.reset()
-        dismissAddressBarEditingAndOverlays()
-        
         let sourceIndex = tabManager.selectedTabIndex
         let sourceMode = tabManager.selectedTabMode
         captureThumbnail(forTabAt: sourceIndex, mode: sourceMode) { [weak self] _ in
@@ -101,6 +98,8 @@ extension BrowserViewController {
                 return
             }
             
+            self.toolbarController.reset()
+            self.dismissAddressBarEditingAndOverlays()
             self.homepageOverlayCoordinator.prepareHomepageForNewTab(mode: mode)
             let target: TabInsertionTarget = self.tabManager.selectedTabMode == mode ? .afterSelected : .end
             let createdIndex = self.tabManager.createTab(
