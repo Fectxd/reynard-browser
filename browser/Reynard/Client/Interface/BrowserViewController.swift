@@ -887,14 +887,14 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         && keyboardInset > 0
         && !isInHardwareKeyboardMode
         && browserChrome.isShowingFindInPage
-        let shouldDockChrome = !tabOverview.isPresented
+        let shouldDockAddressBar = !tabOverview.isPresented
         && keyboardInset > 0
         && !isInHardwareKeyboardMode
         && (
             browserLayout.chromeMode == .phone && searchOverlayCoordinator.isFocused
         )
         browserChrome.dockActionBar(offset: shouldDockActionBar ? -keyboardOverlap : 0)
-        browserChrome.dockAddressBar(offset: shouldDockChrome ? -keyboardInset : 0)
+        browserChrome.dockAddressBar(offset: shouldDockAddressBar ? -keyboardInset : 0)
         animateLayout(animation)
     }
     

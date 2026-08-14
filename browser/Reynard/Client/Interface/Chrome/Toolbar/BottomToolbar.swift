@@ -10,15 +10,16 @@ import UIKit
 final class BottomToolbar: UIView {
     private enum UX {
         static let bottomToolbarStandardContentHeight: CGFloat = 94
-        static let bottomToolbarFocusedContentHeight: CGFloat = 58
         static let bottomToolbarCompactContentHeight: CGFloat = 44
         static let bottomToolbarButtonStackHeight: CGFloat = 30
+        static let bottomToolbarButtonStackBottomInset: CGFloat = 5
         static let addressBarHorizontalInset: CGFloat = 12
         static let addressBarTopInset: CGFloat = 8
         static let bottomToolbarButtonStackHorizontalInset: CGFloat = 24
         static let bottomToolbarButtonStackTopSpacing: CGFloat = 7
         static let bottomToolbarButtonSpacing: CGFloat = 8
         static let backgroundViewHorizontalExtension: CGFloat = 16
+        static let addressBarDockedVerticalAdjustment: CGFloat = 36
         static let keyboardDockedBlurTopExtension: CGFloat = 24
     }
     
@@ -26,7 +27,6 @@ final class BottomToolbar: UIView {
         case hidden
         case collapsed // visually hidden but still takes up space
         case standard
-        case focused
         case compact
     }
     
@@ -84,12 +84,18 @@ final class BottomToolbar: UIView {
     
     private var topConstraint: NSLayoutConstraint!
     private var contentHeightConstraint: NSLayoutConstraint!
-    private var buttonsHeightConstraint: NSLayoutConstraint!
-    private var standardButtonsTopConstraint: NSLayoutConstraint!
+    private var standardButtonsBottomConstraint: NSLayoutConstraint!
     private var compactButtonsTopConstraint: NSLayoutConstraint!
     private var addressBarConstraints: [NSLayoutConstraint] = []
+    private var addressBarTopConstraint: NSLayoutConstraint?
+    private weak var addressBar: AddressBar?
     
-    private var verticalOffset: CGFloat = 0
+    private var addressBarDockOffset: CGFloat = 0
+    
+    private func addressBarTopConstant(for dockOffset: CGFloat) -> CGFloat {
+        let dockedAdjustment = dockOffset == 0 ? 0 : UX.addressBarDockedVerticalAdjustment
+        return UX.addressBarTopInset + dockOffset + dockedAdjustment
+    }
     
     // MARK: - Lifecycle
     
@@ -113,58 +119,64 @@ final class BottomToolbar: UIView {
     }
     
     func attachAddressBar(_ addressBar: AddressBar) {
+        self.addressBar = addressBar
         if addressBar.superview !== contentView {
             addressBar.removeFromSuperview()
             contentView.addSubview(addressBar)
         }
         if addressBarConstraints.isEmpty {
+            let topConstraint = addressBar.topAnchor.constraint(
+                equalTo: contentView.topAnchor,
+                constant: addressBarTopConstant(for: addressBarDockOffset)
+            )
+            addressBarTopConstraint = topConstraint
             addressBarConstraints = [
                 addressBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.addressBarHorizontalInset),
                 addressBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.addressBarHorizontalInset),
-                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.addressBarTopInset),
+                topConstraint,
             ]
         }
-        standardButtonsTopConstraint?.isActive = false
-        standardButtonsTopConstraint = buttons.topAnchor.constraint(
-            equalTo: addressBar.bottomAnchor,
-            constant: UX.bottomToolbarButtonStackTopSpacing
-        )
+        addressBarTopConstraint?.constant = addressBarTopConstant(for: addressBarDockOffset)
         NSLayoutConstraint.activate(addressBarConstraints)
     }
     
     func detachAddressBar() {
         NSLayoutConstraint.deactivate(addressBarConstraints)
-        standardButtonsTopConstraint?.isActive = false
+        addressBar = nil
+    }
+    
+    func hitTestAddressBar(at point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden,
+              isUserInteractionEnabled,
+              alpha > 0.01,
+              !contentView.isHidden,
+              contentView.isUserInteractionEnabled,
+              contentView.alpha > 0.01,
+              let addressBar else {
+            return nil
+        }
+        return addressBar.hitTest(addressBar.convert(point, from: self), with: event)
     }
     
     func apply(state: LayoutState, hidesButtons: Bool) {
         let contentHeight: CGFloat
         switch state {
-        case .hidden:
+        case .hidden, .standard:
             contentHeight = UX.bottomToolbarStandardContentHeight
-        case .collapsed:
-            contentHeight = UX.bottomToolbarCompactContentHeight
-        case .standard:
-            contentHeight = UX.bottomToolbarStandardContentHeight
-        case .focused:
-            contentHeight = UX.bottomToolbarFocusedContentHeight
-        case .compact:
+        case .collapsed, .compact:
             contentHeight = UX.bottomToolbarCompactContentHeight
         }
         
         UIView.performWithoutAnimation {
-            topConstraint.constant = verticalOffset - contentHeight
+            topConstraint.constant = -contentHeight
             contentHeightConstraint.constant = contentHeight
             isHidden = state == .hidden || state == .collapsed
-            backgroundView.isHidden = state == .focused
-            updateKeyboardDockedBlurVisibility()
             
             let isCompact = state == .compact || state == .collapsed
-            standardButtonsTopConstraint?.isActive = !isCompact
+            standardButtonsBottomConstraint?.isActive = !isCompact
             compactButtonsTopConstraint.isActive = isCompact
-            buttonsHeightConstraint.constant = state == .focused ? 0 : UX.bottomToolbarButtonStackHeight
-            buttons.alpha = state == .focused || hidesButtons ? 0 : 1
-            buttons.isUserInteractionEnabled = state != .focused && !hidesButtons
+            buttons.alpha = hidesButtons ? 0 : 1
+            buttons.isUserInteractionEnabled = !hidesButtons
             layoutIfNeeded()
         }
     }
@@ -210,10 +222,11 @@ final class BottomToolbar: UIView {
         )
     }
     
-    func setVerticalOffset(_ offset: CGFloat) {
-        verticalOffset = offset
-        topConstraint.constant = offset - contentHeightConstraint.constant
-        updateKeyboardDockedBlurVisibility()
+    func setAddressBarDockOffset(_ offset: CGFloat) {
+        addressBarDockOffset = offset
+        addressBarTopConstraint?.constant = addressBarTopConstant(for: offset)
+        keyboardDockedBlurView.transform = CGAffineTransform(translationX: 0, y: offset)
+        keyboardDockedBlurView.isHidden = offset == 0
     }
     
     func setContentAlpha(_ alpha: CGFloat) {
@@ -257,7 +270,10 @@ final class BottomToolbar: UIView {
     
     private func configureConstraints() {
         contentHeightConstraint = contentView.heightAnchor.constraint(equalToConstant: UX.bottomToolbarStandardContentHeight)
-        buttonsHeightConstraint = buttons.heightAnchor.constraint(equalToConstant: UX.bottomToolbarButtonStackHeight)
+        standardButtonsBottomConstraint = buttons.bottomAnchor.constraint(
+            equalTo: contentView.bottomAnchor,
+            constant: -UX.bottomToolbarButtonStackBottomInset
+        )
         compactButtonsTopConstraint = buttons.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.bottomToolbarButtonStackTopSpacing)
         
         NSLayoutConstraint.activate([
@@ -273,7 +289,7 @@ final class BottomToolbar: UIView {
             
             buttons.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.bottomToolbarButtonStackHorizontalInset),
             buttons.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.bottomToolbarButtonStackHorizontalInset),
-            buttonsHeightConstraint,
+            buttons.heightAnchor.constraint(equalToConstant: UX.bottomToolbarButtonStackHeight),
         ])
         
         NSLayoutConstraint.activate([
@@ -281,7 +297,7 @@ final class BottomToolbar: UIView {
             keyboardDockedBlurView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: UX.backgroundViewHorizontalExtension),
             keyboardDockedBlurView.topAnchor.constraint(
                 equalTo: contentView.topAnchor,
-                constant: -UX.keyboardDockedBlurTopExtension
+                constant: UX.addressBarDockedVerticalAdjustment - UX.keyboardDockedBlurTopExtension
             ),
             keyboardDockedBlurView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
@@ -292,7 +308,4 @@ final class BottomToolbar: UIView {
         downloadButton.isHidden = true
     }
     
-    private func updateKeyboardDockedBlurVisibility() {
-        keyboardDockedBlurView.isHidden = verticalOffset == 0 || !backgroundView.isHidden
-    }
 }

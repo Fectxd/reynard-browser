@@ -83,7 +83,6 @@ final class BrowserChrome: UIView {
     private let overlayContentView = ChromeOverlayContentView()
     private let actionBar = ActionBar()
     
-    private var bottomConstraint: NSLayoutConstraint!
     private var overlayWidthConstraint: NSLayoutConstraint!
     private var overlayHeightConstraint: NSLayoutConstraint!
     private var overlayTopConstraint: NSLayoutConstraint?
@@ -113,6 +112,12 @@ final class BrowserChrome: UIView {
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let hitView = bottomToolbar.hitTestAddressBar(
+            at: bottomToolbar.convert(point, from: self),
+            with: event
+        ) {
+            return hitView
+        }
         let hitView = super.hitTest(point, with: event)
         return hitView === self ? nil : hitView
     }
@@ -189,8 +194,7 @@ final class BrowserChrome: UIView {
     }
     
     func dockAddressBar(offset: CGFloat) {
-        bottomConstraint.constant = offset
-        bottomToolbar.setVerticalOffset(offset)
+        bottomToolbar.setAddressBarDockOffset(offset)
     }
     
     func dockActionBar(offset: CGFloat) {
@@ -613,7 +617,6 @@ final class BrowserChrome: UIView {
     }
     
     private func configureConstraints() {
-        bottomConstraint = bottomToolbar.bottomAnchor.constraint(equalTo: bottomAnchor)
         overlayWidthConstraint = overlayContentView.widthAnchor.constraint(equalToConstant: 0)
         overlayHeightConstraint = overlayContentView.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
@@ -623,7 +626,7 @@ final class BrowserChrome: UIView {
             
             bottomToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottomToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            bottomConstraint,
+            bottomToolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
             
             overlayDismissView.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
             overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -731,9 +734,7 @@ final class BrowserChrome: UIView {
             return .compact
         case .phone:
             switch state.search {
-            case .inactive: return .standard
-            case .focused: return .focused
-            case .scrollingEmbeddedSuggestions: return .standard
+            case .inactive, .focused, .scrollingEmbeddedSuggestions: return .standard
             case .scrollingDetachedSuggestions: return .hidden
             }
         }
