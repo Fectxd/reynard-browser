@@ -399,6 +399,29 @@ final class TabManagementStore {
         _ = executeLocked(sql)
     }
     
+    // MARK: - Schema Migration
+    
+    private func ensureColumnLocked(name: String, table: String, definition: String) {
+        guard let statement = prepareStatementLocked("PRAGMA table_info(\(table));") else {
+            return
+        }
+        
+        var hasColumn = false
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if string(from: statement, at: 1) == name {
+                hasColumn = true
+                break
+            }
+        }
+        sqlite3_finalize(statement)
+        
+        guard !hasColumn else {
+            return
+        }
+        
+        _ = executeLocked("ALTER TABLE \(table) ADD COLUMN \(name) \(definition);")
+    }
+    
     private func ensureStateRowLocked() {
         let state = persistedStateLocked()
         _ = saveStateLocked(
