@@ -460,6 +460,18 @@ final class BrowserChrome: UIView {
         bottomToolbar.configureNavigationMenus(itemsProvider: itemsProvider, onSelect: onSelect)
     }
     
+    func configureRecentlyClosedTabsMenu(
+        isAvailable: @escaping () -> Bool,
+        itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
+        onSelect: @escaping (UUID) -> Void
+    ) {
+        topToolbar.configureRecentlyClosedTabsMenu(
+            isAvailable: isAvailable,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
+    }
+    
     func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
         topToolbar.configureLibraryMenus(onSelect: onSelect)
         bottomToolbar.configureLibraryMenus(onSelect: onSelect)

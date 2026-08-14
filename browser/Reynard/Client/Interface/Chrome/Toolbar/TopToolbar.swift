@@ -255,6 +255,19 @@ final class TopToolbar: UIView {
         )
     }
     
+    func configureRecentlyClosedTabsMenu(
+        isAvailable: @escaping () -> Bool,
+        itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
+        onSelect: @escaping (UUID) -> Void
+    ) {
+        buttonMenus.installRecentlyClosedTabsMenu(
+            on: newTabButton,
+            isAvailable: isAvailable,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
+    }
+    
     func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
         buttonMenus.installLibraryMenus(
             on: [sidebarButton, libraryButton],

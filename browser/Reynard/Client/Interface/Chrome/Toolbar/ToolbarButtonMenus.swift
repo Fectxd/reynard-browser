@@ -77,6 +77,69 @@ final class ToolbarButtonMenus {
         }
     }
     
+    private final class RecentlyClosedTabsMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
+        private let isAvailable: () -> Bool
+        private let itemsProvider: () -> [TabManagementStore.RecentlyClosedTabSnapshot]
+        private let onSelect: (UUID) -> Void
+        
+        init(
+            isAvailable: @escaping () -> Bool,
+            itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
+            onSelect: @escaping (UUID) -> Void
+        ) {
+            self.isAvailable = isAvailable
+            self.itemsProvider = itemsProvider
+            self.onSelect = onSelect
+        }
+        
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configurationForMenuAtLocation location: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            guard isAvailable() else {
+                return nil
+            }
+            
+            let items = itemsProvider()
+            guard !items.isEmpty else {
+                return nil
+            }
+            
+            let actions = items.map { makeAction(for: $0) }
+            let menu = UIMenu(
+                title: NSLocalizedString("Recently Closed Tabs", comment: ""),
+                children: actions
+            )
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                menu
+            }
+        }
+        
+        private func makeAction(for item: TabManagementStore.RecentlyClosedTabSnapshot) -> UIAction {
+            let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let actionTitle = title.isEmpty
+            ? NSLocalizedString("Untitled", comment: "")
+            : title
+            let action = UIAction(title: actionTitle) { [onSelect] _ in
+                onSelect(item.id)
+            }
+            
+            if #available(iOS 15.0, *),
+               let value = item.url?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !value.isEmpty {
+                action.subtitle = displayURL(for: value)
+            }
+            return action
+        }
+        
+        private func displayURL(for value: String) -> String {
+            guard let url = URL(string: value) else {
+                return value
+            }
+            return URLUtils.displayString(for: url)
+        }
+    }
+    
     private final class LibraryMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
         private let onSelect: (LibrarySection) -> Void
         
@@ -167,6 +230,7 @@ final class ToolbarButtonMenus {
     }
     
     private var navigationMenuDelegates: [NavigationMenuDelegate] = []
+    private var recentlyClosedTabsMenuDelegates: [RecentlyClosedTabsMenuDelegate] = []
     private var libraryMenuDelegates: [LibraryMenuDelegate] = []
     private var tabOverviewMenuDelegates: [TabOverviewMenuDelegate] = []
     
@@ -235,5 +299,20 @@ final class ToolbarButtonMenus {
         )
         button.addInteraction(UIContextMenuInteraction(delegate: delegate))
         navigationMenuDelegates.append(delegate)
+    }
+    
+    func installRecentlyClosedTabsMenu(
+        on button: ToolbarButton,
+        isAvailable: @escaping () -> Bool,
+        itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
+        onSelect: @escaping (UUID) -> Void
+    ) {
+        let delegate = RecentlyClosedTabsMenuDelegate(
+            isAvailable: isAvailable,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
+        button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+        recentlyClosedTabsMenuDelegates.append(delegate)
     }
 }

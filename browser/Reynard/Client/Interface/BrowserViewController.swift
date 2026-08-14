@@ -350,6 +350,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         browserChrome.configureLibraryMenus { [weak self] section in
             self?.presentLibrary(initialSection: section)
         }
+        browserChrome.configureRecentlyClosedTabsMenu(
+            isAvailable: { [weak self] in
+                guard let self else {
+                    return false
+                }
+                return self.tabManager.selectedTabMode == .regular
+            },
+            itemsProvider: {
+                TabManagementStore.shared.recentlyClosedTabs(
+                    limit: Prefs.HomepageSettings.recentlyClosedTabLimit
+                )
+            },
+            onSelect: { [weak self] id in
+                guard let self,
+                      self.tabManager.selectedTabMode == .regular else {
+                    return
+                }
+                
+                self.toolbarController.reset()
+                self.dismissAddressBarEditingAndOverlays()
+                _ = self.tabManager.restoreRecentlyClosedTab(id: id)
+            }
+        )
         browserChrome.configureTabOverviewMenus(
             tabCountProvider: { [weak self] in
                 self?.tabManager.activeTabs.count ?? 0
