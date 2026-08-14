@@ -383,10 +383,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
                 self?.tabManager.activeTabs.count ?? 0
             },
             onCloseAllTabs: { [weak self] in
-                self?.closeAllTabsFromShowTabOverviewButton()
+                self?.closeAllTabs()
             },
             onCloseTab: { [weak self] in
-                self?.closeTabFromShowTabOverviewButton()
+                self?.closeTab()
             },
             onNewPrivateTab: { [weak self] in
                 self?.createNewTabAnimated(mode: .private)

@@ -76,13 +76,13 @@ extension BrowserViewController {
         }
     }
     
-    func closeAllTabsFromShowTabOverviewButton() {
+    func closeAllTabs() {
         toolbarController.reset()
         dismissAddressBarEditingAndOverlays()
         tabManager.removeAllTabs(mode: tabManager.selectedTabMode)
     }
     
-    func closeTabFromShowTabOverviewButton() {
+    func closeTab() {
         guard tabManager.selectedTab != nil else {
             return
         }
