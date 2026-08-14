@@ -350,6 +350,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         browserChrome.configureLibraryMenus { [weak self] section in
             self?.presentLibrary(initialSection: section)
         }
+        browserChrome.configureTabOverviewMenus(
+            tabCountProvider: { [weak self] in
+                self?.tabManager.activeTabs.count ?? 0
+            },
+            onCloseAllTabs: { [weak self] in
+                self?.closeAllTabsFromShowTabOverviewButton()
+            },
+            onCloseTab: { [weak self] in
+                self?.closeTabFromShowTabOverviewButton()
+            },
+            onNewPrivateTab: { [weak self] in
+                self?.createNewTabAnimated(mode: .private)
+            },
+            onNewTab: { [weak self] in
+                self?.createNewTabAnimated(mode: .regular)
+            }
+        )
         browserChrome.onShare = { [weak self] in
             self?.presentShareSheet()
         }

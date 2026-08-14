@@ -100,8 +100,75 @@ final class ToolbarButtonMenus {
         }
     }
     
+    private final class TabOverviewMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
+        private let tabCountProvider: () -> Int
+        private let onCloseAllTabs: () -> Void
+        private let onCloseTab: () -> Void
+        private let onNewPrivateTab: () -> Void
+        private let onNewTab: () -> Void
+        
+        init(
+            tabCountProvider: @escaping () -> Int,
+            onCloseAllTabs: @escaping () -> Void,
+            onCloseTab: @escaping () -> Void,
+            onNewPrivateTab: @escaping () -> Void,
+            onNewTab: @escaping () -> Void
+        ) {
+            self.tabCountProvider = tabCountProvider
+            self.onCloseAllTabs = onCloseAllTabs
+            self.onCloseTab = onCloseTab
+            self.onNewPrivateTab = onNewPrivateTab
+            self.onNewTab = onNewTab
+        }
+        
+        func contextMenuInteraction(
+            _ interaction: UIContextMenuInteraction,
+            configurationForMenuAtLocation location: CGPoint
+        ) -> UIContextMenuConfiguration? {
+            let closeAllTabsAction = UIAction(
+                title: String.localizedStringWithFormat(
+                    NSLocalizedString("Close %d Tabs", comment: "Tab count"),
+                    tabCountProvider()
+                ),
+                image: UIImage(named: "reynard.xmark"),
+                attributes: .destructive
+            ) { [onCloseAllTabs] _ in
+                onCloseAllTabs()
+            }
+            let closeTabAction = UIAction(
+                title: NSLocalizedString("Close This Tab", comment: ""),
+                image: UIImage(named: "reynard.xmark"),
+                attributes: .destructive
+            ) { [onCloseTab] _ in
+                onCloseTab()
+            }
+            let newPrivateTabAction = UIAction(
+                title: NSLocalizedString("New Private Tab", comment: ""),
+                image: UIImage(named: "reynard.plus.square.fill.on.square.fill")
+            ) { [onNewPrivateTab] _ in
+                onNewPrivateTab()
+            }
+            let newTabAction = UIAction(
+                title: NSLocalizedString("New Tab", comment: ""),
+                image: UIImage(named: "reynard.plus.square.on.square")
+            ) { [onNewTab] _ in
+                onNewTab()
+            }
+            let menu = UIMenu(title: "", children: [
+                closeAllTabsAction,
+                closeTabAction,
+                newPrivateTabAction,
+                newTabAction,
+            ])
+            return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+                menu
+            }
+        }
+    }
+    
     private var navigationMenuDelegates: [NavigationMenuDelegate] = []
     private var libraryMenuDelegates: [LibraryMenuDelegate] = []
+    private var tabOverviewMenuDelegates: [TabOverviewMenuDelegate] = []
     
     func installNavigationMenus(
         on backButton: ToolbarButton,
@@ -131,6 +198,27 @@ final class ToolbarButtonMenus {
             let delegate = LibraryMenuDelegate(onSelect: onSelect)
             button.addInteraction(UIContextMenuInteraction(delegate: delegate))
             libraryMenuDelegates.append(delegate)
+        }
+    }
+    
+    func installTabOverviewMenus(
+        on buttons: [ToolbarButton],
+        tabCountProvider: @escaping () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) {
+        buttons.forEach { button in
+            let delegate = TabOverviewMenuDelegate(
+                tabCountProvider: tabCountProvider,
+                onCloseAllTabs: onCloseAllTabs,
+                onCloseTab: onCloseTab,
+                onNewPrivateTab: onNewPrivateTab,
+                onNewTab: onNewTab
+            )
+            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+            tabOverviewMenuDelegates.append(delegate)
         }
     }
     

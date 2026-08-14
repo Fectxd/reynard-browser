@@ -75,4 +75,73 @@ extension BrowserViewController {
             setTabOverviewVisible(false, animated: true)
         }
     }
+    
+    func closeAllTabsFromShowTabOverviewButton() {
+        toolbarController.reset()
+        dismissAddressBarEditingAndOverlays()
+        tabManager.removeAllTabs(mode: tabManager.selectedTabMode)
+    }
+    
+    func closeTabFromShowTabOverviewButton() {
+        guard tabManager.selectedTab != nil else {
+            return
+        }
+        
+        closeTab(at: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
+    }
+    
+    func createNewTabAnimated(mode: TabMode) {
+        toolbarController.reset()
+        dismissAddressBarEditingAndOverlays()
+        
+        let sourceIndex = tabManager.selectedTabIndex
+        let sourceMode = tabManager.selectedTabMode
+        captureThumbnail(forTabAt: sourceIndex, mode: sourceMode) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            
+            self.homepageOverlayCoordinator.prepareHomepageForNewTab(mode: mode)
+            let target: TabInsertionTarget = self.tabManager.selectedTabMode == mode ? .afterSelected : .end
+            let createdIndex = self.tabManager.createTab(
+                selecting: false,
+                target: target,
+                mode: mode
+            )
+            let tabs = mode == .private ? self.tabManager.privateTabs : self.tabManager.regularTabs
+            guard let tab = tabs[safe: createdIndex] else {
+                return
+            }
+            
+            self.prepareNewTab(tab, at: createdIndex, mode: mode) { [weak self] in
+                guard let self else {
+                    return
+                }
+                
+                self.tabBar.setPendingExpansion(at: createdIndex)
+                self.browserChrome.animateAutomaticNewTabTransition(to: tab) { [weak self] in
+                    self?.tabManager.selectTab(at: createdIndex, mode: mode)
+                }
+            }
+        }
+    }
+    
+    private func prepareNewTab(
+        _ tab: Tab,
+        at index: Int,
+        mode: TabMode,
+        completion: @escaping () -> Void
+    ) {
+        switch Prefs.NewTabSettings.newTabDisplayOption {
+        case .homepage, .blankPage:
+            captureThumbnail(forTabAt: index, mode: mode) { _ in
+                completion()
+            }
+        case .customURL:
+            if URLUtils.isWebURL(Prefs.NewTabSettings.customNewTabURL) {
+                tabManager.browse(to: Prefs.NewTabSettings.customNewTabURL, in: tab)
+            }
+            completion()
+        }
+    }
 }

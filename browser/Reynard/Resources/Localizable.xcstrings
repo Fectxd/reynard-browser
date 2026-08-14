@@ -3239,6 +3239,16 @@
         }
       }
     },
+    "Close This Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close This Tab"
+          }
+        }
+      }
+    },
     "Compatibility" : {
       "localizations" : {
         "en" : {
@@ -6314,6 +6324,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新建文件夹"
+          }
+        }
+      }
+    },
+    "New Private Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New Private Tab"
           }
         }
       }

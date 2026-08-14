@@ -465,6 +465,29 @@ final class BrowserChrome: UIView {
         bottomToolbar.configureLibraryMenus(onSelect: onSelect)
     }
     
+    func configureTabOverviewMenus(
+        tabCountProvider: @escaping () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) {
+        topToolbar.configureTabOverviewMenus(
+            tabCountProvider: tabCountProvider,
+            onCloseAllTabs: onCloseAllTabs,
+            onCloseTab: onCloseTab,
+            onNewPrivateTab: onNewPrivateTab,
+            onNewTab: onNewTab
+        )
+        bottomToolbar.configureTabOverviewMenus(
+            tabCountProvider: tabCountProvider,
+            onCloseAllTabs: onCloseAllTabs,
+            onCloseTab: onCloseTab,
+            onNewPrivateTab: onNewPrivateTab,
+            onNewTab: onNewTab
+        )
+    }
+    
     func updateDownload(_ summary: DownloadStoreSummary) {
         bottomToolbar.updateDownload(summary)
         topToolbar.updateDownload(summary)

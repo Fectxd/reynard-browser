@@ -262,6 +262,23 @@ final class TopToolbar: UIView {
         )
     }
     
+    func configureTabOverviewMenus(
+        tabCountProvider: @escaping () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) {
+        buttonMenus.installTabOverviewMenus(
+            on: [tabOverviewButton],
+            tabCountProvider: tabCountProvider,
+            onCloseAllTabs: onCloseAllTabs,
+            onCloseTab: onCloseTab,
+            onNewPrivateTab: onNewPrivateTab,
+            onNewTab: onNewTab
+        )
+    }
+    
     func updateDownload(_ summary: DownloadStoreSummary) {
         downloadButton.applyDownloadSummary(summary)
         updateDownloadButtonVisibility()

@@ -193,6 +193,23 @@ final class BottomToolbar: UIView {
         buttonMenus.installLibraryMenus(on: [libraryButton], onSelect: onSelect)
     }
     
+    func configureTabOverviewMenus(
+        tabCountProvider: @escaping () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) {
+        buttonMenus.installTabOverviewMenus(
+            on: [tabOverviewButton],
+            tabCountProvider: tabCountProvider,
+            onCloseAllTabs: onCloseAllTabs,
+            onCloseTab: onCloseTab,
+            onNewPrivateTab: onNewPrivateTab,
+            onNewTab: onNewTab
+        )
+    }
+    
     func setVerticalOffset(_ offset: CGFloat) {
         verticalOffset = offset
         topConstraint.constant = offset - contentHeightConstraint.constant
