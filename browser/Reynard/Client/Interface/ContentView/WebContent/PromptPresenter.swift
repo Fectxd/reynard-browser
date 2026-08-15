@@ -50,7 +50,7 @@ final class PromptPresenter: PromptPresenting {
             return await presentSelectPicker(session: session, request: request)
             
         case .share(let request):
-            return await presentShare(request: request)
+            return await presentShare(session: session, request: request)
         }
     }
     
@@ -337,9 +337,12 @@ final class PromptPresenter: PromptPresenting {
         return result.map(PromptResponse.choices)
     }
     
-    private func presentShare(request: SharePromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(),
-              let presenterView = presenter.view else {
+    private func presentShare(
+        session: GeckoSession,
+        request: SharePromptRequest
+    ) async -> PromptResponse? {
+        guard let presenter = UIApplication.shared.topViewController() as? BrowserViewController,
+              let sourceView = session.engineView else {
             return nil
         }
         
@@ -348,19 +351,16 @@ final class PromptPresenter: PromptPresenting {
             text: request.text,
             url: request.url
         )
-        let activityController = UIActivityViewController(
-            activityItems: [itemSource],
-            applicationActivities: nil
-        )
-        if let popover = activityController.popoverPresentationController {
-            let sourceView = (presenter as? BrowserViewController)?.browserChrome.sharePopoverSourceView()
-            ?? presenterView
-            popover.sourceView = sourceView
-            popover.sourceRect = sourceView.bounds
-        }
-        
         return await withCheckedContinuation { continuation in
-            activityController.completionWithItemsHandler = { _, completed, _, error in
+            let sourcePoint = CGPoint(
+                x: sourceView.bounds.midX,
+                y: sourceView.bounds.midY
+            )
+            presenter.presentShareSheet(
+                items: [itemSource],
+                sourceView: sourceView,
+                sourceRect: CGRect(origin: sourcePoint, size: .zero)
+            ) { completed, error in
                 let result: SharePromptResult
                 if error != nil {
                     result = .failure
@@ -371,7 +371,6 @@ final class PromptPresenter: PromptPresenting {
                 }
                 continuation.resume(returning: .share(result))
             }
-            presenter.present(activityController, animated: true)
         }
     }
     

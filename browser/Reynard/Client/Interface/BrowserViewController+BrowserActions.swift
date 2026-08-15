@@ -8,6 +8,32 @@
 import UIKit
 
 extension BrowserViewController {
+    func presentShareSheet(
+        items: [Any],
+        sourceView: UIView,
+        sourceRect: CGRect,
+        completion: ((Bool, Error?) -> Void)? = nil
+    ) {
+        guard !items.isEmpty else {
+            return
+        }
+        
+        let activityController = UIActivityViewController(
+            activityItems: items,
+            applicationActivities: nil
+        )
+        if let popover = activityController.popoverPresentationController {
+            popover.sourceView = sourceView
+            popover.sourceRect = sourceRect
+        }
+        if let completion {
+            activityController.completionWithItemsHandler = { _, completed, _, error in
+                completion(completed, error)
+            }
+        }
+        present(activityController, animated: true)
+    }
+    
     func presentContentModal(_ rootViewController: UIViewController) {
         let navigationController = ContentModalNavigationController(
             rootViewController: rootViewController
@@ -35,29 +61,6 @@ extension BrowserViewController {
             self?.dismiss(animated: true)
         }
         presentContentModal(libraryController)
-    }
-    
-    func presentShareSheet(url urlString: String? = nil) {
-        let urlToShare: URL?
-        if let urlString {
-            urlToShare = URL(string: urlString)
-        } else if let tab = tabManager.selectedTab {
-            urlToShare = tabManager.shareableURL(for: tab)
-        } else {
-            urlToShare = nil
-        }
-        
-        guard let url = urlToShare else {
-            return
-        }
-        
-        let activityController = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        if let popover = activityController.popoverPresentationController {
-            let sourceView = browserChrome.sharePopoverSourceView()
-            popover.sourceView = sourceView
-            popover.sourceRect = sourceView.bounds
-        }
-        present(activityController, animated: true)
     }
     
     func createNewTab() {
