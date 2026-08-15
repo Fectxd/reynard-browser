@@ -48,6 +48,9 @@ final class PromptPresenter: PromptPresenting {
             
         case .choice(let request):
             return await presentSelectPicker(session: session, request: request)
+            
+        case .share(let request):
+            return await presentShare(request: request)
         }
     }
     
@@ -334,6 +337,44 @@ final class PromptPresenter: PromptPresenting {
         return result.map(PromptResponse.choices)
     }
     
+    private func presentShare(request: SharePromptRequest) async -> PromptResponse? {
+        guard let presenter = UIApplication.shared.topViewController(),
+              let presenterView = presenter.view else {
+            return nil
+        }
+        
+        let itemSource = WebShareActivityItemSource(
+            title: request.title,
+            text: request.text,
+            url: request.url
+        )
+        let activityController = UIActivityViewController(
+            activityItems: [itemSource],
+            applicationActivities: nil
+        )
+        if let popover = activityController.popoverPresentationController {
+            let sourceView = (presenter as? BrowserViewController)?.browserChrome.sharePopoverSourceView()
+            ?? presenterView
+            popover.sourceView = sourceView
+            popover.sourceRect = sourceView.bounds
+        }
+        
+        return await withCheckedContinuation { continuation in
+            activityController.completionWithItemsHandler = { _, completed, _, error in
+                let result: SharePromptResult
+                if error != nil {
+                    result = .failure
+                } else if completed {
+                    result = .success
+                } else {
+                    result = .aborted
+                }
+                continuation.resume(returning: .share(result))
+            }
+            presenter.present(activityController, animated: true)
+        }
+    }
+    
     private func promptAnchor(
         for anchor: PromptAnchor,
         session: GeckoSession
@@ -374,5 +415,48 @@ final class PromptPresenter: PromptPresenting {
         default:
             return ""
         }
+    }
+}
+
+private final class WebShareActivityItemSource: NSObject, UIActivityItemSource {
+    private let item: Any
+    private let title: String
+    
+    init(title: String, text: String, url: String?) {
+        self.title = title
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedURL = url?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shareURL = trimmedURL.flatMap(URL.init(string:))
+        
+        if !trimmedText.isEmpty, let trimmedURL, !trimmedURL.isEmpty {
+            item = "\(trimmedText)\n\(trimmedURL)"
+        } else if !trimmedText.isEmpty {
+            item = trimmedText
+        } else if let shareURL {
+            item = shareURL
+        } else if let trimmedURL, !trimmedURL.isEmpty {
+            item = trimmedURL
+        } else {
+            item = title
+        }
+        super.init()
+    }
+    
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        return item
+    }
+    
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        return item
+    }
+    
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        subjectForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        return title
     }
 }

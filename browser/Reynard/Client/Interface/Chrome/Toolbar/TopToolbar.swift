@@ -191,6 +191,10 @@ final class TopToolbar: UIView {
         isUsingStandardAddressBarWidthLimit = false
     }
     
+    func sharePopoverSourceView() -> UIView {
+        return shareButton
+    }
+    
     func extendBackground(to bottomAnchor: NSLayoutYAxisAnchor) {
         backgroundBottomConstraint.isActive = false
         backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
