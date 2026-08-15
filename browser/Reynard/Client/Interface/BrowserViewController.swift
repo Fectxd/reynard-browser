@@ -34,6 +34,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         orientations: UIInterfaceOrientationMask,
         completion: (GeckoOrientationLockResult) -> Void
     )?
+    private var preFullscreenOrientation: UIInterfaceOrientation?
     weak var fullscreenSession: GeckoSession?
     private let allowsSidebarHosting: Bool
     private var shouldRestoreContentFocus = false
@@ -987,6 +988,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         isShowingFullscreenMedia = fullScreen
         updateBrowserLayout(animated: false)
         UIApplication.shared.isIdleTimerDisabled = fullScreen && mediaIsPlaying
+        updateFullscreenOrientation(fullScreen)
         requestContentKeyboardFocus(for: tabManager.selectedTab?.session)
     }
     
@@ -1053,6 +1055,31 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         if #available(iOS 16.0, *) {
             setNeedsUpdateOfSupportedInterfaceOrientations()
         }
+        updateFullscreenOrientation(false)
+    }
+    
+    private func updateFullscreenOrientation(_ fullScreen: Bool) {
+        guard browserLayout.interfaceIdiom == .phone else {
+            return
+        }
+        
+        if fullScreen {
+            if let interfaceOrientation = view.window?.windowScene?.interfaceOrientation,
+               interfaceOrientation != .unknown {
+                preFullscreenOrientation = interfaceOrientation
+            } else {
+                preFullscreenOrientation = .portrait
+            }
+            return
+        }
+        
+        guard !isShowingFullscreenMedia,
+              lockedOrientations == nil,
+              let preFullscreenOrientation else {
+            return
+        }
+        self.preFullscreenOrientation = nil
+        forceInterfaceOrientation(preFullscreenOrientation)
     }
     
     private func completePendingOrientationRequestIfSatisfied() {
