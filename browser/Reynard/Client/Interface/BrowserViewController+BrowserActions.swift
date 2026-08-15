@@ -63,16 +63,17 @@ extension BrowserViewController {
         presentContentModal(libraryController)
     }
     
-    func createNewTab() {
+    func createNewTab(mode: TabMode? = nil) {
+        let targetMode = mode ?? (tabOverview.isPresented ? tabOverview.mode.tabMode : tabManager.selectedTabMode)
         toolbarController.reset()
         dismissAddressBarEditingAndOverlays()
         
         if tabOverview.isPresented {
             tabOverview.prepareNextTabChangesWithoutAnimation()
-            createTabFromOverview(mode: tabOverview.mode.tabMode)
+            createTabFromOverview(mode: targetMode)
         } else {
-            homepageOverlayCoordinator.prepareHomepageForNewTab(mode: tabManager.selectedTabMode)
-            let createdIndex = tabManager.createTab(selecting: true)
+            homepageOverlayCoordinator.prepareHomepageForNewTab(mode: targetMode)
+            let createdIndex = tabManager.createTab(selecting: true, mode: targetMode)
             applyNewTabDisplayOption(toTabAt: createdIndex)
             tabBar.setPendingExpansion(at: createdIndex)
             setTabOverviewVisible(false, animated: true)
@@ -82,7 +83,12 @@ extension BrowserViewController {
     func closeAllTabs() {
         toolbarController.reset()
         dismissAddressBarEditingAndOverlays()
-        tabManager.removeAllTabs(mode: tabManager.selectedTabMode)
+        let mode = tabManager.selectedTabMode
+        let shouldCreateNewTab = mode == .regular && !tabManager.regularTabs.isEmpty
+        tabManager.removeAllTabs(mode: mode)
+        if shouldCreateNewTab {
+            createNewTab(mode: .regular)
+        }
     }
     
     func closeTab() {
@@ -90,7 +96,11 @@ extension BrowserViewController {
             return
         }
         
-        closeTab(at: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
+        let mode = tabManager.selectedTabMode
+        closeTab(at: tabManager.selectedTabIndex, mode: mode)
+        if mode == .regular && tabManager.regularTabs.isEmpty {
+            createNewTab(mode: .regular)
+        }
     }
     
     func createNewTabAnimated(mode: TabMode) {
