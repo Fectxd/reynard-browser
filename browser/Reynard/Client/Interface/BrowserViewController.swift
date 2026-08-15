@@ -964,7 +964,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         )
     }
     
-    func applyFullscreenState(_ fullScreen: Bool, for session: GeckoSession?) {
+    func applyFullscreenState(_ fullScreen: Bool, for session: GeckoSession?, mediaIsPlaying: Bool) {
         if fullScreen {
             fullscreenSession = session
         } else if fullscreenSession === session || session == nil {
@@ -986,7 +986,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         sidebarCoordinator.setFullscreen(fullScreen)
         isShowingFullscreenMedia = fullScreen
         updateBrowserLayout(animated: false)
-        UIApplication.shared.isIdleTimerDisabled = fullScreen
+        UIApplication.shared.isIdleTimerDisabled = fullScreen && mediaIsPlaying
         requestContentKeyboardFocus(for: tabManager.selectedTab?.session)
     }
     
