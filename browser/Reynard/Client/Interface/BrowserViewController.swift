@@ -455,9 +455,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         }
         browserChrome.onFindInPageVisibilityChanged = { [weak self] visible in
             if visible {
-                self?.toolbarController.collapse(animated: false)
+                self?.toolbarController.collapseBottomToolbar()
             } else {
-                self?.toolbarController.reset()
+                self?.toolbarController.restoreBottomToolbar()
             }
         }
     }

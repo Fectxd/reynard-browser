@@ -246,7 +246,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         historyTransitionOverlayView.transform = toolbarAlignedTransform(
             translationX: historyTransitionOverlayView.transform.tx
         )
-        let contentBottomOffset = -(top + bottom)
+        let contentBottomOffset = -bottom
         guard contentBottomOffset != self.contentBottomOffset else {
             return
         }

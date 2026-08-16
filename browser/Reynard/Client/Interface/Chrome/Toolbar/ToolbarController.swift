@@ -38,6 +38,7 @@ final class ToolbarController {
     private var snapStartTime: CFTimeInterval = 0
     private var pendingSnap: DispatchWorkItem?
     private var snapDisplayLink: CADisplayLink?
+    private var isBottomToolbarCollapsed = false
     private var lockReasons = Set<LockReason>()
     
     // MARK: - Lifecycle
@@ -120,8 +121,8 @@ final class ToolbarController {
         let topToolbarOffset: CGFloat
         let topContentOffset: CGFloat
         let topToolbarContentAlpha: CGFloat
-        let bottomToolbarOffset: CGFloat
-        let bottomToolbarContentAlpha: CGFloat
+        var bottomToolbarOffset: CGFloat
+        var bottomToolbarContentAlpha: CGFloat
         let tabBarOffset: CGFloat
         switch chromeMode {
         case .phone:
@@ -146,6 +147,10 @@ final class ToolbarController {
             bottomToolbarOffset = 0
             bottomToolbarContentAlpha = 1
             tabBarOffset = toolbarOffset
+        }
+        if isBottomToolbarCollapsed {
+            bottomToolbarOffset = chromeMode == .pad ? 0 : bottomToolbarHeight
+            bottomToolbarContentAlpha = bottomToolbarHeight > 0 ? 0 : 1
         }
         browserChrome.setToolbarTransition(
             topOffset: -topToolbarOffset,
@@ -175,8 +180,7 @@ final class ToolbarController {
     
     private func handleScroll(delta: CGFloat) {
         guard maxToolbarOffset > 0,
-              lockReasons.isEmpty,
-              !browserChrome.isShowingFindInPage else {
+              lockReasons.isEmpty else {
             return
         }
         cancelSnap()
@@ -229,8 +233,21 @@ final class ToolbarController {
     
     // MARK: - Reset
     
+    func collapseBottomToolbar() {
+        cancelSnap()
+        isBottomToolbarCollapsed = true
+        setToolbarOffset(toolbarOffset, refresh: true)
+    }
+    
+    func restoreBottomToolbar() {
+        cancelSnap()
+        isBottomToolbarCollapsed = false
+        setToolbarOffset(toolbarOffset, refresh: true)
+    }
+    
     func collapse(animated: Bool = true) {
         cancelSnap()
+        isBottomToolbarCollapsed = false
         guard animated else {
             setToolbarOffset(maxToolbarOffset, refresh: true)
             return
@@ -240,6 +257,7 @@ final class ToolbarController {
     
     func reset(animated: Bool = true) {
         cancelSnap()
+        isBottomToolbarCollapsed = false
         guard animated else {
             setToolbarOffset(0, refresh: true)
             return
