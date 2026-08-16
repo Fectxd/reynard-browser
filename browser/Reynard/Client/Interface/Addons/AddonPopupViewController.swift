@@ -36,6 +36,12 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     private let didDismiss: () -> Void
     private let presentation: Presentation
     private let geckoView = GeckoView()
+    private let modalTopBorderView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
+        return view
+    }()
     private let session: GeckoSession
     private let promptCoordinator = PromptCoordinator(presenter: PromptPresenter())
     private var hasClosedSession = false
@@ -133,11 +139,17 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
         containerView.addSubview(sheetView)
         sheetView.addSubview(closeButton)
         sheetView.addSubview(geckoView)
+        if #unavailable(iOS 26.0) {
+            sheetView.addSubview(modalTopBorderView)
+        }
         
         constrainContainerView(containerView)
         constrainSheetView(sheetView, in: containerView)
         constrainCloseButton(closeButton, in: sheetView)
         constrainGeckoView(in: sheetView, below: closeButton)
+        if #unavailable(iOS 26.0) {
+            constrainModalTopBorder(in: sheetView)
+        }
     }
     
     private func configurePopoverView() {
@@ -171,8 +183,6 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
         view.layer.shadowOpacity = UX.shadowOpacity
         view.layer.shadowRadius = UX.shadowRadius
         view.layer.shadowOffset = UX.shadowOffset
-        view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.cgColor
         return view
     }
     
@@ -232,6 +242,15 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
             closeButton.trailingAnchor.constraint(equalTo: sheetView.safeAreaLayoutGuide.trailingAnchor, constant: -UX.closeButtonTrailingInset),
             closeButton.heightAnchor.constraint(equalToConstant: UX.closeButtonSize),
             closeButton.widthAnchor.constraint(equalToConstant: UX.closeButtonSize)
+        ])
+    }
+    
+    private func constrainModalTopBorder(in sheetView: UIView) {
+        NSLayoutConstraint.activate([
+            modalTopBorderView.topAnchor.constraint(equalTo: sheetView.topAnchor),
+            modalTopBorderView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
+            modalTopBorderView.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor),
+            modalTopBorderView.heightAnchor.constraint(equalToConstant: UX.borderWidth),
         ])
     }
     

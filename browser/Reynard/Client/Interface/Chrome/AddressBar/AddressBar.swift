@@ -39,6 +39,7 @@ final class AddressBar: UIView {
         static let addressBarBackgroundShadowOpacity: Float = 0.18
         static let addressBarBackgroundShadowRadius: CGFloat = 14
         static let addressBarBackgroundShadowOffset = CGSize(width: 0, height: 2)
+        static let borderWidth: CGFloat = 0.5
     }
     
     enum EditingState: Equatable {
@@ -138,6 +139,7 @@ final class AddressBar: UIView {
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.addressBarBackgroundCornerRadius
         view.clipsToBounds = true
+        view.layer.borderWidth = UX.borderWidth
         return view
     }()
     
@@ -241,6 +243,7 @@ final class AddressBar: UIView {
         configureConstraints()
         configureTargets()
         configureObservers()
+        updateBorderColor()
         applyState()
     }
     
@@ -270,6 +273,15 @@ final class AddressBar: UIView {
             roundedRect: addressBarBackground.bounds,
             cornerRadius: UX.addressBarBackgroundCornerRadius
         ).cgPath
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
+            return
+        }
+        
+        updateBorderColor()
     }
     
     // MARK: - Configuration
@@ -519,6 +531,10 @@ final class AddressBar: UIView {
         addressBarBackground.layer.shadowRadius = UX.addressBarBackgroundShadowRadius
         addressBarBackground.layer.shadowOffset = UX.addressBarBackgroundShadowOffset
         addressBarBackground.layer.masksToBounds = false
+    }
+    
+    private func updateBorderColor() {
+        addressBarContent.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
     }
     
     private func configureHierarchy() {

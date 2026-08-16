@@ -64,7 +64,7 @@ final class BrowserChrome: UIView {
     var onFindInPage: ((_ query: String?, _ backwards: Bool) async -> (current: Int, total: Int)?)?
     var onClearFindInPage: (() -> Void)?
     var onFindInPageVisibilityChanged: ((Bool) -> Void)?
-    var onPresentActionBarPopover: ((FindInPagePopover) -> Void)?
+    var onPresentActionBarPopover: ((ActionBarPopover) -> Void)?
     
     let addressBar: AddressBar = {
         let view = AddressBar()
@@ -94,7 +94,7 @@ final class BrowserChrome: UIView {
     private var actionBarKeyboardBottomConstraint: NSLayoutConstraint?
     private var actionBarHorizontalConstraints: [NSLayoutConstraint] = []
     private var actionBarDockOffset: CGFloat = 0
-    private var actionBarPopover: FindInPagePopover?
+    private var actionBarPopover: ActionBarPopover?
     private var isDismissingActionBarPopover = false
     
     private var state: State?
@@ -783,7 +783,7 @@ final class BrowserChrome: UIView {
         }
         
         actionBar.alpha = 1
-        let popover = FindInPagePopover(actionBar: actionBar)
+        let popover = ActionBarPopover(actionBar: actionBar)
         popover.onDismiss = { [weak self, weak popover] in
             guard let self, let popover else {
                 return
@@ -794,7 +794,7 @@ final class BrowserChrome: UIView {
         onPresentActionBarPopover?(popover)
     }
     
-    private func actionBarPopoverDidDismiss(_ popover: FindInPagePopover) {
+    private func actionBarPopoverDidDismiss(_ popover: ActionBarPopover) {
         guard actionBarPopover === popover,
               !isDismissingActionBarPopover else {
             return

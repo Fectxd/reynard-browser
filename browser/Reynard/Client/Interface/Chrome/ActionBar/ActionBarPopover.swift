@@ -1,5 +1,5 @@
 //
-//  FindInPagePopover.swift
+//  ActionBarPopover.swift
 //  Reynard
 //
 //  Created by Minh Ton on 16/8/26.
@@ -7,7 +7,7 @@
 
 import UIKit
 
-final class FindInPagePopover: UIViewController, UIPopoverPresentationControllerDelegate {
+final class ActionBarPopover: UIViewController, UIPopoverPresentationControllerDelegate {
     private enum UX {
         static let maximumWidth: CGFloat = 400
         static let height: CGFloat = ActionBar.height
@@ -21,6 +21,7 @@ final class FindInPagePopover: UIViewController, UIPopoverPresentationController
         self.actionBar = actionBar
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .popover
+        isModalInPresentation = true
         preferredContentSize = CGSize(width: UX.maximumWidth, height: UX.height)
     }
     
@@ -32,6 +33,7 @@ final class FindInPagePopover: UIViewController, UIPopoverPresentationController
         super.viewDidLoad()
         view.backgroundColor = .clear
         actionBar.transform = .identity
+        actionBar.setTopBorderVisible(false)
         view.addSubview(actionBar)
         actionBarConstraints = [
             actionBar.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -52,6 +54,7 @@ final class FindInPagePopover: UIViewController, UIPopoverPresentationController
         NSLayoutConstraint.deactivate(actionBarConstraints)
         actionBarConstraints.removeAll()
         actionBar.removeFromSuperview()
+        actionBar.setTopBorderVisible(true)
     }
     
     // MARK: - UIPopoverPresentationControllerDelegate
