@@ -31,6 +31,9 @@ fi
 	echo "ac_add_options --enable-lto"
 	echo "ac_add_options --disable-debug"
 	echo "ac_add_options --disable-tests"
+	if [ "${1:-}" = "--disable-jemalloc" ]; then
+		echo "ac_add_options --disable-jemalloc"
+	fi
 } > "$FIREFOX_DIR/.mozconfig"
 
 if ! rustup target list | grep -q "^$TARGET (installed)"; then
