@@ -474,6 +474,10 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         webContentView.setPageBackgroundColor(color)
     }
     
+    func resetScrollTracking() {
+        webContentView.resetScrollTracking()
+    }
+    
     func showPageError(for url: String?) {
         webContentView.showPageError(for: url)
     }
