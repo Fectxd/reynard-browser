@@ -27,6 +27,10 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
         return tabManager.selectedTabMode
     }
     
+    var shouldPresentAddonPopupAsPopover: Bool {
+        return browserLayout.chromeMode == .pad
+    }
+    
     func indexOfAddonTab(for session: GeckoSession) -> Int? {
         return tabManager.tabIndex(for: session)
     }
@@ -42,7 +46,16 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
     }
     
     func presentAddonViewController(_ coordinator: AddonCoordinator, _ viewController: UIViewController) {
-        UIApplication.shared.topViewController(from: self).present(viewController, animated: true)
+        let presenter = UIApplication.shared.topViewController(from: self)
+        if let popupViewController = viewController as? AddonPopupViewController,
+           let popover = popupViewController.popoverPresentationController {
+            let sourceButton = browserChrome.addressBarButton
+            popover.sourceView = sourceButton
+            popover.sourceRect = sourceButton.bounds
+            popover.permittedArrowDirections = .up
+            popover.delegate = popupViewController
+        }
+        presenter.present(viewController, animated: true)
     }
     
     func presentAddonAlert(_ coordinator: AddonCoordinator, title: String?, message: String) {

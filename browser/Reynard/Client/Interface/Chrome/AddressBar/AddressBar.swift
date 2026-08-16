@@ -484,6 +484,10 @@ final class AddressBar: UIView {
         leadingButton.performAfterMenuDismissal(action)
     }
     
+    var addressBarButton: AddressBarButton {
+        return leadingButton
+    }
+    
     // MARK: - Tab Transitions
     
     func resetHorizontalTransition() {

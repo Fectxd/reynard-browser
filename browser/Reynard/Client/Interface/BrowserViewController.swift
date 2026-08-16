@@ -458,7 +458,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
                 self?.toolbarController.collapseBottomToolbar()
             } else {
                 self?.toolbarController.restoreBottomToolbar()
+                self?.requestContentKeyboardFocus()
             }
+        }
+        browserChrome.onPresentActionBarPopover = { [weak self] popoverViewController in
+            guard let self,
+                  let popover = popoverViewController.popoverPresentationController else {
+                return
+            }
+            
+            let sourceButton = self.browserChrome.addressBarButton
+            popover.sourceView = sourceButton
+            popover.sourceRect = sourceButton.bounds
+            popover.permittedArrowDirections = .up
+            popover.delegate = popoverViewController
+            self.present(popoverViewController, animated: true)
         }
     }
     
