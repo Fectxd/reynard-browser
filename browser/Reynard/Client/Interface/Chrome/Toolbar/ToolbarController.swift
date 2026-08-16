@@ -105,7 +105,8 @@ final class ToolbarController {
             let topContentHeight = max(0, topToolbarHeight - rootView.safeAreaInsets.top)
             return (topContentHeight + bottomToolbarHeight, topContentHeight)
         case .pad:
-            let maxOffset = topToolbarHeight + (tabBar.visibility == .visible ? tabBar.bounds.height : 0)
+            let topChromeHeight = topToolbarHeight + (tabBar.visibility == .visible ? tabBar.bounds.height : 0)
+            let maxOffset = max(0, topChromeHeight - rootView.safeAreaInsets.top)
             return (maxOffset, maxOffset)
         }
     }
@@ -143,7 +144,7 @@ final class ToolbarController {
         case .pad:
             topToolbarOffset = toolbarOffset
             topContentOffset = toolbarOffset
-            topToolbarContentAlpha = 1
+            topToolbarContentAlpha = 1 - (topToolbarOffset / max(maxTopToolbarOffset, 1))
             bottomToolbarOffset = 0
             bottomToolbarContentAlpha = 1
             tabBarOffset = toolbarOffset
@@ -158,6 +159,9 @@ final class ToolbarController {
             topContentAlpha: topToolbarContentAlpha,
             bottomContentAlpha: bottomToolbarContentAlpha
         )
+        if chromeMode == .pad {
+            tabBar.setPresentationAlpha(topToolbarContentAlpha)
+        }
         tabBar.transform = CGAffineTransform(translationX: 0, y: -tabBarOffset)
         contentView.applyToolbarOffsets(
             top: topContentOffset,
