@@ -290,6 +290,12 @@ final class AddressBar: UIView {
             }
             self.searchDelegate?.addressBar(self, didMoveSuggestionSelectionBy: offset)
         }
+        textField.onMoveCursor = { [weak self] boundary in
+            guard let self else {
+                return
+            }
+            self.moveCursor(to: boundary)
+        }
         textField.onDismissEditing = { [weak self] in
             guard let self else {
                 return
@@ -870,6 +876,24 @@ final class AddressBar: UIView {
         }
     }
     
+    private func moveCursor(to boundary: AddressBarTextField.CursorBoundary) {
+        switch autocompleteState {
+        case .focusPreview:
+            clearFocusPreview()
+            restoreCaret(to: boundary)
+        case .suggestion:
+            switch boundary {
+            case .start:
+                clearAutocomplete()
+                restoreCaretToEnd()
+            case .end:
+                commitAutocompleteForEditing()
+            }
+        case .none:
+            break
+        }
+    }
+    
     // MARK: - Autocomplete Presentation
     
     private func commitAutocompleteForEditing() {
@@ -994,8 +1018,18 @@ final class AddressBar: UIView {
     }
     
     private func restoreCaretToEnd() {
-        let end = textField.endOfDocument
-        textField.selectedTextRange = textField.textRange(from: end, to: end)
+        restoreCaret(to: .end)
+    }
+    
+    private func restoreCaret(to boundary: AddressBarTextField.CursorBoundary) {
+        let position: UITextPosition
+        switch boundary {
+        case .start:
+            position = textField.beginningOfDocument
+        case .end:
+            position = textField.endOfDocument
+        }
+        textField.selectedTextRange = textField.textRange(from: position, to: position)
     }
     
     private func selectAllText() {
