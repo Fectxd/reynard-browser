@@ -302,6 +302,12 @@ final class AddressBar: UIView {
             }
             self.searchDelegate?.addressBar(self, didMoveSuggestionSelectionBy: offset)
         }
+        textField.onSubmit = { [weak self] in
+            guard let self else {
+                return
+            }
+            _ = self.submitTextField()
+        }
         textField.onMoveCursor = { [weak self] boundary in
             guard let self else {
                 return
@@ -1233,6 +1239,10 @@ extension AddressBar: UITextFieldDelegate {
     }
     
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        return submitTextField()
+    }
+    
+    private func submitTextField() -> Bool {
         if searchDelegate?.addressBarDidRequestSubmitSelectedSuggestion(self) == true {
             return true
         }
