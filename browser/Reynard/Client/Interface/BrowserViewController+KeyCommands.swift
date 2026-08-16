@@ -9,12 +9,6 @@ import GeckoView
 import UIKit
 
 extension BrowserViewController {
-    func configureKeyCommandAliases() {
-        addKeyCommand(UIKeyCommand(input: "n", modifierFlags: [.command, .shift], action: #selector(newPrivateTabKeyCommand(_:))))
-        addKeyCommand(UIKeyCommand(input: UIKeyCommand.inputLeftArrow, modifierFlags: .command, action: #selector(goBackKeyCommand(_:))))
-        addKeyCommand(UIKeyCommand(input: UIKeyCommand.inputRightArrow, modifierFlags: .command, action: #selector(goForwardKeyCommand(_:))))
-    }
-    
     @objc func newTabKeyCommand(_ sender: UIKeyCommand) {
         createNewTab()
     }

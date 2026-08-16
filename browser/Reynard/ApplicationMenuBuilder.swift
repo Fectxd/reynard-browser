@@ -22,7 +22,7 @@ enum ApplicationMenuBuilder {
         
         let fileMenu = UIMenu(title: "", options: .displayInline, children: [
             UIKeyCommand(title: NSLocalizedString("New Tab", comment: ""), action: #selector(BrowserViewController.newTabKeyCommand(_:)), input: "t", modifierFlags: .command),
-            UIKeyCommand(title: NSLocalizedString("New Private Tab", comment: ""), action: #selector(BrowserViewController.newPrivateTabKeyCommand(_:)), input: "p", modifierFlags: [.command, .shift]),
+            UIKeyCommand(title: NSLocalizedString("New Private Tab", comment: ""), action: #selector(BrowserViewController.newPrivateTabKeyCommand(_:)), input: "n", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: NSLocalizedString("Open Location", comment: ""), action: #selector(BrowserViewController.focusAddressBarKeyCommand(_:)), input: "l", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Close Tab", comment: ""), action: #selector(BrowserViewController.closeTabKeyCommand(_:)), input: "w", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Downloads", comment: ""), action: #selector(BrowserViewController.showDownloadsKeyCommand(_:)), input: "j", modifierFlags: .command),
