@@ -274,7 +274,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
         presentContentModal(settingsController)
     }
     
-    private func presentBookmarkEditor(addToFavorites: Bool) {
+    func presentBookmarkEditor(addToFavorites: Bool) {
         guard let selectedTab = tabManager.selectedTab,
               let urlString = selectedTab.url?.trimmingCharacters(in: .whitespacesAndNewlines),
               let url = URL(string: urlString) else {

@@ -44,23 +44,43 @@ extension BrowserViewController {
         present(navigationController, animated: true)
     }
     
-    func presentLibrary(initialSection: LibrarySection = .bookmarks) {
+    func presentLibrary(
+        initialSection: LibrarySection = .bookmarks,
+        startsEditingBookmarks: Bool = false
+    ) {
         if browserLayout.interfaceIdiom == .pad,
            browserLayout.chromeMode == .pad {
-            if initialSection == .downloads {
-                DownloadStore.shared.markCompletedAsViewed()
-            }
-            sidebarCoordinator.showSection(initialSection)
+            sidebarCoordinator.showSection(
+                initialSection,
+                startsEditingBookmarks: startsEditingBookmarks
+            )
             return
         }
         
         let libraryController = LibraryViewController(
             initialSection: initialSection,
-            isPrivateMode: tabManager.selectedTab?.isPrivate == true
-        ) { [weak self] in
-            self?.dismiss(animated: true)
-        }
+            isPrivateMode: tabManager.selectedTab?.isPrivate == true,
+            startsEditingBookmarks: startsEditingBookmarks,
+            onClose: { [weak self] in
+                self?.dismiss(animated: true)
+            }
+        )
         presentContentModal(libraryController)
+    }
+    
+    func toggleLibrary(section: LibrarySection) {
+        if browserLayout.interfaceIdiom == .pad,
+           browserLayout.chromeMode == .pad {
+            (splitViewController as? SidebarViewController)?.toggleSection(section)
+            return
+        }
+        
+        guard let navigationController = presentedViewController as? ContentModalNavigationController,
+              let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
+            presentLibrary(initialSection: section)
+            return
+        }
+        libraryController.toggleSection(section)
     }
     
     func createNewTab(mode: TabMode? = nil) {

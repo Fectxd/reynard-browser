@@ -135,6 +135,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         
         applyGeckoPreferences()
         configureBrowserInterface()
+        configureKeyCommandAliases()
         observeNotifications()
         contextMenuCoordinator.configure()
         downloadsCoordinator.startObservingStore()

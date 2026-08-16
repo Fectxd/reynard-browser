@@ -65,7 +65,7 @@ final class BrowserChrome: UIView {
     var onClearFindInPage: (() -> Void)?
     var onFindInPageVisibilityChanged: ((Bool) -> Void)?
     
-    private let addressBar: AddressBar = {
+    let addressBar: AddressBar = {
         let view = AddressBar()
         view.translatesAutoresizingMaskIntoConstraints = false
         return view
