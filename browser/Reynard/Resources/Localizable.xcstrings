@@ -1241,6 +1241,16 @@
         }
       }
     },
+    "Actual Size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actual Size"
+          }
+        }
+      }
+    },
     "Add" : {
       "localizations" : {
         "en" : {
@@ -2444,6 +2454,16 @@
         }
       }
     },
+    "Back" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back"
+          }
+        }
+      }
+    },
     "Blank Page" : {
       "localizations" : {
         "en" : {
@@ -3245,6 +3265,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Close Old Tabs..."
+          }
+        }
+      }
+    },
+    "Close Other Tabs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Other Tabs"
+          }
+        }
+      }
+    },
+    "Close Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Tab"
           }
         }
       }
@@ -5158,6 +5198,16 @@
         }
       }
     },
+    "Forward" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Forward"
+          }
+        }
+      }
+    },
     "Frequently Visited" : {
       "localizations" : {
         "en" : {
@@ -6434,6 +6484,16 @@
         }
       }
     },
+    "Next Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next Tab"
+          }
+        }
+      }
+    },
     "Night" : {
       "comment" : "Dark appearance option",
       "localizations" : {
@@ -7250,6 +7310,16 @@
         }
       }
     },
+    "Open Location" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Location"
+          }
+        }
+      }
+    },
     "Open New Tabs To" : {
       "localizations" : {
         "en" : {
@@ -7766,6 +7836,16 @@
         }
       }
     },
+    "Previous Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous Tab"
+          }
+        }
+      }
+    },
     "Privacy" : {
       "localizations" : {
         "en" : {
@@ -7962,6 +8042,16 @@
         }
       }
     },
+    "Reload Page" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reload Page"
+          }
+        }
+      }
+    },
     "Remove" : {
       "localizations" : {
         "en" : {
@@ -8128,6 +8218,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除 %@ 的 Cookies 和网站数据可能会导致您需要重新登录。"
+          }
+        }
+      }
+    },
+    "Reopen Last Closed Tab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reopen Last Closed Tab"
           }
         }
       }
@@ -9142,6 +9242,16 @@
         }
       }
     },
+    "Show Bookmarks" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Bookmarks"
+          }
+        }
+      }
+    },
     "Show Favorites" : {
       "localizations" : {
         "en" : {
@@ -9250,6 +9360,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示完整网站地址"
+          }
+        }
+      }
+    },
+    "Show History" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show History"
           }
         }
       }
@@ -9366,6 +9486,16 @@
         }
       }
     },
+    "Show or Hide Sidebar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show or Hide Sidebar"
+          }
+        }
+      }
+    },
     "Show Recently Closed Tabs" : {
       "localizations" : {
         "en" : {
@@ -9422,6 +9552,16 @@
         }
       }
     },
+    "Show Tab %d" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Tab %d"
+          }
+        }
+      }
+    },
     "Show Tab Bar in Landscape" : {
       "localizations" : {
         "en" : {
@@ -9446,6 +9586,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "横排时显示标签页栏"
+          }
+        }
+      }
+    },
+    "Show Tab Overview" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Tab Overview"
           }
         }
       }
@@ -11382,6 +11532,16 @@
         }
       }
     },
+    "Zoom In" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom In"
+          }
+        }
+      }
+    },
     "Zoom Level" : {
       "localizations" : {
         "en" : {
@@ -11406,6 +11566,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "缩放级别"
+          }
+        }
+      }
+    },
+    "Zoom Out" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom Out"
           }
         }
       }
