@@ -120,6 +120,20 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         NotificationCenter.default.removeObserver(self)
     }
     
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard !super.point(inside: point, with: event) else {
+            return true
+        }
+        guard !webContentView.isHidden,
+              webContentView.isUserInteractionEnabled else {
+            return false
+        }
+        return webContentView.point(
+            inside: webContentView.convert(point, from: self),
+            with: event
+        )
+    }
+    
     // MARK: - Configuration
     
     private func configureAppearance() {
