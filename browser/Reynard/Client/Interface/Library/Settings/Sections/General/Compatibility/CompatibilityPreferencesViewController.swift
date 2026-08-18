@@ -86,18 +86,18 @@ final class CompatibilityPreferencesViewController: SettingsTableViewController 
         let row = displayedRows[indexPath.row]
         switch row {
         case .useAndroidUserAgent:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Use Compatibility User Agent", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = androidUserAgentSwitch
             return cell
         case .advancedOptions:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Advanced Options", comment: "")
             cell.accessoryType = .disclosureIndicator
             return cell
         case .userAgentOverrides:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("User Agent Overrides", comment: "")
             cell.accessoryType = .disclosureIndicator
             return cell

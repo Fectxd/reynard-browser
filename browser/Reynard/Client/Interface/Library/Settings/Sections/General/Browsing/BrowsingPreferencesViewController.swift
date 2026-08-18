@@ -102,14 +102,14 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
             }
             switch PreviewsRow.allCases[indexPath.row] {
             case .showLinkPreviews:
-                let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+                let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
                 cell.selectionStyle = .none
                 cell.textLabel?.text = NSLocalizedString("Show Link Previews", comment: "")
                 cell.detailTextLabel?.textColor = .secondaryLabel
                 cell.accessoryView = showLinkPreviewsSwitch
                 return cell
             case .showImagePreviews:
-                let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+                let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
                 cell.selectionStyle = .none
                 cell.textLabel?.text = NSLocalizedString("Show Image Previews", comment: "")
                 cell.detailTextLabel?.textColor = .secondaryLabel
@@ -120,7 +120,7 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
             guard ContentRow.allCases.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             switch ContentRow.allCases[indexPath.row] {
             case .allWebsites:
                 cell.textLabel?.text = NSLocalizedString("Request Desktop Website", comment: "")
@@ -133,7 +133,7 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
             guard ExternalAppsRow.allCases.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Open Links in External Apps", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = openLinksInExternalAppsSwitch

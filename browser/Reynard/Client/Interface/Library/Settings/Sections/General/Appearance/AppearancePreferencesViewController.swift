@@ -122,37 +122,37 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
             }
             return cell
         case .showFullWebsiteAddress:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Show Full Website Address", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = showFullWebsiteAddressSwitch
             return cell
         case .pullToRefresh:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Pull to Refresh", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = pullToRefreshSwitch
             return cell
         case .scrollToHideToolbar:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Scroll to Hide Toolbar", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = scrollToHideToolbarSwitch
             return cell
         case .swipeAddressBarSideways:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Swipe Address Bar Sideways to Switch Tabs", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = swipeAddressBarSidewaysSwitch
             return cell
         case .swipeAddressBarUp:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Swipe Address Bar Up to See Open Tabs", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = swipeAddressBarUpSwitch
             return cell
         case .landscapeTabBar:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = NSLocalizedString("Show Tab Bar in Landscape", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = landscapeTabBarSwitch
