@@ -1,5 +1,5 @@
 diff --git a/docshell/base/BrowsingContext.h b/docshell/base/BrowsingContext.h
-index 6f7f58bba3be..86ac11456d94 100644
+index aba8b50b04a5..ce60dabc4e72 100644
 --- a/docshell/base/BrowsingContext.h
 +++ b/docshell/base/BrowsingContext.h
 @@ -235,6 +235,9 @@ struct EmbedderColorSchemes {

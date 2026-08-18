@@ -1,5 +1,5 @@
 diff --git a/docshell/base/nsIDocShell.idl b/docshell/base/nsIDocShell.idl
-index 4aa56b4ce169..26ba21b4b88f 100644
+index db0721841de3..a7422cdd537e 100644
 --- a/docshell/base/nsIDocShell.idl
 +++ b/docshell/base/nsIDocShell.idl
 @@ -342,6 +342,12 @@ interface nsIDocShell : nsIDocShellTreeItem
