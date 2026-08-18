@@ -186,7 +186,8 @@ final class ToolbarController {
     // MARK: - Scroll Handling
     
     private func handleScroll(delta: CGFloat) {
-        guard maxToolbarOffset > 0,
+        guard Prefs.AppearanceSettings.scrollToHideToolbarEnabled,
+              maxToolbarOffset > 0,
               lockReasons.isEmpty else {
             return
         }

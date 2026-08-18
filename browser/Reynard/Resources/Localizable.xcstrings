@@ -6692,6 +6692,16 @@
         }
       }
     },
+    "Gestures" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestures"
+          }
+        }
+      }
+    },
     "GitHub - @minh-ton" : {
       "localizations" : {
         "en" : {
@@ -10210,6 +10220,16 @@
         }
       }
     },
+    "Pull to Refresh" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull to Refresh"
+          }
+        }
+      }
+    },
     "Quit Reynard" : {
       "localizations" : {
         "en" : {
@@ -11161,6 +11181,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "存储到照片"
+          }
+        }
+      }
+    },
+    "Scroll to Hide Toolbar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scroll to Hide Toolbar"
           }
         }
       }
@@ -12625,6 +12655,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "支持本项目"
+          }
+        }
+      }
+    },
+    "Swipe Address Bar Sideways to Switch Tabs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe Address Bar Sideways to Switch Tabs"
+          }
+        }
+      }
+    },
+    "Swipe Address Bar Up to See Open Tabs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe Address Bar Up to See Open Tabs"
           }
         }
       }
