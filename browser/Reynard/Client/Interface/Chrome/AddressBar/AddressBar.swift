@@ -887,6 +887,7 @@ final class AddressBar: UIView {
         }
         
         delegate?.addressBarDidRequestHardReload(self)
+        Haptics.rigid()
     }
     
     @objc
