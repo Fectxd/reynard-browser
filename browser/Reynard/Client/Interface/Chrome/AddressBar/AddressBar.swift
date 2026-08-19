@@ -1089,6 +1089,12 @@ extension AddressBar: UIContextMenuInteractionDelegate {
             return nil
         }
         
+        let trailingButtonLocation = trailingButton.convert(location, from: interaction.view)
+        if trailingButtonState == .reload,
+           trailingButton.point(inside: trailingButtonLocation, with: nil) {
+            return nil
+        }
+        
         let url = delegate?.addressBarShareableURL(self)
         let menuState = PasteAndGoMenuState()
         if #available(iOS 14.0, *) {
