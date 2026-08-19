@@ -34,6 +34,8 @@ protocol AddonCoordinatorDelegate: AnyObject {
     ) -> Tab?
     func selectAddonTab(_ coordinator: AddonCoordinator, at index: Int, mode: TabMode?)
     func closeAddonTab(_ coordinator: AddonCoordinator, at index: Int, mode: TabMode?)
+    @MainActor
+    func confirmAddonDownload(_ coordinator: AddonCoordinator, options: [String: Any?]) async -> DownloadStore.WebExtensionDownloadItem?
     func restoreAddonTabInteraction(_ coordinator: AddonCoordinator)
 }
 
@@ -51,6 +53,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     private let iconLoadingQueue = DispatchQueue(label: "com.minh-ton.Reynard.AddonCoordinator.IconLoadingQueue", qos: .utility)
     private var loadingIconIDs = Set<String>()
     private var pendingAddonDownloadPaths = Set<String>()
+    private var pendingWebExtensionDownloadsByPath: [String: DownloadStore.WebExtensionDownloadItem] = [:]
     let updateCoordinator: AddonUpdateCoordinator
     
     init(
@@ -297,6 +300,74 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
         }
         
         createTab()
+    }
+    
+    // MARK: - WebExtension Downloads
+    
+    @MainActor
+    func addonController(_ controller: AddonRuntime, didRequestDownload options: [String: Any?], for addon: Addon) async -> [String: Any]? {
+        _ = controller
+        _ = addon
+        guard let downloadItem = await delegate?.confirmAddonDownload(
+            self,
+            options: options
+        ) else {
+            return nil
+        }
+        
+        pendingWebExtensionDownloadsByPath[downloadItem.localFilePath] = downloadItem
+        
+        let startTime = ISO8601DateFormatter().string(from: downloadItem.addedAt)
+        return [
+            "id": downloadItem.id,
+            "filename": downloadItem.fileName,
+            "mime": downloadItem.mimeType ?? "",
+            "startTime": startTime,
+            "state": 0,
+            "paused": false,
+            "canResume": false,
+            "bytesReceived": 0,
+            "totalBytes": -1,
+            "fileSize": -1,
+            "exists": false,
+            "localFilePath": downloadItem.localFilePath,
+        ]
+    }
+    
+    @MainActor
+    func addonController(_ controller: AddonRuntime, didCompleteDownloadAt localFilePath: String, succeeded: Bool) {
+        _ = controller
+        guard let downloadItem = pendingWebExtensionDownloadsByPath.removeValue(forKey: localFilePath) else {
+            return
+        }
+        
+        let fileSize: Int64
+        if succeeded,
+           let attributes = try? FileManager.default.attributesOfItem(atPath: localFilePath),
+           let size = attributes[.size] as? NSNumber {
+            fileSize = size.int64Value
+        } else {
+            fileSize = 0
+        }
+        
+        DownloadStore.shared.completeCapturedDownload(
+            localFilePath: localFilePath,
+            succeeded: succeeded
+        )
+        
+        GeckoRuntime.dispatchEvent(
+            type: "GeckoView:WebExtension:DownloadChanged",
+            message: [
+                "downloadItemId": downloadItem.id,
+                "state": succeeded ? 2 : 1,
+                "error": succeeded ? 0 : 11,
+                "endTime": ISO8601DateFormatter().string(from: Date()),
+                "bytesReceived": fileSize,
+                "totalBytes": fileSize,
+                "fileSize": fileSize,
+                "exists": succeeded,
+            ]
+        )
     }
     
     func addonController(_ controller: AddonRuntime, createNewTabFor addon: Addon, details: AddonCreateTabDetails, newSessionID: String) -> Bool {

@@ -107,6 +107,16 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
         tabManager.removeTab(at: index, mode: mode)
     }
     
+    @MainActor
+    func confirmAddonDownload(_ coordinator: AddonCoordinator, options: [String: Any?]) async -> DownloadStore.WebExtensionDownloadItem? {
+        guard let pendingDownload = DownloadStore.shared.pendingDownload(
+            from: options
+        ) else {
+            return nil
+        }
+        return await downloadsCoordinator.confirmWebExtensionDownload(pendingDownload)
+    }
+    
     func restoreAddonTabInteraction(_ coordinator: AddonCoordinator) {
         toolbarController.unlock(for: .addonPopover)
         DispatchQueue.main.async { [weak self] in

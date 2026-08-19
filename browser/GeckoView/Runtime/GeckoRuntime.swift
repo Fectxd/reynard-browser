@@ -92,6 +92,13 @@ public class GeckoRuntime {
         )
     }
     
+    public static func dispatchEvent(type: String, message: [String: Any?]? = nil) {
+        GeckoEventDispatcherWrapper.runtimeInstance.dispatch(
+            type: type,
+            message: message
+        )
+    }
+    
     public static func main(
         argc: Int32,
         argv: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>

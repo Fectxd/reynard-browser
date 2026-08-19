@@ -49,9 +49,17 @@ struct DownloadItemSnapshot {
 final class DownloadStore: NSObject {
     static let shared = DownloadStore()
     
+    struct WebExtensionDownloadItem {
+        let id: Int
+        let fileName: String
+        let localFilePath: String
+        let mimeType: String?
+        let addedAt: Date
+    }
+    
     struct PendingDownload {
         let fileName: String
-        fileprivate let startHandler: () -> Void
+        fileprivate let startHandler: () -> WebExtensionDownloadItem?
     }
     
     private struct StorageURLs {
@@ -166,6 +174,7 @@ final class DownloadStore: NSObject {
     private var persistedDownloads: [PersistedDownloadEntry] = []
     private var lastSessionProgressNotificationTime: TimeInterval = 0
     private var hasUnviewedCompletedDownloads = false
+    private var nextWebExtensionDownloadID = 1
     
     // MARK: - Lifecycle
     
@@ -226,6 +235,7 @@ final class DownloadStore: NSObject {
                     mimeType: response.mimeType,
                     expectedBytes: response.contentLength
                 )
+                return nil
             }
         )
     }
@@ -249,12 +259,39 @@ final class DownloadStore: NSObject {
                     suggestedFileName: request.filename,
                     mimeType: "application/pdf"
                 )
+                return nil
             }
         )
     }
     
-    func start(_ download: PendingDownload) {
-        download.startHandler()
+    func pendingDownload(from options: [String: Any?]) -> PendingDownload? {
+        guard let urlString = options["url"] as? String,
+              let sourceURL = URL(string: urlString) else {
+            return nil
+        }
+        
+        let suggestedFileName = options["filename"] as? String
+        let mimeType = options["mimeType"] as? String
+        
+        return PendingDownload(
+            fileName: resolvedFileName(
+                suggestedFileName: suggestedFileName,
+                sourceURL: sourceURL,
+                mimeType: mimeType
+            ),
+            startHandler: { [weak self] in
+                self?.beginWebExtensionDownload(
+                    sourceURL: sourceURL,
+                    suggestedFileName: suggestedFileName,
+                    mimeType: mimeType
+                )
+            }
+        )
+    }
+    
+    @discardableResult
+    func startDownload(_ pendingDownload: PendingDownload) -> WebExtensionDownloadItem? {
+        return pendingDownload.startHandler()
     }
     
     func updateCapturedDownload(localFilePath: String, bytesReceived: Int64) -> Bool {
@@ -406,6 +443,53 @@ final class DownloadStore: NSObject {
             )
             self.postDidStartDownload()
             self.postDidChange()
+        }
+    }
+    
+    private func beginWebExtensionDownload(
+        sourceURL: URL,
+        suggestedFileName: String?,
+        mimeType: String?
+    ) -> WebExtensionDownloadItem? {
+        return stateQueue.sync {
+            self.prepareStorageLocked()
+            
+            let fileName = self.resolvedFileName(
+                suggestedFileName: suggestedFileName,
+                sourceURL: sourceURL,
+                mimeType: mimeType
+            )
+            let destinationURL = self.makeUniqueDestinationURLLocked(for: fileName)
+            let localFilePath = self.fileManager.temporaryDirectory
+                .appendingPathComponent(
+                    "WebExtension-\(UUID().uuidString)",
+                    isDirectory: false
+                )
+                .path
+            let downloadID = self.nextWebExtensionDownloadID
+            self.nextWebExtensionDownloadID += 1
+            let addedAt = Date()
+            
+            self.capturedDownloads[localFilePath] = CapturedDownload(
+                id: UUID(),
+                localFilePath: localFilePath,
+                sourceURL: sourceURL,
+                fileName: destinationURL.lastPathComponent,
+                destinationURL: destinationURL,
+                mimeType: mimeType,
+                addedAt: addedAt,
+                expectedBytes: nil
+            )
+            self.postDidStartDownload()
+            self.postDidChange()
+            
+            return WebExtensionDownloadItem(
+                id: downloadID,
+                fileName: destinationURL.lastPathComponent,
+                localFilePath: localFilePath,
+                mimeType: mimeType,
+                addedAt: addedAt
+            )
         }
     }
     
