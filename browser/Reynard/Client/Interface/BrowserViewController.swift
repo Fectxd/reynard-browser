@@ -1027,6 +1027,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         requestContentKeyboardFocus(for: tabManager.selectedTab?.session)
     }
     
+    func exitFullscreenIfNeeded() {
+        guard isShowingFullscreenMedia,
+              let session = fullscreenSession else {
+            return
+        }
+        session.exitFullScreen()
+        applyFullscreenState(false, for: session, mediaIsPlaying: false)
+    }
+    
     // MARK: - Orientation
     
     func lockScreenOrientation(

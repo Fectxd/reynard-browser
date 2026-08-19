@@ -44,6 +44,7 @@ extension BrowserViewController {
             return
         }
         if session.isOpen() {
+            exitFullscreenIfNeeded()
             session.reload()
         } else {
             reloadTerminatedTab()
@@ -82,6 +83,7 @@ extension BrowserViewController {
         guard tabManager.selectedTab?.state.navigationState.canGoBack == true else {
             return
         }
+        exitFullscreenIfNeeded()
         browserChrome.onBack?()
     }
     
@@ -89,6 +91,7 @@ extension BrowserViewController {
         guard tabManager.selectedTab?.state.navigationState.canGoForward == true else {
             return
         }
+        exitFullscreenIfNeeded()
         browserChrome.onForward?()
     }
     

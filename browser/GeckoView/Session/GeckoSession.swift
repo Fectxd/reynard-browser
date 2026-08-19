@@ -302,6 +302,10 @@ public class GeckoSession {
             ])
     }
     
+    public func exitFullScreen() {
+        dispatcher.dispatch(type: "GeckoViewContent:ExitFullScreen")
+    }
+    
     // MARK: - Find in Page
     
     @MainActor
