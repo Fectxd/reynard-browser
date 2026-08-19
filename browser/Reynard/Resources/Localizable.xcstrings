@@ -6736,6 +6736,16 @@
         }
       }
     },
+    "Hard Reload Page" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hard Reload Page"
+          }
+        }
+      }
+    },
     "History" : {
       "localizations" : {
         "en" : {
