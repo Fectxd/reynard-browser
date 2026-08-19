@@ -1027,6 +1027,14 @@ extension TabManagerImplementation: ContentDelegate {
         }
         
         let tab = tabs(for: location.mode)[location.index]
+        
+        guard !title.isEmpty || (
+            tab.state.restoreState == .none &&
+            !tab.state.isSuppressingInitialBlankPageLoad
+        ) else {
+            return
+        }
+        
         tab.title = title
         if let url = tab.url {
             sessionManager.updateCurrentHistoryTitle(title, for: tab.id, matching: url)
