@@ -74,6 +74,14 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         )
         scrollToTopTriggerView.contentOffset.y = UX.scrollToTopTriggerOffset
     }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true else {
+            return
+        }
+        updateRefreshIndicatorTint()
+    }
     
     private func configureHierarchy() {
         backgroundColor = .systemBackground
@@ -88,6 +96,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         scrollToTopTriggerView.contentInsetAdjustmentBehavior = .never
         webView.interactionDelegate = self
         pageBackgroundView.backgroundColor = .systemBackground
+        updateRefreshIndicatorTint()
         errorLabel.font = .preferredFont(forTextStyle: .body)
         errorLabel.adjustsFontForContentSizeCategory = true
         errorLabel.numberOfLines = 0
@@ -178,6 +187,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
         hidePageError()
         pageBackgroundView.backgroundColor = pageBackgroundColor ?? .systemBackground
+        updateRefreshIndicatorTint()
         
         guard webView.session !== tab?.session else {
             return
@@ -190,6 +200,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func setPageBackgroundColor(_ color: UIColor) {
         pageBackgroundView.backgroundColor = color
+        updateRefreshIndicatorTint()
     }
     
     func resetScrollTracking() {
@@ -386,6 +397,13 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         refreshIndicator.layer.timeOffset = 0
         refreshIndicator.layer.beginTime = 0
         isTrackingPullProgress = false
+    }
+
+    private func updateRefreshIndicatorTint() {
+        guard let pageBackgroundColor = pageBackgroundView.backgroundColor else {
+            return
+        }
+        refreshIndicator.color = pageBackgroundColor.isLightColor(in: traitCollection) ? .black : .white
     }
 }
 
