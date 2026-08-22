@@ -791,6 +791,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         )
         NotificationCenter.default.addObserver(
             self,
+            selector: #selector(appearanceGestureSettingsDidChange),
+            name: .appearanceGestureSettingsDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
             selector: #selector(applyUpdateMenuButtonBadge),
             name: .appUpdateAvailable,
             object: nil
@@ -814,6 +820,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     @objc func landscapeTabBarDidChange() {
         updateBrowserLayout(animated: true)
+    }
+    
+    @objc private func appearanceGestureSettingsDidChange() {
+        updateBrowserLayout(animated: false)
     }
     
     @objc func applyUpdateMenuButtonBadge() {
