@@ -260,7 +260,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         updateContentBottomInset()
     }
     
-    func applyToolbarOffsets(top: CGFloat, bottom: CGFloat) {
+    func applyToolbarOffsets(top: CGFloat, bottom: CGFloat, refresh: Bool = false) {
         toolbarTopOffset = top
         webContentView.transform = toolbarAlignedTransform(
             translationX: webContentView.transform.tx
@@ -272,7 +272,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
             translationX: historyTransitionOverlayView.transform.tx
         )
         let contentBottomOffset = -bottom
-        guard contentBottomOffset != self.contentBottomOffset else {
+        guard refresh || contentBottomOffset != self.contentBottomOffset else {
             return
         }
         self.contentBottomOffset = contentBottomOffset

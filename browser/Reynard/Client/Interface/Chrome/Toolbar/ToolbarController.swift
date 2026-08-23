@@ -182,7 +182,8 @@ final class ToolbarController {
         tabBar.transform = CGAffineTransform(translationX: 0, y: -tabBarOffset)
         contentView.applyToolbarOffsets(
             top: topContentOffset,
-            bottom: topToolbarOffset + bottomToolbarOffset
+            bottom: topToolbarOffset + bottomToolbarOffset,
+            refresh: refresh
         )
     }
     
