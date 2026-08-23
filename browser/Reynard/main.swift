@@ -73,8 +73,10 @@ private func configureSandboxExtension() {
     setenv("MOZ_DOCUMENTS_SANDBOX_EXTENSION", tokenString, 1)
 }
 
+LocalizationBundle.activate()
 UserDataMigration.shared.run()
 JITController.shared.start()
+
 if #unavailable(iOS 14.0),
    getEntitlementValue("com.apple.private.security.no-sandbox") {
     configureUnsandboxedAppDataDirectories()
