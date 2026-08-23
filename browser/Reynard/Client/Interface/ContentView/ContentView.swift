@@ -290,7 +290,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         let bottomConstraint = webContentView.bottomAnchor.constraint(equalTo: bottomAnchor)
         bottomConstraint.isActive = true
         webContentBottomConstraint = bottomConstraint
-        webContentView.extendPageBackground(to: topAnchor)
+        webContentView.extendPageBackground(from: topAnchor, to: bottomAnchor)
         [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
             NSLayoutConstraint.activate([
                 contentView.topAnchor.constraint(equalTo: topAnchor),
