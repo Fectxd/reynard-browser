@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..c0ceca546462
+index 000000000000..7c69b7bafbdd
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,326 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -275,7 +275,10 @@ index 000000000000..c0ceca546462
 +            event, @selector(buttonMask));
 +    hasPrimaryPointerPress = buttonMask & 1;
 +  }
-+  if (hasDirectTouch || hasPrimaryPointerPress) {
++  const bool hasEditableInputContext =
++      mGeckoChild &&
++      mGeckoChild->GetInputContext().mIMEState.mEnabled != IMEEnabled::Disabled;
++  if ((hasDirectTouch || hasPrimaryPointerPress) && !hasEditableInputContext) {
 +    [self becomeFirstResponder];
 +  }
 +  if (touches.count > 0) {
