@@ -30,12 +30,17 @@ final class SessionManager {
     private var isApplicationForeground = true
     private(set) var isApplicationActive = true
     private weak var pictureInPictureSession: GeckoSession?
-    private var pendingCleanup: (
+    private var pendingSessionCleanup: (
         session: GeckoSession,
         perform: (SessionManager) -> Void
     )?
     weak var applicationStateObserver: SessionManagerApplicationStateObserver?
     weak var pictureInPictureHandler: SessionManagerPictureInPictureHandler?
+    private var externalResponseReferenceCounts: [ObjectIdentifier: Int] = [:]
+    private var deferredExternalResponseCleanups: [ObjectIdentifier: (
+        session: GeckoSession,
+        perform: (SessionManager) -> Void
+    )] = [:]
     
     var isForeground: Bool {
         return isApplicationForeground
@@ -127,6 +132,8 @@ final class SessionManager {
         session.setActive(false)
     }
     
+    // MARK: - Application Lifecycle
+    
     func setApplicationForeground(_ isForeground: Bool) {
         guard isApplicationForeground != isForeground else {
             return
@@ -156,20 +163,39 @@ final class SessionManager {
         applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
     }
     
-    func close(_ session: GeckoSession) {
-        performCleanup(for: session) { manager in
-            manager.closeImmediately(session)
+    // MARK: - External Responses
+    
+    private func keepSessionActiveForExternalResponse(_ session: GeckoSession) {
+        guard session.isOpen() else {
+            return
         }
+        sessionsRequestedActive[ObjectIdentifier(session)] = session
+        session.setActive(isApplicationForeground)
+        session.setFocused(false)
     }
     
-    func discard(_ session: GeckoSession, forTab tabID: UUID, keepingHistory: Bool = false) {
-        performCleanup(for: session) { manager in
-            manager.discardImmediately(
-                session,
-                forTab: tabID,
-                keepingHistory: keepingHistory
-            )
+    func retainExternalResponse(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        externalResponseReferenceCounts[identifier, default: 0] += 1
+    }
+    
+    func releaseExternalResponse(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        guard let count = externalResponseReferenceCounts[identifier] else {
+            return
         }
+        
+        if count > 1 {
+            externalResponseReferenceCounts[identifier] = count - 1
+            return
+        }
+        
+        externalResponseReferenceCounts.removeValue(forKey: identifier)
+        guard let cleanup = deferredExternalResponseCleanups.removeValue(forKey: identifier) else {
+            return
+        }
+        
+        scheduleSessionCleanup(for: cleanup.session, cleanup.perform)
     }
     
     // MARK: - Picture in Picture
@@ -184,7 +210,7 @@ final class SessionManager {
     
     func pictureInPicturePresentationDidEnd(_ session: GeckoSession) {
         clearPictureInPictureSession(session)
-        executePendingCleanup(for: session)
+        executePendingSessionCleanup(for: session)
     }
     
     private func clearPictureInPictureSession(_ session: GeckoSession) {
@@ -202,28 +228,55 @@ final class SessionManager {
         }
     }
     
-    private func performCleanup(
+    // MARK: - Session Cleanup
+    
+    func close(_ session: GeckoSession) {
+        scheduleSessionCleanup(for: session) { manager in
+            manager.closeImmediately(session)
+        }
+    }
+    
+    func discard(_ session: GeckoSession, forTab tabID: UUID, keepingHistory: Bool = false) {
+        scheduleSessionCleanup(for: session) { manager in
+            manager.discardImmediately(
+                session,
+                forTab: tabID,
+                keepingHistory: keepingHistory
+            )
+        }
+    }
+    
+    private func scheduleSessionCleanup(
         for session: GeckoSession,
         _ perform: @escaping (SessionManager) -> Void
     ) {
-        if let pendingCleanup {
-            if pendingCleanup.session !== session {
+        let identifier = ObjectIdentifier(session)
+        if externalResponseReferenceCounts[identifier] != nil {
+            if deferredExternalResponseCleanups[identifier] == nil {
+                deferredExternalResponseCleanups[identifier] = (session, perform)
+            }
+            keepSessionActiveForExternalResponse(session)
+            return
+        }
+        
+        if let pendingSessionCleanup {
+            if pendingSessionCleanup.session !== session {
                 perform(self)
             }
             return
         }
-        pendingCleanup = (session, perform)
+        pendingSessionCleanup = (session, perform)
         if pictureInPictureHandler?.stopPresenting(session) != true {
-            executePendingCleanup(for: session)
+            executePendingSessionCleanup(for: session)
         }
     }
     
-    private func executePendingCleanup(for session: GeckoSession) {
-        guard let cleanup = pendingCleanup,
+    private func executePendingSessionCleanup(for session: GeckoSession) {
+        guard let cleanup = pendingSessionCleanup,
               cleanup.session === session else {
             return
         }
-        pendingCleanup = nil
+        pendingSessionCleanup = nil
         cleanup.perform(self)
     }
     
