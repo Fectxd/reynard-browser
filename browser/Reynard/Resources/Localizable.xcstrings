@@ -3456,6 +3456,7 @@
       }
     },
     "Cancel" : {
+      "comment" : "Download action",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -3553,6 +3554,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消下载？"
+          }
+        }
+      }
+    },
+    "Cancelled" : {
+      "comment" : "Download state",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelled"
           }
         }
       }
@@ -6347,6 +6359,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "例外"
+          }
+        }
+      }
+    },
+    "Failed" : {
+      "comment" : "Download state",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed"
           }
         }
       }
@@ -9786,6 +9809,28 @@
         }
       }
     },
+    "Pause" : {
+      "comment" : "Download action",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
+    },
+    "Paused" : {
+      "comment" : "Download state",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paused"
+          }
+        }
+      }
+    },
     "Performance Recommendation" : {
       "localizations" : {
         "en" : {
@@ -11055,6 +11100,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "受限制"
+          }
+        }
+      }
+    },
+    "Resume" : {
+      "comment" : "Download action",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resume"
           }
         }
       }

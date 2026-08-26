@@ -497,6 +497,9 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private func handleSessionTermination(_ session: GeckoSession) {
+        DownloadStore.shared.failCapturedDownloads(for: session)
+        sessionManager.clearExternalResponseRetention(for: session)
+        
         guard let location = tabLocation(for: session) else {
             return
         }

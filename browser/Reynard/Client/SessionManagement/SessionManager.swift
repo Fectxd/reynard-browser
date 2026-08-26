@@ -198,6 +198,12 @@ final class SessionManager {
         scheduleSessionCleanup(for: cleanup.session, cleanup.perform)
     }
     
+    func clearExternalResponseRetention(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        externalResponseReferenceCounts.removeValue(forKey: identifier)
+        deferredExternalResponseCleanups.removeValue(forKey: identifier)
+    }
+    
     // MARK: - Picture in Picture
     
     func setPictureInPictureSession(_ session: GeckoSession) {
