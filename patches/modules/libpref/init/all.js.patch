@@ -1,5 +1,5 @@
 diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
-index b3f11dd9c895..3b9a6a39a270 100644
+index b0734147fb4d..da9b9f0d7447 100644
 --- a/modules/libpref/init/all.js
 +++ b/modules/libpref/init/all.js
 @@ -66,6 +66,10 @@ pref("security.crash_tracking.js_load_1.maxCrashes", 1);

@@ -1,5 +1,5 @@
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index 7b82957f4eba..db8148d155a9 100644
+index 2bb338e2e89d..41e84f38317d 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
 @@ -6032,7 +6032,7 @@
@@ -251,7 +251,7 @@ index 7b82957f4eba..db8148d155a9 100644
  
  # Telemetry of traffic categories. Whether or not to enable HttpTrafficAnalyzer.
  - name: network.traffic_analyzer.enabled
-@@ -19489,7 +19524,7 @@
+@@ -19491,7 +19526,7 @@
  # If the service is available, set threads to low-power mode when in the background.
  - name: threads.use_low_power.enabled
    type: RelaxedAtomicBool
@@ -260,7 +260,7 @@ index 7b82957f4eba..db8148d155a9 100644
    value: true
  #else
    value: @IS_NIGHTLY_BUILD@
-@@ -19498,10 +19533,10 @@
+@@ -19500,10 +19535,10 @@
  
  
  # If the process priority is set to background, put the main thread in the background.
@@ -273,7 +273,7 @@ index 7b82957f4eba..db8148d155a9 100644
    value: true
  #else
    value: @IS_NIGHTLY_BUILD@
-@@ -19665,7 +19700,7 @@
+@@ -19667,7 +19702,7 @@
  # Use 17 for Ctrl, 18 for Alt, 91 or 224 for Meta, 0 for none.
  - name: ui.key.accelKey
    type: uint32_t
@@ -282,7 +282,7 @@ index 7b82957f4eba..db8148d155a9 100644
    value: 224
  #else
    value: 17
-@@ -20311,7 +20346,7 @@
+@@ -20313,7 +20348,7 @@
  # on a platform that supports the GPU process, else true.
  - name: webgl.allow-in-parent
    type: bool
