@@ -38,6 +38,7 @@ extension BrowserViewController: TabManagerDelegate {
             return
         }
         
+        toolbarController.reset()
         contentView.showPageError(for: tab.url)
         captureThumbnail(
             forTabAt: tabManager.selectedTabIndex,
