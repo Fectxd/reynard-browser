@@ -82,9 +82,6 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_GHA_VERSION: ${{ matrix.sccache_namespace }}
-      SCCACHE_C_CUSTOM_CACHE_BUSTER: ${{ matrix.sccache_namespace }}
-      SCCACHE_BASEDIRS: ${{ github.workspace }}
-      RUSTC_WRAPPER: sccache
 
     steps:
       - name: Check out repository

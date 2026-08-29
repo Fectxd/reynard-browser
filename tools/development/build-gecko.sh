@@ -25,6 +25,10 @@ for arg in "$@"; do
 	esac
 done
 
+if [ "$USE_SCCACHE" = true ]; then
+	SCCACHE_BIN="${SCCACHE_PATH:-$(command -v sccache)}"
+fi
+
 cd "$ROOT_DIR"
 
 if [ ! -d "$FIREFOX_DIR" ]; then
@@ -50,7 +54,8 @@ fi
 	echo "ac_add_options --disable-tests"
 	echo "ac_add_options --enable-bootstrap"
 	if [ "$USE_SCCACHE" = true ]; then
-		echo "ac_add_options --with-ccache=sccache"
+		echo "mk_add_options 'export RUSTC_WRAPPER=$SCCACHE_BIN'"
+		echo "ac_add_options --with-ccache=$SCCACHE_BIN"
 	fi
 	if [ "$DISABLE_JEMALLOC" = true ]; then
 		echo "ac_add_options --disable-jemalloc"
