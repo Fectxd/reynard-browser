@@ -273,7 +273,8 @@ final class TopToolbar: UIView {
             on: backButton,
             forwardButton: forwardButton,
             itemsProvider: itemsProvider,
-            onSelect: onSelect
+            onSelect: onSelect,
+            isReversed: false
         )
     }
     
