@@ -35,8 +35,9 @@ final class TabManagerImplementation: NSObject, TabManager {
     private lazy var selectionActionCoordinator = SelectionActionCoordinator(
         presenter: SelectionActionPresenter(onMenuDismissed: requestContentKeyboardFocus)
     )
-    private let permissionCoordinator = PermissionCoordinator(
-        promptPresenter: PermissionPromptPresenter()
+    private lazy var permissionCoordinator = PermissionCoordinator(
+        promptPresenter: PermissionPromptPresenter(),
+        onPromptFinished: requestContentKeyboardFocus
     )
     private lazy var systemMediaSession = SystemMediaSession(playbackObserver: self)
     private lazy var pictureInPictureCoordinator: PictureInPictureCoordinating? = {
