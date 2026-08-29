@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
-index 8262327fe93b..156ec235de06 100644
+index 8262327fe93b..00e3ec40611c 100644
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
 @@ -3035,14 +3035,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
@@ -40,7 +40,25 @@ index 8262327fe93b..156ec235de06 100644
  }
  
  void ContentParent::OnCompositorDeviceReset() {
-@@ -8030,6 +8032,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
+@@ -3986,9 +3988,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
+ 
+   // listening for memory pressure event
+   if (!strcmp(aTopic, "memory-pressure")) {
++    // Each content process handles native memory pressure independently.
++    // The parent forwards only explicit heap-minimize requests.
++    if (!aData || !nsDependentString(aData).EqualsLiteral("heap-minimize")) {
++      return NS_OK;
++    }
+     (void)SendMemoryPressure(nsDependentString(aData));
+   } else if (!strcmp(aTopic, "memory-pressure-stop")) {
+-    (void)SendMemoryPressureStop();
++    // Each content process clears its memory pressure state independently.
++    return NS_OK;
++    // (void)SendMemoryPressureStop();
+   } else if (!strcmp(aTopic, "application-background")) {
+     (void)SendApplicationBackground();
+   } else if (!strcmp(aTopic, "application-foreground")) {
+@@ -8030,6 +8039,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
  }
  #endif
  
