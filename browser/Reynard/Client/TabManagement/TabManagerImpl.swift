@@ -847,23 +847,14 @@ final class TabManagerImplementation: NSObject, TabManager {
         loadURL(searchDestination, in: tab)
     }
     
+    // MARK: - History Navigation
+    
     func goBack() {
-        guard let tab = selectedTab,
-              let transition = sessionManager.goBack(
-                for: tab.id,
-                sessionState: tab.state.sessionNavigationAvailability
-              ) else {
+        guard let tab = selectedTab else {
             return
         }
         
-        tab.state.navigationState = transition.availability
-        delegate?.tabManager(self, didUpdateTabAt: selectedTabIndex, reason: .navigationState)
-        switch transition.action {
-        case .session:
-            tab.session.goBack()
-        case let .load(url):
-            loadURL(url, in: tab)
-        }
+        enqueueHistoryNavigation(.back, in: tab)
     }
     
     func goBack(to index: Int) {
@@ -887,22 +878,11 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     func goForward() {
-        guard let tab = selectedTab,
-              let transition = sessionManager.goForward(
-                for: tab.id,
-                sessionState: tab.state.sessionNavigationAvailability
-              ) else {
+        guard let tab = selectedTab else {
             return
         }
         
-        tab.state.navigationState = transition.availability
-        delegate?.tabManager(self, didUpdateTabAt: selectedTabIndex, reason: .navigationState)
-        switch transition.action {
-        case .session:
-            tab.session.goForward()
-        case let .load(url):
-            loadURL(url, in: tab)
-        }
+        enqueueHistoryNavigation(.forward, in: tab)
     }
     
     func goForward(to index: Int) {
@@ -922,6 +902,73 @@ final class TabManagerImplementation: NSObject, TabManager {
             tab.session.goForward()
         case let .load(url):
             loadURL(url, in: tab)
+        }
+    }
+    
+    private func enqueueHistoryNavigation(_ direction: HistoryNavigationDirection, in tab: Tab) {
+        tab.state.pendingHistoryNavigations.append(direction)
+        startNextHistoryNavigation(in: tab)
+    }
+    
+    private func startNextHistoryNavigation(in tab: Tab) {
+        guard tab.state.activeHistoryNavigationID == nil,
+              !tab.state.pendingHistoryNavigations.isEmpty else {
+            return
+        }
+        
+        let direction = tab.state.pendingHistoryNavigations.removeFirst()
+        let transition: NavigationTransition?
+        switch direction {
+        case .back:
+            transition = sessionManager.goBack(
+                for: tab.id,
+                sessionState: tab.state.sessionNavigationAvailability
+            )
+        case .forward:
+            transition = sessionManager.goForward(
+                for: tab.id,
+                sessionState: tab.state.sessionNavigationAvailability
+            )
+        }
+        
+        guard let transition else {
+            startNextHistoryNavigation(in: tab)
+            return
+        }
+        
+        tab.state.lastHistoryNavigationID += 1
+        tab.state.activeHistoryNavigationID = tab.state.lastHistoryNavigationID
+        tab.state.navigationState = transition.availability
+        if let location = tabLocation(for: tab.id) {
+            notifyUpdate(at: location.index, mode: location.mode, reason: .navigationState)
+        }
+        
+        switch transition.action {
+        case .session:
+            switch direction {
+            case .back:
+                tab.session.goBack()
+            case .forward:
+                tab.session.goForward()
+            }
+        case let .load(url):
+            loadURL(url, in: tab)
+        }
+    }
+    
+    private func scheduleHistoryNavigationCompletion(in tab: Tab) {
+        guard let navigationID = tab.state.activeHistoryNavigationID else {
+            return
+        }
+        
+        DispatchQueue.main.async { [weak self, weak tab] in
+            guard let self, let tab,
+                  tab.state.activeHistoryNavigationID == navigationID else {
+                return
+            }
+            
+            tab.state.activeHistoryNavigationID = nil
+            self.startNextHistoryNavigation(in: tab)
         }
     }
     
@@ -983,8 +1030,23 @@ final class TabManagerImplementation: NSObject, TabManager {
         notifyUpdate(at: index, mode: mode, reason: .thumbnail)
     }
     
-    func updateHistoryThumbnail(_ image: UIImage?, for tab: Tab, url: String) {
-        sessionManager.updateCurrentHistoryThumbnail(image, for: tab.id, matching: url)
+    func updateHistoryThumbnail(
+        _ image: UIImage?,
+        for tab: Tab,
+        url: String,
+        isPreparedForNavigation: Bool
+    ) {
+        let tabID = tab.id
+        if isPreparedForNavigation {
+            tab.state.preparedNavigationThumbnailURL = url
+        }
+        sessionManager.updateCurrentHistoryThumbnail(image, for: tabID, matching: url) { [weak self] in
+            guard let self,
+                  let location = tabLocation(for: tabID) else {
+                return
+            }
+            notifyUpdate(at: location.index, mode: location.mode, reason: .navigationState)
+        }
     }
     
     func navigationHistory(for tab: Tab) -> NavigationHistoryStore.Snapshot {
@@ -1250,7 +1312,8 @@ extension TabManagerImplementation: NavigationDelegate {
         if let url {
             let currentURL = tab.url
             if let currentURL,
-               currentURL != url {
+               currentURL != url,
+               tab.state.preparedNavigationThumbnailURL != currentURL {
                 delegate?.tabManager(
                     self,
                     captureHistoryThumbnailForTabAt: location.index,
@@ -1258,10 +1321,12 @@ extension TabManagerImplementation: NavigationDelegate {
                     url: currentURL
                 )
             }
+            tab.state.preparedNavigationThumbnailURL = nil
             
             tab.url = url
             recordNavigation(url, title: currentURL == url ? tab.title : "", for: tab)
         } else {
+            tab.state.preparedNavigationThumbnailURL = nil
             tab.url = url
         }
         tab.state.displayState = .committed
@@ -1269,6 +1334,7 @@ extension TabManagerImplementation: NavigationDelegate {
         notifyUpdate(at: location.index, mode: location.mode, reason: .location)
         scheduleFaviconUpdate(forTabAt: location.index, mode: location.mode)
         persistState()
+        scheduleHistoryNavigationCompletion(in: tab)
         
     }
     

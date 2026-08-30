@@ -154,6 +154,7 @@ final class SessionManager {
     }
     
     func applicationWillResignActive() {
+        history.flushPendingWrites()
         isApplicationActive = false
         applicationStateObserver?.sessionManagerWillResignActive(self)
     }
@@ -424,8 +425,13 @@ final class SessionManager {
         history.updateCurrentHistoryTitle(title, for: tabID, matching: url)
     }
     
-    func updateCurrentHistoryThumbnail(_ image: UIImage?, for tabID: UUID, matching url: String) {
-        history.updateCurrentHistoryThumbnail(image, for: tabID, matching: url)
+    func updateCurrentHistoryThumbnail(
+        _ image: UIImage?,
+        for tabID: UUID,
+        matching url: String,
+        completion: @escaping () -> Void
+    ) {
+        history.updateCurrentHistoryThumbnail(image, for: tabID, matching: url, completion: completion)
     }
     
     func navigationPreviewImages(for tabID: UUID) -> NavigationPreviewImages {

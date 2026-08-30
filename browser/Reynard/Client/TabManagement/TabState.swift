@@ -44,6 +44,11 @@ enum TabInsertionTarget: Equatable {
     case index(Int)
 }
 
+enum HistoryNavigationDirection {
+    case back
+    case forward
+}
+
 final class TabSessionState {
     var restoreState: TabRestoreState = .none
     var displayState: TabDisplayState = .committed
@@ -53,5 +58,9 @@ final class TabSessionState {
     var showsStartupHomepage = false
     var sessionNavigationAvailability = SessionNavigationAvailability.unavailable
     var navigationState = NavigationAvailability(canGoBack: false, canGoForward: false)
+    var pendingHistoryNavigations: [HistoryNavigationDirection] = []
+    var lastHistoryNavigationID = 0
+    var activeHistoryNavigationID: Int?
+    var preparedNavigationThumbnailURL: String?
     var loadingState = TabLoadingState.idle
 }

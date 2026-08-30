@@ -373,10 +373,24 @@ extension BrowserViewController {
         )
     }
     
+    func prepareThumbnailForNavigation() {
+        guard let url = tabManager.selectedTab?.url else {
+            return
+        }
+        
+        captureHistoryThumbnail(
+            forTabAt: tabManager.selectedTabIndex,
+            mode: tabManager.selectedTabMode,
+            url: url,
+            isPreparedForNavigation: true
+        )
+    }
+    
     private func captureHistoryThumbnail(
         forTabAt index: Int,
         mode: TabMode,
-        url: String
+        url: String,
+        isPreparedForNavigation: Bool = false
     ) {
         guard mode == tabManager.selectedTabMode,
               index == tabManager.selectedTabIndex,
@@ -392,6 +406,11 @@ extension BrowserViewController {
         }
         
         tabManager.updateThumbnail(thumbnail, forTabAt: index, mode: mode)
-        tabManager.updateHistoryThumbnail(thumbnail, for: tab, url: url)
+        tabManager.updateHistoryThumbnail(
+            thumbnail,
+            for: tab,
+            url: url,
+            isPreparedForNavigation: isPreparedForNavigation
+        )
     }
 }
