@@ -1,5 +1,5 @@
 diff --git a/mobile/ios/app/mobile.js b/mobile/ios/app/mobile.js
-index e835b1c33d86..4c0bff531c6a 100644
+index e835b1c33d86..48f13edaaaa7 100644
 --- a/mobile/ios/app/mobile.js
 +++ b/mobile/ios/app/mobile.js
 @@ -3,7 +3,103 @@

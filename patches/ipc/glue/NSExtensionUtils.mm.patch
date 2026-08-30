@@ -1,6 +1,6 @@
 diff --git a/ipc/glue/NSExtensionUtils.mm b/ipc/glue/NSExtensionUtils.mm
 new file mode 100644
-index 000000000000..bd49425f027c
+index 000000000000..518377a5f5dd
 --- /dev/null
 +++ b/ipc/glue/NSExtensionUtils.mm
 @@ -0,0 +1,356 @@
