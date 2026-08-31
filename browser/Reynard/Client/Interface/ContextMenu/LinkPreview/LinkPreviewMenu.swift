@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 16/6/26.
 //
 
+import GeckoView
 import UIKit
 
 struct LinkPreviewMenu {
@@ -13,6 +14,7 @@ struct LinkPreviewMenu {
         showsPreview: Bool,
         isPrivate: Bool,
         sessionManager: SessionManager,
+        sourceSessionState: GeckoSessionState?,
         sourceView: UIView,
         onPreviewCreated: @escaping (LinkPreviewViewController) -> Void,
         openInNewTab: @escaping () -> Void,
@@ -28,7 +30,8 @@ struct LinkPreviewMenu {
             let viewController = LinkPreviewViewController(
                 url: url,
                 isPrivate: isPrivate,
-                sessionManager: sessionManager
+                sessionManager: sessionManager,
+                sourceSessionState: sourceSessionState
             )
             onPreviewCreated(viewController)
             return viewController

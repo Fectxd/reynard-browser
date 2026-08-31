@@ -34,13 +34,25 @@ public struct GeckoFindInPageResult {
 public class GeckoSession {
     // MARK: - State
     
-    let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
-    var window: GeckoViewWindow?
     var id: String?
+    var window: GeckoViewWindow?
+    private let stateCache = GeckoSessionState()
+    private var awaitsPurgedHistoryState = false
+    
     public let isAddonPopup: Bool
     public let isPrivateMode: Bool
-    lazy var addonSessionListener = AddonSessionListener(session: self)
     public private(set) var settings: GeckoSessionSettings
+    
+    let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
+    lazy var addonSessionListener = AddonSessionListener(session: self)
+    
+    public var currentSessionState: GeckoSessionState? {
+        guard !awaitsPurgedHistoryState,
+              !stateCache.isEmpty else {
+            return nil
+        }
+        return GeckoSessionState(copying: stateCache)
+    }
     
     // MARK: - Delegates
     
@@ -303,6 +315,15 @@ public class GeckoSession {
             ])
     }
     
+    public func goToHistoryIndex(_ index: Int) {
+        dispatcher.dispatch(type: "GeckoView:GotoHistoryIndex", message: ["index": index])
+    }
+    
+    public func purgeHistory() {
+        awaitsPurgedHistoryState = stateCache.history.count > 1
+        dispatcher.dispatch(type: "GeckoView:PurgeHistory")
+    }
+    
     public func exitFullScreen() {
         dispatcher.dispatch(type: "GeckoViewContent:ExitFullScreen")
     }
@@ -369,10 +390,56 @@ public class GeckoSession {
     
     public func setActive(_ active: Bool) {
         dispatcher.dispatch(type: "GeckoView:SetActive", message: ["active": active])
+        if !active {
+            flushSessionState()
+        }
     }
     
     public func setFocused(_ focused: Bool) {
         dispatcher.dispatch(type: "GeckoView:SetFocused", message: ["focused": focused])
+    }
+    
+    public func flushSessionState() {
+        dispatcher.dispatch(type: "GeckoView:FlushSessionState")
+    }
+    
+    public func restoreState(_ state: GeckoSessionState) {
+        awaitsPurgedHistoryState = false
+        stateCache.replace(with: state)
+        dispatcher.dispatch(type: "GeckoView:RestoreState", message: state.restorePayload)
+    }
+    
+    func handleSessionStateUpdate(_ stateUpdate: [String: Any]) {
+        let previousHistoryCount = stateCache.history.count
+        if awaitsPurgedHistoryState,
+           let historyChange = stateUpdate["historychange"] as? [String: Any] {
+            let updatedState = GeckoSessionState(copying: stateCache)
+            updatedState.update(with: stateUpdate)
+            guard PayloadValue.int(historyChange["fromIdx"]) == -1,
+                  updatedState.history.count <= 1 else {
+                return
+            }
+            stateCache.replace(with: updatedState)
+            awaitsPurgedHistoryState = false
+        } else {
+            stateCache.update(with: stateUpdate)
+        }
+        guard !awaitsPurgedHistoryState else {
+            return
+        }
+        let sessionState = GeckoSessionState(copying: stateCache)
+        if !sessionState.isEmpty {
+            progressDelegate?.onSessionStateChange(session: self, sessionState: sessionState)
+        }
+        guard stateUpdate["historychange"] != nil else {
+            return
+        }
+        historyDelegate?.onHistoryStateChange(session: self, sessionState: sessionState)
+        if previousHistoryCount > 1,
+           sessionState.history.count == 1 {
+            navigationDelegate?.onCanGoForward(session: self, canGoForward: false)
+            navigationDelegate?.onCanGoBack(session: self, canGoBack: false)
+        }
     }
     
     // Keyboard

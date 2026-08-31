@@ -367,6 +367,16 @@ final class SessionManager {
         return history.restoreState(for: tabID)
     }
     
+    func synchronizeNavigationHistory(
+        with sessionState: GeckoSessionState,
+        for tabID: UUID
+    ) -> Int? {
+        return history.synchronizeNavigationHistory(
+            with: sessionState,
+            for: tabID
+        )
+    }
+    
     func navigationAvailability(
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
@@ -376,6 +386,10 @@ final class SessionManager {
     
     func navigationHistory(for tabID: UUID) -> NavigationHistoryStore.Snapshot {
         return history.snapshot(for: tabID)
+    }
+    
+    func usesStoredNavigationHistory(for tabID: UUID) -> Bool {
+        return history.usesStoredHistory(for: tabID)
     }
     
     func recordNavigation(

@@ -36,6 +36,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private var pullToRefreshRecognizer: PullToRefreshGestureRecognizer?
     private var lastScrollState: (position: CGFloat, zoomScale: CGFloat)?
     private var currentScrollY: CGFloat = 0
+    private var awaitsScrollInteraction = true
     private var pageBackgroundTopConstraint: NSLayoutConstraint?
     private var pageBackgroundBottomConstraint: NSLayoutConstraint?
     
@@ -201,7 +202,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         guard webView.session !== tab?.session else {
             return
         }
-        lastScrollState = nil
+        resetScrollTracking()
         currentScrollY = 0
         refreshingSession = nil
         pullToRefreshRecognizer?.cancelPull()
@@ -215,6 +216,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func resetScrollTracking() {
         lastScrollState = nil
+        awaitsScrollInteraction = true
     }
     
     func showPageError(for url: String?) {
@@ -428,6 +430,7 @@ extension WebContentView: GeckoViewInteractionDelegate {
         scrollableEdges: GeckoScrollableEdges,
         overscrollAxes: GeckoOverscrollAxes
     ) {
+        awaitsScrollInteraction = false
         pullToRefreshRecognizer?.resolveInputSequence(PullInputResult(
             sequenceID: sequenceID,
             inputHandling: inputHandling,
@@ -439,6 +442,7 @@ extension WebContentView: GeckoViewInteractionDelegate {
     func touchSequenceDidEnd(_ sequenceID: UInt64) {}
     
     func trackpadScrollDidBegin(_ delta: CGPoint) {
+        awaitsScrollInteraction = false
         guard currentScrollY <= 0.5 else {
             return
         }
@@ -463,7 +467,8 @@ extension WebContentView: GeckoViewInteractionDelegate {
         defer {
             lastScrollState = currentState
         }
-        guard let previousState = lastScrollState,
+        guard !awaitsScrollInteraction,
+              let previousState = lastScrollState,
               currentState.zoomScale == previousState.zoomScale || currentState.zoomScale == 1 else {
             return
         }

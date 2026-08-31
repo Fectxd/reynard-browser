@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import GeckoView
 import UIKit
 
 final class NavigationHistory {
@@ -16,10 +17,7 @@ final class NavigationHistory {
     }
     
     func restoreState(for tabID: UUID) -> NavigationAvailability {
-        let state = store.currentState(for: tabID)
-        if state.canGoBack || state.canGoForward {
-            store.setUsesPersistedHistory(true, for: tabID)
-        }
+        store.restoreState(for: tabID)
         return availability(for: tabID, sessionState: .unavailable)
     }
     
@@ -35,13 +33,17 @@ final class NavigationHistory {
             )
         }
         return NavigationAvailability(
-            canGoBack: state.canGoBack || sessionState.canGoBack,
-            canGoForward: state.canGoForward || sessionState.canGoForward
+            canGoBack: sessionState.canGoBack,
+            canGoForward: sessionState.canGoForward
         )
     }
     
     func snapshot(for tabID: UUID) -> NavigationHistoryStore.Snapshot {
         store.currentSnapshot(for: tabID)
+    }
+    
+    func usesStoredHistory(for tabID: UUID) -> Bool {
+        return store.currentState(for: tabID).usesStoredHistory
     }
     
     func record(
@@ -59,13 +61,22 @@ final class NavigationHistory {
         return availability(for: tabID, sessionState: sessionState)
     }
     
+    func synchronizeNavigationHistory(
+        with sessionState: GeckoSessionState,
+        for tabID: UUID
+    ) -> Int? {
+        return store.synchronizeNavigationHistory(with: sessionState, for: tabID)
+    }
+    
     func goBack(
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
     ) -> NavigationTransition? {
         let state = store.currentState(for: tabID)
-        if !state.usesStoredHistory && sessionState.canGoBack {
-            _ = store.goBack(to: 0, for: tabID)
+        if !state.usesStoredHistory {
+            guard sessionState.canGoBack else {
+                return nil
+            }
             return NavigationTransition(
                 action: .session,
                 availability: availability(for: tabID, sessionState: sessionState)
@@ -87,6 +98,9 @@ final class NavigationHistory {
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
     ) -> NavigationTransition? {
+        guard store.currentState(for: tabID).usesStoredHistory else {
+            return nil
+        }
         guard let url = store.goBack(to: index, for: tabID) else {
             return nil
         }
@@ -102,8 +116,10 @@ final class NavigationHistory {
         sessionState: SessionNavigationAvailability
     ) -> NavigationTransition? {
         let state = store.currentState(for: tabID)
-        if !state.usesStoredHistory && sessionState.canGoForward {
-            _ = store.goForward(to: 0, for: tabID)
+        if !state.usesStoredHistory {
+            guard sessionState.canGoForward else {
+                return nil
+            }
             return NavigationTransition(
                 action: .session,
                 availability: availability(for: tabID, sessionState: sessionState)
@@ -125,6 +141,9 @@ final class NavigationHistory {
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
     ) -> NavigationTransition? {
+        guard store.currentState(for: tabID).usesStoredHistory else {
+            return nil
+        }
         guard let url = store.goForward(to: index, for: tabID) else {
             return nil
         }
