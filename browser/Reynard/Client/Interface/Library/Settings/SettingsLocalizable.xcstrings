@@ -1694,7 +1694,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "自動嘗試使用加密過的 HTTPS 通訊協定連線到網站，以增加安全性。"
+            "value" : "自動嘗試透過 HTTPS 加密通訊協定連線至網站，以提高安全性。"
           }
         }
       }
@@ -2782,13 +2782,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "清除通过重定向设置到已知跟踪网站的 Cookie。"
+            "value" : "清除在重定向至已知跟踪网站时设置的 Cookie。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "清除已知網站在重新導向時所設定的 Cookie。"
+            "value" : "清除重新導向至已知追蹤網站時所設定的 Cookie。"
           }
         }
       }
@@ -7458,7 +7458,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "只對隱私瀏覽分頁開啟"
+            "value" : "僅在隱私瀏覽分頁中啟用"
           }
         }
       }
@@ -7996,7 +7996,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "對所有分頁都開啟"
+            "value" : "在所有分頁中啟用"
           }
         }
       }
@@ -8450,13 +8450,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "启用数字指纹跟踪程序防护，有助于阻止可疑程序。"
+            "value" : "启用数字指纹跟踪防护，以拦截存疑的数字指纹跟踪程序。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開啟數位指紋追蹤程式保護，阻擋疑似是數位指紋追蹤程式的內容。"
+            "value" : "啟用數位指紋追蹤防護，以阻擋疑似的數位指紋追蹤程式。"
           }
         }
       }
@@ -9394,7 +9394,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "修正網站的主要問題"
+            "value" : "修正網站的重大問題"
           }
         }
       }
@@ -9800,7 +9800,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "修正網站的小問題"
+            "value" : "修正網站的輕微問題"
           }
         }
       }
@@ -12508,13 +12508,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "限制社交网络在网上跟踪您浏览活动的能力。"
+            "value" : "限制社交网络跨网站跟踪您的浏览活动。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "限制社群網站能在網路上追蹤您上網行為的能力。"
+            "value" : "限制社群網站跨網站追蹤您的瀏覽活動。"
           }
         }
       }
@@ -13106,7 +13106,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可能造成某些網站不正常"
+            "value" : "可能造成某些網站無法正常運作"
           }
         }
       }
@@ -13722,7 +13722,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅在隱私瀏覽分頁"
+            "value" : "僅在隱私瀏覽分頁中"
           }
         }
       }
@@ -14218,7 +14218,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "頁面可正常載入，但封鎖少一點追蹤器。"
+            "value" : "頁面會正常載入，但封鎖的追蹤器較少。"
           }
         }
       }
@@ -14792,7 +14792,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "防止有害指令碼使用您的裝置來為數位貨幣「採礦」。"
+            "value" : "防止惡意指令碼存取您的裝置以挖掘數位貨幣。"
           }
         }
       }
@@ -17004,7 +17004,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "停止加载包含跟踪代码的广告、视频和其他内容。可能会影响某些网站功能。"
+            "value" : "阻止加载含有跟踪代码的外部广告、视频及其他内容。这可能会影响网站的部分功能。"
           }
         },
         "zh-Hant" : {
@@ -17470,7 +17470,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "防止他人收集可用來追蹤您的裝置識別資料。"
+            "value" : "防止收集可唯一識別您裝置、並可用於追蹤的資料。"
           }
         }
       }
@@ -18582,13 +18582,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更强的跟踪保护与更快的性能，但可导致某些网站的运作不正常。"
+            "value" : "提供更强的跟踪保护和更快的浏览速度，但某些网站可能无法正常运行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更強大的追蹤保護功能與更快的效能，但某些網站會無法正常運作。"
+            "value" : "提供更強的追蹤保護及更快的瀏覽速度，但某些網站可能無法正常運作。"
           }
         }
       }
@@ -19066,7 +19066,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "疑似是數位指紋追蹤程式"
+            "value" : "疑似數位指紋追蹤程式"
           }
         }
       }
@@ -19544,13 +19544,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要求网站不共享和不出售我的数据"
+            "value" : "要求网站不要共享或出售我的数据"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "告訴網站不要銷售或分享我的資料"
+            "value" : "要求網站不要分享或銷售我的資料"
           }
         }
       }
@@ -20046,13 +20046,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“全方位 Cookie 保护”能够完全隔离每个网站的 Cookie，阻止像广告联盟等这类跟踪器借其跨站跟踪您。"
+            "value" : "“全方位 Cookie 保护”会将 Cookie 隔离在您当前访问的网站内，使广告网络等跟踪器无法利用这些 Cookie 跨站跟踪您。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "全方位 Cookie 保護功能會將 Cookie 隔離於您所在的網站當中，這樣廣告網所送出的追蹤器就無法透過 Cookie 在不同網站間追蹤您。"
+            "value" : "全方位 Cookie 保護會將 Cookie 隔離在您目前造訪的網站中，讓廣告網路等追蹤器無法利用這些 Cookie 跨網站追蹤您。"
           }
         }
       }
@@ -21266,7 +21266,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "會造成網站不正常"
+            "value" : "會造成網站無法正常運作"
           }
         }
       }
