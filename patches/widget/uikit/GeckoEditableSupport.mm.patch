@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..dc587f47a1df
+index 000000000000..24eeaa8bd3a6
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4253 @@
+@@ -0,0 +1,4250 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -583,9 +583,6 @@ index 000000000000..dc587f47a1df
 +@implementation ChildView (Shared)
 +
 +- (void)setupTextInput {
-+  self.inputAssistantItem.leadingBarButtonGroups = @[];
-+  self.inputAssistantItem.trailingBarButtonGroups = @[];
-+
 +  Protocol* textInputPrivateProtocol =
 +      NSProtocolFromString(@"UITextInputPrivate");
 +  MOZ_RELEASE_ASSERT(textInputPrivateProtocol);
