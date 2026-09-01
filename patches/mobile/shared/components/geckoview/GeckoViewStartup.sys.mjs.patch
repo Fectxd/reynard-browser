@@ -1,32 +1,23 @@
 diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-index 5b379ab1dab6..ac607ba2a167 100644
+index d58e0276979b..0169373cff32 100644
 --- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 +++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-@@ -178,6 +178,8 @@ export class GeckoViewStartup {
+@@ -178,6 +178,11 @@ export class GeckoViewStartup {
              "GeckoView:GetPermissionsByURI",
              "GeckoView:SetPermission",
              "GeckoView:SetPermissionByURI",
 +            "GeckoView:RemovePermission",
 +            "GeckoView:RemovePermissionByURI",
-             "GeckoView:GetCookieBannerModeForDomain",
-             "GeckoView:SetCookieBannerModeForDomain",
-             "GeckoView:RemoveCookieBannerModeForDomain",
-@@ -324,18 +326,22 @@ export class GeckoViewStartup {
++            "GeckoView:GetCookieBannerModeForDomain",
++            "GeckoView:SetCookieBannerModeForDomain",
++            "GeckoView:RemoveCookieBannerModeForDomain",
+           ],
+         });
+ 
+@@ -336,6 +341,23 @@ export class GeckoViewStartup {
            ged: ["GeckoView:Autofill:GetAddressStructure"],
          });
  
--        // We don't register this using the LazyGetter because it needs to be ready before
--        // the first call to the listener is received.
--        lazy.EventDispatcher.instance.registerListener(
--          lazy.GeckoViewPreferences,
--          [
--            "GeckoView:Preferences:GetPref",
--            "GeckoView:Preferences:SetPref",
--            "GeckoView:Preferences:ClearPref",
--            "GeckoView:Preferences:RegisterObserver",
--            "GeckoView:Preferences:UnregisterObserver",
--          ]
--        );
 +        if (
 +          Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT
 +        ) {
@@ -43,6 +34,7 @@ index 5b379ab1dab6..ac607ba2a167 100644
 +            ]
 +          );
 +        }
- 
++
          break;
        }
+ 

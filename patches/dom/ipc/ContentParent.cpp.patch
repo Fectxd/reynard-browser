@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
-index 8262327fe93b..00e3ec40611c 100644
+index 21a9c93a1325..be168c76b0eb 100644
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
-@@ -3035,14 +3035,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
+@@ -3020,14 +3020,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -20,7 +20,7 @@ index 8262327fe93b..00e3ec40611c 100644
    } else {
      // This can fail if we've already started shutting down the compositor
      // thread. See Bug 1562763 comment 8. On Android this can fail we are are
-@@ -3221,16 +3222,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
+@@ -3199,16 +3200,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -40,7 +40,7 @@ index 8262327fe93b..00e3ec40611c 100644
  }
  
  void ContentParent::OnCompositorDeviceReset() {
-@@ -3986,9 +3988,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
+@@ -3964,9 +3966,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
  
    // listening for memory pressure event
    if (!strcmp(aTopic, "memory-pressure")) {
@@ -58,7 +58,7 @@ index 8262327fe93b..00e3ec40611c 100644
    } else if (!strcmp(aTopic, "application-background")) {
      (void)SendApplicationBackground();
    } else if (!strcmp(aTopic, "application-foreground")) {
-@@ -8030,6 +8039,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
+@@ -8224,6 +8233,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
  }
  #endif
  
@@ -74,5 +74,5 @@ index 8262327fe93b..00e3ec40611c 100644
 +}
 +
  nsCString ThreadsafeContentParentHandle::GetRemoteType() {
-   RecursiveMutexAutoLock lock(mMutex);
-   return mRemoteType;
+   return mLoadedOrigins->GetRemoteType();
+ }

@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/CoreTextFontList.cpp b/gfx/thebes/CoreTextFontList.cpp
-index 459abdb76f37..c1b824d086a0 100644
+index 5d6b500ae028..b09f771bb359 100644
 --- a/gfx/thebes/CoreTextFontList.cpp
 +++ b/gfx/thebes/CoreTextFontList.cpp
 @@ -352,6 +352,12 @@ nsresult CTFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
@@ -61,11 +61,11 @@ index 459abdb76f37..c1b824d086a0 100644
 +}
 +
  CTFontEntry::CTFontEntry(const nsACString& aPostscriptName, CGFontRef aFontRef,
-                          WeightRange aWeight, StretchRange aStretch,
+                          WeightRange aWeight, WidthRange aWidth,
                           SlantStyleRange aStyle, bool aIsDataUserFont,
 @@ -481,9 +519,26 @@ gfxFontEntry* CTFontEntry::Clone() const {
    fe->mStyleRange = mStyleRange;
-   fe->mStretchRange = mStretchRange;
+   fe->mWidthRange = mWidthRange;
    fe->mFixedPitch = mFixedPitch;
 +  // Preserve the retained CoreText descriptor when cloning a system
 +  // font entry so descriptor-based recreation stays available.
@@ -90,7 +90,7 @@ index 459abdb76f37..c1b824d086a0 100644
  CGFontRef CTFontEntry::GetFontRef() {
    {
      AutoReadLock lock(mLock);
-@@ -919,7 +974,7 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -918,7 +973,7 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
    AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("CTFontFamily::FindStyleVariations",
                                          LAYOUT, mName);
  
@@ -99,7 +99,7 @@ index 459abdb76f37..c1b824d086a0 100644
      MOZ_ASSERT(gfxPlatform::HasVariationFontSupport());
  
      auto addToFamily = [&](CTFontRef aFont) MOZ_REQUIRES(mLock) {
-@@ -929,8 +984,14 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -928,8 +983,14 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
        GetStringForCFString(psName, nameUTF16);
        CopyUTF16toUTF8(nameUTF16, nameUTF8);
  
@@ -114,7 +114,7 @@ index 459abdb76f37..c1b824d086a0 100644
  
        // Set the appropriate style, assuming it may not have a variation range.
        CTFontSymbolicTraits traits = CTFontGetSymbolicTraits(aFont);
-@@ -943,17 +1004,18 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -942,17 +1003,18 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
        AddFontEntryLocked(fe);
      };
  
@@ -141,7 +141,7 @@ index 459abdb76f37..c1b824d086a0 100644
  
      SetHasStyles(true);
  
-@@ -1406,6 +1468,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
+@@ -1405,6 +1467,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
            }
          }
        }
@@ -164,7 +164,7 @@ index 459abdb76f37..c1b824d086a0 100644
      }
    }
  
-@@ -1903,7 +1981,9 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1899,7 +1977,9 @@ void CoreTextFontList::InitSystemFontNames() {
    // shared fontlist to manage "normal" fonts, because the hidden system fonts
    // may be excluded from the font list altogether. This family will be
    // populated based on the given NSFont.
@@ -175,7 +175,7 @@ index 459abdb76f37..c1b824d086a0 100644
    if (fam) {
      nsAutoCString key;
      GenerateFontListKey(mSystemFontFamilyName, key);
-@@ -1914,14 +1994,10 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1910,14 +1990,10 @@ void CoreTextFontList::InitSystemFontNames() {
  FontFamily CoreTextFontList::GetDefaultFontForPlatform(
      FontVisibilityProvider* aFontVisibilityProvider, const gfxFontStyle* aStyle,
      nsAtom* aLanguage) {

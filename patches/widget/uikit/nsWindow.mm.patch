@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index ba3fc1051a01..0a0ff1fc5a0c 100644
+index ba3fc1051a01..025eedd58080 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
 @@ -11,7 +11,6 @@
@@ -876,15 +876,15 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
 +}
 +
 +// Focus and input
-+
-+void nsWindow::SetFocus(Raise, mozilla::dom::CallerType) {
-+  [[mNativeView window] makeKeyWindow];
-+  [mNativeView becomeFirstResponder];
-+}
  
 -  if (!mParent && mNativeView.window) {
 -    // convert to screen coords
 -    temp = [mNativeView.window convertPoint:temp toWindow:nil];
++void nsWindow::SetFocus(Raise, mozilla::dom::CallerType) {
++  [[mNativeView window] makeKeyWindow];
++  [mNativeView becomeFirstResponder];
++}
++
 +bool nsWindow::FocusForHardwareKeyboard() {
 +  if (!mNativeView || ![mNativeView window]) {
 +    return false;
@@ -979,7 +979,8 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
 +    [mNativeView scheduleResponderBlur];
 +    return;
 +  }
-+
+ 
+-  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
 +  // Existing first-responder ownership may be hardware-only. Software keyboard
 +  // authorization is tracked separately by mSoftwareKeyboardSuppressed.
 +  const bool shouldBecomeFirstResponder =
@@ -992,8 +993,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
 +      aContext.IsPasswordEditor() &&
 +      (aAction.mFocusChange == InputContextAction::GOT_FOCUS ||
 +       mNativeView->mEditable.mWaitingForPasswordAutofillFocus);
- 
--  if (aAction.UserMightRequestOpenVKB() || changingEnabledState) {
++
 +  if (shouldWaitForPasswordAutofillFocus) {
 +    mNativeView->mEditable.mWaitingForPasswordAutofillFocus = YES;
 +  } else if (shouldBecomeFirstResponder) {
@@ -1096,7 +1096,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  int32_t nsWindow::RoundsWidgetCoordinatesTo() {
    if (BackingScaleFactor() == 2.0) {
      return 2;
-@@ -1117,10 +1378,156 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1117,10 +1378,158 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return 1;
  }
  
@@ -1119,17 +1119,19 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
 +  }
 +}
 +
-+void nsWindow::NotifyCompositorScrollUpdate(
-+    const CompositorScrollUpdate& aUpdate) {
++void nsWindow::NotifyCompositorScrollUpdates(
++    const nsTArray<CompositorScrollUpdate>& aUpdates) {
 +  if (!mNativeView) {
 +    return;
 +  }
 +
-+  [mNativeView->mTouchSupport
-+      compositorScrollPositionDidChange:aUpdate.mMetrics.mVisualScrollOffset.y *
-+                                        aUpdate.mMetrics.mZoom.scale /
-+                                        BackingScaleFactor()
-+                                   zoom:aUpdate.mMetrics.mZoom.scale];
++  for (const auto& update : aUpdates) {
++    [mNativeView->mTouchSupport
++        compositorScrollPositionDidChange:update.mMetrics.mVisualScrollOffset.y *
++                                          update.mMetrics.mZoom.scale /
++                                          BackingScaleFactor()
++                                     zoom:update.mMetrics.mZoom.scale];
++  }
 +}
 +
 +void nsWindow::UpdateDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
@@ -1253,7 +1255,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  void nsWindow::HandleMainThreadCATransaction() {
    // Trigger a synchronous OMTC composite. This will call NextSurface and
    // NotifySurfaceReady on the compositor thread to update mNativeLayerRoot's
-@@ -1198,6 +1605,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1198,6 +1607,8 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    }
  }
  
@@ -1262,7 +1264,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  EventDispatcher* nsWindow::GetEventDispatcher() const {
    if (mIOSView) {
      return mIOSView->mEventDispatcher;
-@@ -1205,28 +1614,131 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1205,28 +1616,131 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return nullptr;
  }
  
@@ -1408,7 +1410,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
  
  nsresult IOSView::GetInitData(JSContext* aCx,
-@@ -1247,6 +1759,52 @@ - (UIView*)view {
+@@ -1247,6 +1761,52 @@ - (UIView*)view {
    return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
  }
  
@@ -1461,7 +1463,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1260,6 +1818,10 @@ - (void)close {
+@@ -1260,6 +1820,10 @@ - (void)close {
      mOuterWindow = nullptr;
    }
  }
@@ -1472,7 +1474,7 @@ index ba3fc1051a01..0a0ff1fc5a0c 100644
  @end
  
  id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
-@@ -1302,6 +1864,7 @@ - (void)close {
+@@ -1302,6 +1866,7 @@ - (void)close {
    MOZ_ASSERT(window);
  
    window->SetIOSView(iosView.forget());

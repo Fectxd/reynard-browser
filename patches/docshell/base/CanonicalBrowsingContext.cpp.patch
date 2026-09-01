@@ -1,8 +1,8 @@
 diff --git a/docshell/base/CanonicalBrowsingContext.cpp b/docshell/base/CanonicalBrowsingContext.cpp
-index 1d0b9fec6ed9..c37d74cd0124 100644
+index 4a2127ed9b7e..a9a60408f36e 100644
 --- a/docshell/base/CanonicalBrowsingContext.cpp
 +++ b/docshell/base/CanonicalBrowsingContext.cpp
-@@ -319,6 +319,10 @@ void CanonicalBrowsingContext::ReplacedBy(
+@@ -332,6 +332,10 @@ void CanonicalBrowsingContext::ReplacedBy(
    txn.SetAllowJavascript(GetAllowJavascript());
    txn.SetForceEnableTrackingProtection(GetForceEnableTrackingProtection());
    txn.SetUserAgentOverride(GetUserAgentOverride());

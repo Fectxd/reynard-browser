@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 09dd4921f4d8..281bd938ca21 100644
+index f45971a4ec0f..4c9eca31645d 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
 @@ -45,6 +45,7 @@
@@ -10,7 +10,7 @@ index 09dd4921f4d8..281bd938ca21 100644
  #include "mozilla/layers/CompositorThread.h"
  #include "mozilla/layers/ISurfaceAllocator.h"  // for GfxMemoryImageReporter
  #include "mozilla/layers/ImageBridgeChild.h"
-@@ -418,7 +419,22 @@ void gfxPlatform::OnMemoryPressure(layers::MemoryPressureReason aWhy) {
+@@ -416,7 +417,22 @@ void gfxPlatform::OnMemoryPressure(layers::MemoryPressureReason aWhy) {
    gfxGradientCache::PurgeAllCaches();
    gfxFontMissingGlyphs::Purge();
    PurgeSkiaFontCache();
@@ -33,7 +33,7 @@ index 09dd4921f4d8..281bd938ca21 100644
      layers::CompositorManagerChild* manager =
          CompositorManagerChild::GetInstance();
      if (manager) {
-@@ -3407,7 +3423,7 @@ void gfxPlatform::InitWebGPUConfig() {
+@@ -3385,7 +3401,7 @@ void gfxPlatform::InitWebGPUConfig() {
      featureExternalTexture.Disable(FeatureStatus::Blocklisted, message.get(),
                                     failureId);
    }

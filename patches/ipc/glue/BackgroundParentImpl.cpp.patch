@@ -1,8 +1,8 @@
 diff --git a/ipc/glue/BackgroundParentImpl.cpp b/ipc/glue/BackgroundParentImpl.cpp
-index 8007cd47341b..f53b2e08e9d5 100644
+index 557028d80977..fd0578fda38e 100644
 --- a/ipc/glue/BackgroundParentImpl.cpp
 +++ b/ipc/glue/BackgroundParentImpl.cpp
-@@ -1455,10 +1455,11 @@ BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(
+@@ -1482,10 +1482,11 @@ BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(
  }
  
  mozilla::ipc::IPCResult BackgroundParentImpl::RecvRequestCameraAccess(

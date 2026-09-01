@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/SurfacePoolCA.mm b/gfx/layers/SurfacePoolCA.mm
-index fcb0369a878c..51008cf1bba8 100644
+index b7f824686b4d..f48737454fe5 100644
 --- a/gfx/layers/SurfacePoolCA.mm
 +++ b/gfx/layers/SurfacePoolCA.mm
 @@ -250,6 +250,13 @@

@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/SharedFontList.cpp b/gfx/thebes/SharedFontList.cpp
-index 5aa667a0323e..32ac8b218cae 100644
+index 1f3bd63aa5fc..b87531792bd4 100644
 --- a/gfx/thebes/SharedFontList.cpp
 +++ b/gfx/thebes/SharedFontList.cpp
 @@ -501,6 +501,8 @@ Face* Family::FindFaceForStyle(FontList* aList, const gfxFontStyle& aStyle,

@@ -1,5 +1,5 @@
 diff --git a/js/src/jit/Ion.cpp b/js/src/jit/Ion.cpp
-index 8ce4e69c76ee..a250012d8f81 100644
+index b13f3106719f..c7f1f0f9e94c 100644
 --- a/js/src/jit/Ion.cpp
 +++ b/js/src/jit/Ion.cpp
 @@ -45,6 +45,7 @@
@@ -23,7 +23,7 @@ index 8ce4e69c76ee..a250012d8f81 100644
    PerfSpewerRangeRecorder rangeRecorder(masm);
  
    Label bailoutTail;
-@@ -593,16 +598,21 @@ template JitCode* JitCode::New<NoGC>(JSContext* cx, uint8_t* code,
+@@ -608,16 +613,21 @@ template JitCode* JitCode::New<NoGC>(JSContext* cx, uint8_t* code,
  void JitCode::copyFrom(MacroAssembler& masm) {
    // Store the JitCode pointer in the JitCodeHeader so we can recover the
    // gcthing from relocation tables.

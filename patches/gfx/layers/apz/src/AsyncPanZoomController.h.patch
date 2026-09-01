@@ -1,8 +1,8 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.h b/gfx/layers/apz/src/AsyncPanZoomController.h
-index 6801a0eee4af..69721e941dc5 100644
+index 7e922201775f..fadd4c7ef2d0 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.h
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.h
-@@ -1944,6 +1944,7 @@ class AsyncPanZoomController {
+@@ -1963,6 +1963,7 @@ class AsyncPanZoomController {
   private:
    // The timestamp of the latest touch start event.
    TimeStamp mTouchStartTime;

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-index 15d4ea258fbb..2c6bce0d9aa0 100644
+index 1098039b4217..6b76822ee344 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
 @@ -2810,6 +2810,7 @@ nsEventStatus AsyncPanZoomController::OnPanMayBegin(
