@@ -21,6 +21,7 @@ protocol SessionManagerPictureInPictureHandler: AnyObject {
 final class SessionManager {
     private let sessionSettings: SessionSettingsManager
     private let history: NavigationHistory
+    private let tabStore: TabManagementStore
     private let permissionStore: SitePermissionStore
     let universalLinkManager = UniversalLinkManager()
     let trackingProtection: TrackingProtectionManager
@@ -29,6 +30,7 @@ final class SessionManager {
     private var pageBackgroundColors: [ObjectIdentifier: UIColor] = [:]
     private var isApplicationForeground = true
     private(set) var isApplicationActive = true
+    private var sessionStateBackgroundTask = UIBackgroundTaskIdentifier.invalid
     private weak var pictureInPictureSession: GeckoSession?
     private var pendingSessionCleanup: (
         session: GeckoSession,
@@ -49,11 +51,13 @@ final class SessionManager {
     init(
         sessionSettings: SessionSettingsManager = SessionSettingsManager(),
         history: NavigationHistory = NavigationHistory(),
+        tabStore: TabManagementStore = .shared,
         permissionStore: SitePermissionStore = .shared,
         trackingProtection: TrackingProtectionManager = TrackingProtectionManager()
     ) {
         self.sessionSettings = sessionSettings
         self.history = history
+        self.tabStore = tabStore
         self.permissionStore = permissionStore
         self.trackingProtection = trackingProtection
     }
@@ -157,11 +161,50 @@ final class SessionManager {
         history.flushPendingWrites()
         isApplicationActive = false
         applicationStateObserver?.sessionManagerWillResignActive(self)
+        persistSessionState()
     }
     
     func applicationDidBecomeActive() {
         isApplicationActive = true
         applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
+    }
+    
+    // MARK: - Session State Persistence
+    
+    private func persistSessionState() {
+        guard sessionStateBackgroundTask == .invalid else {
+            return
+        }
+        let sessions = Array(sessionsRequestedActive.values)
+        sessionStateBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Session State Persistence"
+        ) { [weak self] in
+            self?.endSessionStateBackgroundTask()
+        }
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            defer {
+                endSessionStateBackgroundTask()
+            }
+            do {
+                for session in sessions where session.isOpen() {
+                    try await session.flushSessionState()
+                }
+                tabStore.flushPendingWrites()
+            } catch {
+                NSLog("Failed to persist session state before suspension: %@", "\(error)")
+            }
+        }
+    }
+    
+    private func endSessionStateBackgroundTask() {
+        guard sessionStateBackgroundTask != .invalid else {
+            return
+        }
+        UIApplication.shared.endBackgroundTask(sessionStateBackgroundTask)
+        sessionStateBackgroundTask = .invalid
     }
     
     // MARK: - External Responses

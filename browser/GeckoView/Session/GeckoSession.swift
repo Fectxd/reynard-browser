@@ -403,6 +403,10 @@ public class GeckoSession {
         dispatcher.dispatch(type: "GeckoView:FlushSessionState")
     }
     
+    public func flushSessionState() async throws {
+        _ = try await dispatcher.query(type: "GeckoView:FlushSessionState")
+    }
+    
     public func restoreState(_ state: GeckoSessionState) {
         awaitsPurgedHistoryState = false
         stateCache.replace(with: state)

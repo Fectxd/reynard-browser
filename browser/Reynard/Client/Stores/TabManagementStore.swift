@@ -205,6 +205,10 @@ final class TabManagementStore {
         }
     }
     
+    func flushPendingWrites() {
+        stateQueue.sync {}
+    }
+    
     func persistLastOverview(_ lastTabOverview: LastTabOverview) {
         stateQueue.async {
             let state = self.persistedStateLocked()
