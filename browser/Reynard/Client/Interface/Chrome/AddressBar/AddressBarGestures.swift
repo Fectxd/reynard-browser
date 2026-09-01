@@ -469,6 +469,7 @@ final class AddressBarGestures: NSObject {
         let shouldCreateNewTab = delegate.chromeMode == .phone
         && horizontalTargetIndex == nil
         && delegate.selectedTabIndex == delegate.activeTabs.count - 1
+        && delegate.activeTabs[safe: delegate.selectedTabIndex]?.url != nil
         && horizontalDirection == 1
         && (passedDistanceThreshold || velocityX < -UX.addressBarTabSwitchVelocityThreshold)
         
