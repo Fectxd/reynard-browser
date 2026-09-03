@@ -152,6 +152,7 @@ final class AddressBar: UIView {
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.addressBarBackgroundCornerRadius
         view.layer.borderWidth = UX.borderWidth
+        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
         return view
     }()
     
@@ -255,7 +256,6 @@ final class AddressBar: UIView {
         configureConstraints()
         configureTargets()
         configureObservers()
-        updateBorderColor()
         applyState()
     }
     
@@ -292,8 +292,6 @@ final class AddressBar: UIView {
         guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
             return
         }
-        
-        updateBorderColor()
     }
     
     // MARK: - Configuration
@@ -542,17 +540,11 @@ final class AddressBar: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         clipsToBounds = false
-        addressBarBackground.layer.shadowColor = traitCollection.userInterfaceStyle == .dark
-        ? UIColor.white.withAlphaComponent(UX.addressBarBackgroundDarkModeShadowAlpha).cgColor
-        : UIColor.black.cgColor
+        addressBarBackground.layer.shadowColor = UIColor.black.cgColor
         addressBarBackground.layer.shadowOpacity = UX.addressBarBackgroundShadowOpacity
         addressBarBackground.layer.shadowRadius = UX.addressBarBackgroundShadowRadius
         addressBarBackground.layer.shadowOffset = UX.addressBarBackgroundShadowOffset
         addressBarBackground.layer.masksToBounds = false
-    }
-    
-    private func updateBorderColor() {
-        addressBarBorder.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
     }
     
     private func configureHierarchy() {

@@ -36,6 +36,7 @@ final class AddressBarGestures: NSObject {
         static let addressBarAutomaticNewTabTranslationRatio: CGFloat = 0.34
         static let addressBarPreviewOutsidePadding: CGFloat = 24
         static let addressBarPreviewCornerRadius: CGFloat = 22
+        static let addressBarPreviewBorderWidth: CGFloat = 0.5
         static let addressBarPreviewShadowOpacity: Float = 0.18
         static let addressBarPreviewShadowRadius: CGFloat = 14
         static let addressBarPreviewShadowOffset = CGSize(width: 0, height: 2)
@@ -254,6 +255,8 @@ final class AddressBarGestures: NSObject {
         }
         container.layer.cornerRadius = UX.addressBarPreviewCornerRadius
         container.layer.cornerCurve = .continuous
+        container.layer.borderWidth = UX.addressBarPreviewBorderWidth
+        container.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
         container.layer.shadowColor = UIColor.black.cgColor
         container.layer.shadowOpacity = UX.addressBarPreviewShadowOpacity
         container.layer.shadowRadius = UX.addressBarPreviewShadowRadius
