@@ -6925,6 +6925,950 @@
         }
       }
     },
+    "DNS over HTTPS" : {
+      "localizations" : {
+        "am" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS በ HTTPS ላይ"
+          }
+        },
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS عبر HTTPS"
+          }
+        },
+        "be" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS праз HTTPS"
+          }
+        },
+        "bg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS през HTTPS"
+          }
+        },
+        "bqi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "دی ان اس ری HTTPS"
+          }
+        },
+        "br" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS a-raok HTTPS"
+          }
+        },
+        "bs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS preko HTTPS-a"
+          }
+        },
+        "ca" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "cak" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS chi rij HTTPS"
+          }
+        },
+        "co" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sopra HTTPS"
+          }
+        },
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "cy" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Dros HTTPS"
+          }
+        },
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS via HTTPS"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Over HTTPS"
+          }
+        },
+        "dsb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS pśez HTTPS"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS μέσω HTTPS"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "en-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "eo" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS per HTTPS"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "es-AR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "es-CL" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "es-ES" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS üle HTTPS-i"
+          }
+        },
+        "eu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS gaineko DNSa"
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ساناد روی HTTPS"
+          }
+        },
+        "fi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS HTTPS:n kautta"
+          }
+        },
+        "fil" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Over HTTPS"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS via HTTPS"
+          }
+        },
+        "fur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sore HTTPS"
+          }
+        },
+        "fy-NL" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS oer HTTPS"
+          }
+        },
+        "gd" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS thar HTTPS"
+          }
+        },
+        "gl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "gn" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS HTTPS rehegua"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS על גבי HTTPS"
+          }
+        },
+        "hr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS preko HTTPS-a"
+          }
+        },
+        "hsb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS přez HTTPS"
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS feletti DNS"
+          }
+        },
+        "hy-AM" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS-ը HTTPS-ի միջով"
+          }
+        },
+        "ia" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Super HTTPS"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Di Atas HTTPS"
+          }
+        },
+        "is" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS yfir HTTPS"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS su HTTPS"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "ka" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS-მოთხოვნა HTTPS-ით"
+          }
+        },
+        "kab" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS nnig n HTTPS"
+          }
+        },
+        "kk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS арқылы DNS"
+          }
+        },
+        "ku" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS li ser HTTPS"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Over HTTPS"
+          }
+        },
+        "lo" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS ຜ່ານ HTTPS"
+          }
+        },
+        "ml" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS മീതെ DNS"
+          }
+        },
+        "nb-NO" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS-over-HTTPS"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS"
+          }
+        },
+        "nn-NO" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS-over-HTTPS"
+          }
+        },
+        "oc" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS via HTTPS"
+          }
+        },
+        "pa-Guru-IN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS ਉੱਤੇ DNS"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS poprzez HTTPS"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS sobre HTTPS"
+          }
+        },
+        "rm" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS via HTTPS"
+          }
+        },
+        "ro" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS prin HTTPS"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS через HTTPS"
+          }
+        },
+        "sat" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS ᱪᱮᱛᱟᱱ ᱨᱮ DNS"
+          }
+        },
+        "sc" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS pro mèdiu de HTTPS"
+          }
+        },
+        "scn" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS ncapu a HTTPS"
+          }
+        },
+        "sk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS cez HTTPS"
+          }
+        },
+        "sl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS prek HTTPS"
+          }
+        },
+        "sq" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Përmes HTTPS-je"
+          }
+        },
+        "sr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS преко HTTPS-а"
+          }
+        },
+        "sv-SE" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS över HTTPS"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«DNS» тавассути «HTTPS»"
+          }
+        },
+        "th" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Over HTTPS"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS üzerinden DNS"
+          }
+        },
+        "ug" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS ئاساسىدىكى DNS"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS через HTTPS"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS qua HTTPS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于 HTTPS 的 DNS"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS Over HTTPS"
+          }
+        }
+      }
+    },
+    "Domain Name System (DNS) over HTTPS sends your request for a domain name through an encrypted connection, providing a secure DNS and making it harder for others to see which website you're about to access." : {
+      "localizations" : {
+        "am" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "የጎራ ስም ስርዓት (DNS) በ HTTPS ላይ የእርስዎን ጥያቄ የጎራ ስም በተመሳጠረ ግንኙነት ይልካል፣ ደህንነቱ የተጠበቀ DNS ያቀርባል እና የትኛውን ድህረ ገጽ መድረስ እንዳለብዎ ለሌሎች ለማየት አስቸጋሪ ያደርገዋል።"
+          }
+        },
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يقوم نظام أسماء النطاقات (DNS) عبر HTTPS بإرسال طلبك لاسم النطاق من خلال اتصال مشفر، مما يوفر نظام DNS آمنًا ويجعل من الصعب على الآخرين معرفة الموقع الإلكتروني الذي أنت على وشك زيارته."
+          }
+        },
+        "bg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Системата за имена на домейни (DNS) през HTTPS изпраща вашата заявка за име на домейн чрез шифрована връзка, осигурявайки сигурен DNS и правейки по-трудно за другите да видят до кой сайт сте на достъп."
+          }
+        },
+        "bqi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سامانه نوم دامنه یا (DNS) ری HTTPS درخاستا ایسا سی ی نوم دامنه ن ز بارت ی ارتبات رزم ناهاڌه بیڌه افشنه ک ای کار ایمنی DNS ن قلوه اکونه وو نؽله ک دیرووݩ ترسته بۊن بفهمن چ وبگهی ن اخۊین بنیرین، چیناکه ای کار سیسووݩ سخت تر ابۊ."
+          }
+        },
+        "bs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistem imena domena (DNS) preko HTTPS-a šalje vaš zahtjev za ime domene putem šifrovane veze, pružajući siguran DNS i otežavajući drugima da vide kojoj web stranici ćete pristupiti."
+          }
+        },
+        "ca" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sistema de noms de domini (DNS) sobre HTTPS envia la vostra sol·licitud d’un nom de domini mitjançant una connexió xifrada, proporcionant un DNS segur i dificultant que els altres vegin a quin lloc web esteu a punt d’accedir."
+          }
+        },
+        "cak" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ri ruq'inoj kib'i' dominio (DNS) rik'in ri HTTP yerutäq taq ruk'utuj jun rub'i' dominio rik'in jun ewan rusik'ixik okem, akuchi' nuya' jun jikïl DNS chuqa' nub'än chi ch'aqa' chik k'ayew nikitz'ët achike ajk'am ruxaq nrajo' nok."
+          }
+        },
+        "co" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "U sistema di nome di duminiu (DNS) sopra HTTPS manda a vostra richiesta di nome di duminiu attraversu una cunnessione cifrata, pruvidendu un DNS sicuru per rende più difficiule a scuperta di quellu situ web chì vo state per accede."
+          }
+        },
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systém DNS (Domain Name System) přes HTTPS odesílá váš požadavek na název domény prostřednictvím šifrovaného připojení, čímž zajišťuje bezpečný systém DNS a znemožňuje ostatním zjistit, na kterou webovou stránku se chystáte vstoupit."
+          }
+        },
+        "cy" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mae System Enw Parth (DNS) dros HTTPS yn anfon eich cais am enw parth trwy gysylltiad wedi'i amgryptio, gan ddarparu DNS diogel a'i gwneud hi'n anoddach i eraill weld pa wefan rydych chi ar fin ei chyrchu."
+          }
+        },
+        "da" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) via HTTPS sender din forespørgsel efter et domænenavn over en krypteret forbindelse for at sikre DNS og gøre det sværere for andre at se, hvilket websted du skal til at besøge."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) über HTTPS sendet Ihre Anfrage für einen Domainnamen über eine verschlüsselte Verbindung, wodurch ein sicheres DNS bereitgestellt wird. Dies erschwert es anderen, zu sehen, welche Website Sie gerade besuchen."
+          }
+        },
+        "dsb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System domenowych mjenjow (DNS) pśez HTTPS waše napšašowanje za domenowym mjenim pśez skoděrowane zwisk sćelo, staja wěsty DNS k dispoziciji a póśěžujo drugim wósobam wiźeś, ku kótarym websedłam se wóglědujośo."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το DNS (Domain Name System) μέσω HTTPS στέλνει το αίτημά σας για όνομα τομέα μέσω κρυπτογραφημένης σύνδεσης, παρέχοντας ένα ασφαλές DNS και δυσκολεύοντας τους άλλους να δουν σε ποιον ιστότοπο πρόκειται να αποκτήσετε πρόσβαση."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS sends your request for a domain name through an encrypted connection, providing a secure DNS and making it harder for others to see which website you’re about to access."
+          }
+        },
+        "en-CA" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS sends your request for a domain name through an encrypted connection, providing a secure DNS and making it harder for others to see which website you’re about to access."
+          }
+        },
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS sends your request for a domain name through an encrypted connection, providing a secure DNS and making it harder for others to see which web site you’re about to access."
+          }
+        },
+        "eo" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nomregna sistemo (DNS) tra HTTPS sendas vian peton por nomregna nomo tra ĉifrita konekto, kio provizas pli sekuran DNS kaj malhelpas al aliaj vidi, kiun retejon vi pretas aliri."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sistema de nombres de dominio (DNS) a través de HTTPS envía la solicitud de un nombre de dominio a través de una conexión cifrada, lo que proporciona un DNS seguro y dificulta que otros vean a qué sitio web estás a punto de acceder."
+          }
+        },
+        "es-AR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sistema de nombres de dominio (DNS) sobre HTTPS envía los pedidos de un nombre de dominio a través de una conexión cifrada, proporcionando un DNS seguro y haciendo más difícil que otros vean que sitio web está tratando de acceder."
+          }
+        },
+        "es-CL" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El Sistema de nombres de dominio (DNS) a través de HTTPS envía tu solicitud de un nombre de dominio a través de una conexión cifrada, lo que entrega un DNS seguro y dificulta que otros vean a qué sitio web estás a punto de acceder."
+          }
+        },
+        "es-ES" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sistema de nombres de dominio (DNS) a través de HTTPS envía la solicitud de un nombre de dominio a través de una conexión cifrada, lo que proporciona un DNS seguro y dificulta que otros vean a qué sitio web estás a punto de acceder."
+          }
+        },
+        "es-MX" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El sistema de nombres de dominio (DNS) a través de HTTPS envía las solicitudes de nombres de dominio mediante una conexión cifrada; esto proporciona un DNS seguro y dificulta que terceros vean qué sitios web se visitarán."
+          }
+        },
+        "et" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domeeninimesüsteem (DNS) üle HTTPS-i saadab domeeninime päringu krüpteeritud ühenduse kaudu, pakkudes turvalist DNS-i ja raskendades teistel nägemast, millisele veebisaidile minna proovid."
+          }
+        },
+        "eu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS gaineko DNSak domeinu-izenerako zure eskaera zifratutako konexio bidez bidaltzen du, DNS segurua hornituz eta zailagoa eginez beste inork jakitea zein den bisitatu behar duzun webgunea."
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سامانهٔ نام دامنه یا ساناد (DNS) روی HTTPS درخواست‌های شما برای یک نام دامنه را از طریق یک ارتباط رمزنگاری‌شده ارسال می‌کند که این کار باعث افزایش ایمنی ساناد شده و این امکان را که دیگران بتوانند بفهمند چه وبگاهی را می‌خواهید ببینید دشوارتر می‌کند."
+          }
+        },
+        "fi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS (Domain Name System eli nimipalvelujärjestelmä) HTTPS:n kautta lähettää verkkotunnuksen nimeä koskevan pyyntösi salatun yhteyden kautta, tarjoten suojatun DNS:n ja vaikeuttaen muiden nähdä, mihin verkkosivustoon olet siirtymässä."
+          }
+        },
+        "fil" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ipinapadala ng Domain Name System (DNS) over HTTPS ang iyong request para sa domain name sa isang encrypted na koneksyon, na nagbibigay ng secure DNS at ginagawang mas mahirap sa iba para makita kung ano ang website na ia-access mo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le système de nom de domaine (DNS) via HTTPS envoie votre demande de résolution d’un nom de domaine à travers une connexion chiffrée, procurant un DNS sécurisé pour compliquer la tâche de tiers qui tenteraient de découvrir le site web sur lequel vous allez vous rendre."
+          }
+        },
+        "fur" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il sisteme di risoluzion dai nons di domini (DNS) sore HTTPS al invie lis richiestis pai nons di domini a traviers di une conession cifrade, furnint un DNS sigûr e fasint in mût che al sedi plui dificil scuvierzi i sîts web che tu stâs par visitâ."
+          }
+        },
+        "fy-NL" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) oer HTTPS ferstjoert jo oanfraach foar in domeinnamme fia in fersifere ferbining, wêrtroch in feilige DNS jûn wurdt en it foar oaren dreger wurdt om te sjen hokker website jo besykje gean."
+          }
+        },
+        "gd" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuiridh Domain Name System (DNS) thar HTTPS d’ iarrtas airson ainm àrainn air ceangal crioptaichte, a’ solarachadh DNS tèarainte agus bidh e nas dorra do dhaoine eile na làraichean-lìn a tha thu ag inntrigeadh fhaicinn."
+          }
+        },
+        "gl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O sistema de nomes de dominio (DNS) a través de HTTPS envía a túa solicitude de nome de dominio a través dunha conexión cifrada, proporcionando un DNS seguro e dificultando que outros poidan ver a que sitio web estás a piques de acceder."
+          }
+        },
+        "gn" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pe apopyvusu rendatee réra (DNS) HTTPS rupive omondo mba’ejerure tendatee réra jeike ipapapýva rupive, omoheñóiva peteĩ DNS hekorosãva ha ombohasyve ambuépe ohechávo mba’ete ñanduti rendápepa ojeikepota."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "מערכת שמות מתחם (DNS) על גבי HTTPS שולחת את הבקשה שלך לשם מתחם דרך חיבור מוצפן, מספקת DNS מאובטח ומקשה על אחרים לראות לאיזה אתר הדפדפן עומד לגשת."
+          }
+        },
+        "hr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) preko HTTPS šalje tvoje zahtjeve s imenom domene putem šifrirane veze, stvarajući siguran DNS i otežava drugima da vide koje web stranice namjeravaš posjetiti."
+          }
+        },
+        "hsb" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System domenowych mjenow (DNS) přez HTTPS waše naprašowanje za domenowym mjenom přez zaklučowane zwisk sćele, staja wěsty DNS k dispoziciji a poćežuje druhim wosobam widźeć, kotre websydła wopytujeće."
+          }
+        },
+        "hu" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A HTTPS feletti domainnév-rendszer (DNS) a domain nevek lekérését titkosított kapcsolaton keresztül küldi el, biztonságos DNS-t biztosítva, így nehezebbé téve mások számára, hogy lássak, hogy melyik weboldalakat éri el."
+          }
+        },
+        "hy-AM" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Տիրույթի անվան համակարգը (DNS) HTTPS-ի միջով ուղարկում է Ձեր հարցումները տիրույթի անվան համար գաղտնագրված կապով՝ ստեղծելով անվտանգ DNS և ուրիշների համար դժարացնելով տեսնել այն կայքը, որին հասանելիություն ունենալու շեմին եք:"
+          }
+        },
+        "ia" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le systemas de nomine de dominio (DNS) sur HTTPS invia tu requesta pro un nomine de dominio per un connexion cryptate, forniente un DNS secur e obstruente al alteres de vider que sito web tu va acceder."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) melalui HTTPS mengirimkan permintaan Anda untuk mendapatkan nama domain melalui koneksi terenkripsi, sehingga menyediakan DNS yang aman dan mempersulit orang lain untuk melihat situs web mana yang akan diakses."
+          }
+        },
+        "is" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS yfir HTTPS (Domain Name System) sendir beiðni þína um lén í gegnum dulritaða tengingu, veitir öruggt DNS og gerir erfiðara fyrir aðra að sjá hvaða vefsvæði þú ert að fara að fara á."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il meccanismo di risoluzione dei nomi di dominio tramite HTTPS (DNS su HTTPS) invia le richieste per i nomi di dominio tramite una connessione crittata, fornendo un sistema sicuro che rende più difficile scoprire quali siti stai per visitare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS は暗号化された接続を通してドメイン名の要求を送信します。この安全な DNS によって、あなたがアクセスしようとしているウェブサイトを他者に知られないようにします。"
+          }
+        },
+        "ka" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "საიტთა სახელების გადამყვანი (DNS) მომსახურების HTTPS-ით გატარებისას საიტის მისამართის მოთხოვნები იგზავნება დაშიფრული არხით, შედეგად იქმნება დაცული DNS და გარეშე პირებს უძნელდებათ გაარკვიონ, რომელ ვებსაიტებთან ცდილობთ წვდომას."
+          }
+        },
+        "kk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS арқылы домендік атаулар жүйесі (DNS) шифрленген байланыс арқылы домендік атқа сұрауыңызды жібереді, осылай ол қауіпсіз DNS ұсынады және басқаларға қай веб-сайтқа кіргіңіз келетінін көруді қиындатады."
+          }
+        },
+        "ku" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sîstema Navê Domainê (DNS) li ser HTTPS daxwaza te ya ji bo navekî domainê bi rêya girêdaneke şîfrekirî dişîne, DNS-ek ewle peyda dike û ji bo yên din zehmettir dike ku bibînin tu yê têkevî kîjan malperê."
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS는 암호화된 연결을 통해 도메인 이름에 대한 요청을 전송하여 보안 DNS를 제공하고 다른 사람들이 사용자가 액세스하려는 웹 사이트를 보기 어렵게 만듭니다."
+          }
+        },
+        "lo" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ລະບົບ Domain Name (DNS) ຜ່ານ HTTPS ສົ່ງຄໍາຮ້ອງຂໍຂອງທ່ານສໍາລັບຊື່ໂດເມນໂດຍຜ່ານການເຊື່ອມຕໍ່ທີ່ຖືກເຂົ້າລະຫັດ, ສະຫນອງ DNS ທີ່ປອດໄພແລະເຮັດໃຫ້ມັນຍາກສໍາລັບຜູ້ອື່ນທີ່ຈະເບິ່ງວ່າເວັບໄຊທ໌ໃດທີ່ທ່ານກໍາລັງຈະເຂົ້າຫາ."
+          }
+        },
+        "nb-NO" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS sender forespørselen din om et domenenavn gjennom en kryptert tilkobling, og gir en sikker DNS og gjør det vanskeligere for andre å se hvilket nettsted du er i ferd med å besøke."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS verzendt uw aanvraag voor een domeinnaam via een versleutelde verbinding, waardoor een veilige DNS wordt geboden en het voor anderen moeilijker wordt om te zien welke website u gaat bezoeken."
+          }
+        },
+        "nn-NO" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNs) over HTTPS sender førespurnaden din om eit domenenamn gjennom ei kryptert tilkopling, og gir ein sikker DNS og gjer det vanskelegare for andre å sjå kva nettstad du er i ferd med å besøkje."
+          }
+        },
+        "oc" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo DNS (Domain Name Sistèma) sus HTTPS envia vòstras requèstas per un nom de domeni via una connexion chifrada, en fornissent un DNS segur e en fasent venir mai complicat per los autres de veire quines sites sètz a mand de visitar."
+          }
+        },
+        "pa-Guru-IN" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS ਰਾਹੀਂ ਡੋਮੇਨ ਨੇਮ ਸਿਸਟਮ (DNS) ਤੁਹਾਡੇ ਵਲੋਂ ਮੰਗ ਕੀਤੀ ਡੋਮੇਨ ਦੀ ਬੇਨਤੀ ਨੂੰ ਇੰਕ੍ਰਿਪਟ ਕੀਤੇ ਕਨੈਕਸ਼ਨ ਰਾਹੀਂ ਭੇਜਦਾ ਹੈ, ਸੁਰੱਖਿਅਤ DNS ਦਿੰਦਾ ਹੈ ਅਤੇ ਇਸ ਨਾਲ ਤੁਹਾਡੇ ਵਲੋਂ ਖੋਲ੍ਹੀ ਜਾ ਰਹੀ ਵੈੱਬਸਾਈਟ ਨੂੰ ਹੋਰਾਂ ਵੱਲੋਂ ਵੇਖਣ ਨੂੰ ਵੱਧ ਔਖਾ ਬਣਾ ਦਿੰਦਾ ਹੈ।"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System nazw domen (DNS) poprzez HTTPS wysyła zapytanie o nazwę domeny przez zaszyfrowane połączenie, zapewniając zabezpieczony serwer DNS i utrudniając innym podejrzenie, jaką witrynę zaraz otworzysz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O DNS (Domain Name System) sobre HTTPS envia suas requisições de nomes de domínio através de uma conexão criptografada, fornecendo um DNS seguro e dificultando que outras pessoas vejam quais sites você acessa."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Domain Name System (DNS) sobre HTTPS envia o seu pedido de nome de domínio através de uma ligação encriptada, fornecendo um DNS seguro e tornando mais difícil que terceiros possam ver qual o site que está prestes a aceder."
+          }
+        },
+        "rm" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il DNS (Domain Name System) via HTTPS trametta tia dumonda per in num da domena cun agid d’ina connexiun criptada che porscha in DNS segirà. Quai renda pli difficil per auters da vesair tge websites che ti visitas."
+          }
+        },
+        "ro" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistemul de nume de domeniu (DNS) prin HTTPS trimite solicitarea ta pentru un nume de domeniu printr-o conexiune criptată, oferind un DNS securizat și îngreunând vizibilitatea site-ului web pe care urmează să îl accesezi de către alții."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Система доменных имён (DNS) через HTTPS отправляет ваш запрос доменного имени через зашифрованное соединение, обеспечивая безопасный DNS и мешая другим увидеть, к какому веб-сайту вы собираетесь получить доступ."
+          }
+        },
+        "sat" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS ᱛᱮ Domain Name System (DNS) ᱫᱚ ᱟᱢᱟᱜ ᱰᱚᱢᱮᱱ ᱧᱩᱛᱩᱢ ᱞᱟᱹᱜᱤᱫ ᱟᱢᱟᱜ ᱟᱨᱡᱟᱣ ᱫᱚ ᱮᱱᱠᱨᱤᱯᱴ ᱠᱚᱱᱮᱠᱥᱚᱱ ᱛᱮ ᱵᱷᱮᱡᱟᱭᱟ, ᱚᱱᱟ ᱛᱮ ᱨᱟᱠᱷᱟ DNS ᱮᱢ ᱫᱟᱲᱮᱭᱟᱜ-ᱟ ᱟᱨ ᱮᱴᱟᱜ ᱠᱚ ᱞᱟᱹᱜᱤᱫ ᱟᱢ ᱚᱠᱟ ᱣᱮᱵᱽᱥᱟᱭᱤᱴ ᱮᱢ ᱥᱮᱱᱚᱜ ᱠᱟᱱᱟ ᱚᱱᱟ ᱧᱮᱞ ᱫᱚ ᱟᱹᱰᱤ ᱜᱮ ᱢᱩᱥᱠᱤᱞ ᱠᱟᱱᱟ ᱾"
+          }
+        },
+        "sc" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS (Sistema de Nòmine de Domìniu) pro mèdiu de HTTPS imbiat is rechestas tuas pro unu nòmine de domìniu a traessu de una connessione tzifrada, frunende unu DNS seguru e faghende prus difìtzile pro àtere a bìdere in cales sitos ses intrende."
+          }
+        },
+        "scn" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "U Sistema dî Nomi di Duminiu (DNS) ncapu a HTTPS manna a to dumanna p’un nomu di duminiu cu na cunnissioni crittata, facènnulu accussì di manera sicura pi fari cchiù diffìcili di scupriri quali sunnu i siti chi stai visitannu."
+          }
+        },
+        "sk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS (Systém názvov domén) cez HTTPS odošle vašu požiadavku na názov domény prostredníctvom šifrovaného pripojenia, čím poskytuje zabezpečené DNS a sťažuje ostatným, aby videli, na ktorú webovú stránku sa chystáte vstúpiť."
+          }
+        },
+        "sl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS (sistem domenskih imen) prek HTTPS pošilja vaše zahtevke za imena domen po šifrirani povezavi, kar ustvari zavarovan DNS in drugim otežuje vpogled v to, katera spletna mesta obiskujete."
+          }
+        },
+        "sq" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) përmes HTTPS e dërgon kërkesën tuaj për një emër përkatësie përmes një lidhjeje të fshehtëzuar, duke dhënë një DNS të siguruar dhe duke e bërë më të zorshme për të tjerët të shohin cilin sajt po shkoni të vizitoni."
+          }
+        },
+        "sr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Систем имена домена (DNS) преко HTTPS-а шаље ваш захтев за именом домена кроз шифровану везу, пружајући безбедан DNS и отежавајући другима да виде којој веб страници намеравате да приступите."
+          }
+        },
+        "sv-SE" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) över HTTPS skickar din förfrågan om ett domännamn via en krypterad anslutning, vilket ger en säker DNS och gör det svårare för andra att se vilken webbplats du ska komma åt."
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Низоми номҳои домен (DNS) тавассути HTTPS дархостҳои шуморо барои номи домен тавассути пайвасти рамзгузоришуда ирсол карда, DNS-и бехатарро таъмин мекунад ва ба дигарон барои дидани сомонаҳое, ки шумо мехоҳед ба он дастрасӣ пайдо намоед, душворӣ мекунад."
+          }
+        },
+        "th" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domain Name System (DNS) over HTTPS จะส่งคำขอชื่อโดเมนของคุณผ่านการเชื่อมต่อที่มีการเข้ารหัส เพื่อเสริมความปลอดภัยให้กับ DNS และทำให้ผู้อื่นดูว่าคุณกำลังจะเข้าถึงเว็บไซต์ใดได้ยากขึ้น"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTPS Üzerinden Alan Adı Sistemi (DNS), alan adı isteklerinizi şifreli bir bağlantı üzerinden göndererek güvenli bir DNS sağlar. Böylece hangi web sitelerine eriştiğinizi başkalarının görmesi zorlaşır."
+          }
+        },
+        "ug" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تور دائىرە نامى سىستېمىسى (DNS) دائىرە نامى ئىلتىماسىڭىزنى HTTPS ئارقىلىق شىفىرلانغان ئولانما بىلەن يوللاپ، بىخەتەر DNS بىلەن تەمىنلەپ، سىزنىڭ قايسى تور بېكەتنى زىيارەت قىلىۋاتقانلىقىڭىزنى بىلىشىنى قىيىنلاشتۇرىدۇ."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завдяки системі DNS через HTTPS ваші запити на доменне ім’я шифруються, ускладнюючи стороннім особам можливість перегляду, до якого вебсайту ви збираєтеся отримати доступ."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hệ thống phân giải tên miền (DNS) trên HTTPS gửi yêu cầu tên miền của bạn thông qua kết nối được mã hóa, cung cấp DNS an toàn và khiến người khác khó biết bạn sắp truy cập trang web nào."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于 HTTPS 的 DNS 会通过加密的连接发送您对域名的请求，从而提供安全 DNS，使他人更难得知您要访问的网站。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DNS over HTTPS 會將您的網域名稱查詢請求加密後傳送，使其他人更難得知您要開啟的網站，讓 DNS 查詢變得安全。"
+          }
+        }
+      }
+    },
     "Enable Only in Private Tabs" : {
       "localizations" : {
         "am" : {

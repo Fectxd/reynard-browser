@@ -3923,6 +3923,16 @@
         }
       }
     },
+    "Always uses your selected secure DNS provider. If it’s unavailable, websites may not load." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always uses your selected secure DNS provider. If it’s unavailable, websites may not load."
+          }
+        }
+      }
+    },
     "Appearance" : {
       "localizations" : {
         "cs" : {
@@ -7174,6 +7184,17 @@
         }
       }
     },
+    "Default Protection" : {
+      "comment" : "DoH protection level",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default Protection"
+          }
+        }
+      }
+    },
     "Default Setting" : {
       "localizations" : {
         "cs" : {
@@ -9849,6 +9870,17 @@
         }
       }
     },
+    "Increased Protection" : {
+      "comment" : "DoH protection level",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Increased Protection"
+          }
+        }
+      }
+    },
     "Information" : {
       "localizations" : {
         "cs" : {
@@ -10121,6 +10153,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在安装插件…"
+          }
+        }
+      }
+    },
+    "Invalid URL" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid URL"
           }
         }
       }
@@ -10906,6 +10948,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请确保已启用 TrollStore 的 URL Scheme。"
+          }
+        }
+      }
+    },
+    "Max Protection" : {
+      "comment" : "DoH protection level",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Max Protection"
           }
         }
       }
@@ -11835,6 +11888,7 @@
       }
     },
     "No Protection" : {
+      "comment" : "DoH protection level",
       "localizations" : {
         "cs" : {
           "stringUnit" : {
@@ -16219,6 +16273,26 @@
         }
       }
     },
+    "Secure DNS Provider" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secure DNS Provider"
+          }
+        }
+      }
+    },
+    "Secure DNS won’t be used on these websites or their subdomains." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Secure DNS won’t be used on these websites or their subdomains."
+          }
+        }
+      }
+    },
     "Select Option" : {
       "localizations" : {
         "cs" : {
@@ -19691,6 +19765,16 @@
         }
       }
     },
+    "URL must start with “https://”" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL must start with “https://”"
+          }
+        }
+      }
+    },
     "Use %%s for search terms, as in example.com⁠/⁠search⁠?⁠q⁠=⁠%%s." : {
       "comment" : "Literal %s, word joiners",
       "localizations" : {
@@ -19919,6 +20003,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用户名"
+          }
+        }
+      }
+    },
+    "Uses secure DNS when appropriate to protect your privacy." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses secure DNS when appropriate to protect your privacy."
+          }
+        }
+      }
+    },
+    "Uses your selected secure DNS provider whenever possible. If it’s unavailable, your system DNS is used." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses your selected secure DNS provider whenever possible. If it’s unavailable, your system DNS is used."
+          }
+        }
+      }
+    },
+    "Uses your system DNS." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses your system DNS."
           }
         }
       }

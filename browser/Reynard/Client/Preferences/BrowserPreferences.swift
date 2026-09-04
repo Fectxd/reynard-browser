@@ -131,6 +131,12 @@ final class BrowserPreferences {
             key("HTTPSOnlyMode", "enabled"): false,
             key("HTTPSOnlyMode", "scope"): HTTPSOnlyModeScope.allTabs.rawValue,
             
+            // DNS over HTTPS
+            key("DNSOverHTTPS", "protectionLevel"): DNSOverHTTPSProtectionLevel.defaultProtection.rawValue,
+            key("DNSOverHTTPS", "provider"): SecureDNSProvider.cloudflare.rawValue,
+            key("DNSOverHTTPS", "customProviderURL"): "",
+            key("DNSOverHTTPS", "exceptions"): (try? JSONEncoder().encode([String]())) ?? Data(),
+            
             // Tracking Protection
             key("TrackingProtection", "enhancedTrackingProtectionLevel"): TrackingProtectionLevel.standard.rawValue,
             key("TrackingProtection", "strictBaselineAllowListEnabled"): true,
@@ -391,6 +397,52 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(newValue.rawValue, forSetting: "HTTPSOnlyMode", key: "scope")
+            }
+        }
+    }
+    
+    // MARK: - DNS over HTTPS
+    struct DNSOverHTTPSPreferences {
+        static var protectionLevel: DNSOverHTTPSProtectionLevel {
+            get {
+                let rawValue = prefs.integer(forSetting: "DNSOverHTTPS", key: "protectionLevel")
+                return DNSOverHTTPSProtectionLevel(rawValue: rawValue) ?? .defaultProtection
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "DNSOverHTTPS", key: "protectionLevel")
+            }
+        }
+        
+        static var provider: SecureDNSProvider {
+            get {
+                let rawValue = prefs.string(forSetting: "DNSOverHTTPS", key: "provider") ?? SecureDNSProvider.cloudflare.rawValue
+                return SecureDNSProvider(rawValue: rawValue) ?? .cloudflare
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "DNSOverHTTPS", key: "provider")
+            }
+        }
+        
+        static var customProviderURL: String {
+            get {
+                return prefs.string(forSetting: "DNSOverHTTPS", key: "customProviderURL") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "DNSOverHTTPS", key: "customProviderURL")
+            }
+        }
+        
+        static var exceptions: [String] {
+            get {
+                guard let data = prefs.data(forSetting: "DNSOverHTTPS", key: "exceptions"),
+                      let exceptions = try? JSONDecoder().decode([String].self, from: data) else {
+                    return []
+                }
+                return exceptions
+            }
+            set {
+                let data = try? JSONEncoder().encode(newValue)
+                prefs.set(data, forSetting: "DNSOverHTTPS", key: "exceptions")
             }
         }
     }

@@ -44,6 +44,9 @@ enum RuntimePreferences {
         // HTTPS-only mode
         HTTPSOnlyModePolicyController.applyHTTPSOnlyMode()
         
+        // DNS over HTTPS
+        DNSOverHTTPSPolicyController.applyDNSOverHTTPS()
+        
         // Tracking Protection
         TrackingProtectionPolicyController.applyEnhancedTrackingProtection()
         TrackingProtectionPolicyController.applyGlobalPrivacyControl()
