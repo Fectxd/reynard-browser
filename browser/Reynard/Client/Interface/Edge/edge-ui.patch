@@ -5170,10 +5170,10 @@ index ba6bc10..dd2d858 100644
          }
          
 diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
-index 6404d69..2c6033f 100644
+index 6404d69..1e0bc21 100644
 --- a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
 +++ b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
-@@ -91,12 +91,14 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -91,9 +91,11 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
          if #available(iOS 14.0, *) {
              updateSplitBehavior()
              if visible {
@@ -5186,39 +5186,45 @@ index 6404d69..2c6033f 100644
 +                hide(.secondary)
              }
          } else {
--            preferredDisplayMode = visible ? .allVisible : .primaryHidden
-+            preferredDisplayMode = visible ? .allVisible : .secondaryHidden
-         }
-         updateBrowserLayoutIfNeeded()
-     }
-@@ -137,7 +139,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+             preferredDisplayMode = visible ? .allVisible : .primaryHidden
+@@ -137,7 +139,10 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
      }
      
      func refreshVisibility() {
 -        sidebarVisible = displayMode != .secondaryOnly
-+        sidebarVisible = displayMode != .primaryOnly
++        // In the Edge layout the menu is the trailing/secondary column, so the
++        // sidebar is considered visible whenever the secondary (menu) column is
++        // present. There is no "primary only" UISplitViewController.DisplayMode,
++        // so we keep the tracked state instead of deriving it from displayMode.
          updateBrowserLayoutIfNeeded()
      }
      
-@@ -167,7 +169,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -167,11 +172,13 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
      // MARK: - UISplitViewControllerDelegate
      
      func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
 -        sidebarVisible = displayMode != .secondaryOnly
-+        sidebarVisible = displayMode != .primaryOnly
-         updateBrowserLayoutIfNeeded()
+-        updateBrowserLayoutIfNeeded()
++        // The menu is the trailing/secondary column. Keep the tracked state as
++        // the source of truth (there is no "primary only" DisplayMode); this
++        // delegate just dismisses a focused field when the menu is not shown.
          if !sidebarVisible {
              menuNavigationController.view.endEditing(true)
-@@ -215,7 +217,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+         }
++        updateBrowserLayoutIfNeeded()
+     }
+     
+     // MARK: - Notifications
+@@ -215,7 +222,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
          delegate = self
          presentsWithGesture = false
          if #available(iOS 14.0, *) {
 -            preferredDisplayMode = .secondaryOnly
-+            preferredDisplayMode = .primaryOnly
++            preferredDisplayMode = .allVisible
              preferredSplitBehavior = .tile
              preferredPrimaryColumnWidth = UX.preferredPrimaryWidth
              minimumPrimaryColumnWidth = UX.minimumPrimaryWidth
-@@ -224,8 +226,8 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -224,8 +231,8 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
              if #available(iOS 14.5, *) {
                  displayModeButtonVisibility = .never
              }
