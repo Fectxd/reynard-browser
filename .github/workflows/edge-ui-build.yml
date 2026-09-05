@@ -62,17 +62,17 @@ jobs:
             if (buildStandard) {
               variants.push({
                 variant: 'standard',
-                // No --auto-clobber: with the Gecko object cache restored, a
-                // Swift-only change makes `mach build` an incremental compile
-                // instead of wiping and rebuilding the whole engine each run.
-                build_args: '--use-sccache',
+                // --auto-clobber is required: a cached Gecko objdir can go stale
+                // between Firefox merge days, and mach refuses to build without
+                // clobbering. Keep the upstream-proven reliable settings.
+                build_args: '--use-sccache --auto-clobber',
                 sccache_namespace: 'standard',
               });
             }
             if (buildNoJemalloc) {
               variants.push({
                 variant: 'nojemalloc',
-                build_args: '--disable-jemalloc --use-sccache',
+                build_args: '--disable-jemalloc --use-sccache --auto-clobber',
                 sccache_namespace: 'nojemalloc',
               });
             }
@@ -144,18 +144,6 @@ jobs:
           key: edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('engine/release.txt') }}
           restore-keys: |
             edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ steps.rust_toolchain.outputs.hash }}-
-
-      # Cache the compiled Gecko engine object tree. It only depends on the
-      # Gecko source + the engine patches (never on browser/ Swift), so a
-      # Swift-only change reuses this cache and `./mach build` becomes an
-      # incremental compile instead of a full ~2-3h rebuild.
-      - name: Restore Gecko object cache
-        uses: actions/cache@v4
-        with:
-          path: engine/firefox/obj-aarch64-apple-ios
-          key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}
-          restore-keys: |
-            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-
 
       - name: Restore idevice build cache
         uses: actions/cache@v4
