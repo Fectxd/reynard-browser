@@ -1,8 +1,8 @@
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..f5eae29 100644
+index 2e63179..4fa2cf3 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1262 @@
+@@ -1,1262 +1,1270 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1475,6 +1475,7 @@ index 2e63179..f5eae29 100644
 +    
 +    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
 +        super.traitCollectionDidChange(previousTraitCollection)
++        dismissEdgeMenuOnLayoutChange()
 +        DispatchQueue.main.async { [weak self] in
 +            guard let self,
 +                  self.isViewLoaded,
@@ -1494,6 +1495,7 @@ index 2e63179..f5eae29 100644
 +    
 +    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
 +        super.viewWillTransition(to: size, with: coordinator)
++        dismissEdgeMenuOnLayoutChange()
 +        performContentLifecycle {
 +            toolbarController.reset(animated: false)
 +            coordinator.animate { _ in
@@ -1676,6 +1678,12 @@ index 2e63179..f5eae29 100644
 +        }
 +        browserChrome.onTabOverview = { [weak self] in
 +            self?.setTabOverviewVisible(true, animated: true)
++        }
++        browserChrome.onFavorite = { [weak self] in
++            self?.presentBookmarkEditor(addToFavorites: true)
++        }
++        browserChrome.onMenu = { [weak self] in
++            self?.presentEdgeMenu()
 +        }
 +        browserChrome.onOverlayDismiss = { [weak self] in
 +            self?.toolbarController.reset()
@@ -2528,10 +2536,10 @@ index 2e63179..f5eae29 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 3244d3b..81ba045 100644
+index 3244d3b..734f5c5 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -1,759 +1,780 @@
+@@ -1,759 +1,785 @@
 -//
 -//  BrowserChrome.swift
 -//  Reynard
@@ -3350,6 +3358,8 @@ index 3244d3b..81ba045 100644
 +    var onDownloads: (() -> Void)?
 +    var onNewTab: (() -> Void)?
 +    var onTabOverview: (() -> Void)?
++    var onFavorite: (() -> Void)?
++    var onMenu: (() -> Void)?
 +    var onOverlayDismiss: (() -> Void)?
 +    var onPageZoomOut: (() -> Void)?
 +    var onPageZoomIn: (() -> Void)?
@@ -3854,6 +3864,8 @@ index 3244d3b..81ba045 100644
 +        topToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
 +        topToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
 +        topToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
++        topToolbar.onFavorite = { [weak self] in self?.onFavorite?() }
++        topToolbar.onMenu = { [weak self] in self?.onMenu?() }
 +        
 +        bottomToolbar.onBack = { [weak self] in self?.onBack?() }
 +        bottomToolbar.onForward = { [weak self] in self?.onForward?() }
@@ -3861,6 +3873,7 @@ index 3244d3b..81ba045 100644
 +        bottomToolbar.onLibrary = { [weak self] in self?.onLibrary?() }
 +        bottomToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
 +        bottomToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
++        bottomToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
 +        
 +        actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
 +        actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
@@ -4071,12 +4084,171 @@ index 3244d3b..81ba045 100644
 +        }
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
+index 8858456..2a22227 100644
+--- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
++++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
+@@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
+     var onLibrary: (() -> Void)?
+     var onDownloads: (() -> Void)?
+     var onTabOverview: (() -> Void)?
++    var onNewTab: (() -> Void)?
+     
+     private let contentView: UIView = {
+         let view = UIView()
+@@ -77,14 +78,17 @@ final class BottomToolbar: UIView {
+     
+     private lazy var backButton = ToolbarButton(buttonType: .back, target: self, action: #selector(backTapped))
+     private lazy var forwardButton = ToolbarButton(buttonType: .forward, target: self, action: #selector(forwardTapped))
+-    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
++    private lazy var newTabButton = ToolbarButton(buttonType: .newTab, target: self, action: #selector(newTabTapped))
++    private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
+     private lazy var libraryButton = ToolbarButton(buttonType: .library, target: self, action: #selector(libraryTapped))
++    // Share & Downloads live in the Edge overflow menu. Keep hidden buttons so
++    // the share popover anchor and download badge updates still have a view.
++    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
+     private lazy var downloadButton = ToolbarButton(buttonType: .download, target: self, action: #selector(downloadsTapped))
+-    private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
+     private let buttonMenus = ToolbarButtonMenus()
+     
+     private lazy var buttons: UIStackView = {
+-        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, libraryButton, downloadButton, tabOverviewButton])
++        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, newTabButton, tabOverviewButton, libraryButton])
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .horizontal
+         stack.distribution = .fillEqually
+@@ -170,7 +174,9 @@ final class BottomToolbar: UIView {
+     }
+     
+     func sharePopoverSourceView() -> UIView {
+-        return shareButton
++        // Share lives in the overflow menu; anchor the popover to the menu
++        // button (visible) rather than the hidden share button.
++        return libraryButton
+     }
+     
+     func apply(state: LayoutState, hidesButtons: Bool) {
+@@ -268,6 +274,7 @@ final class BottomToolbar: UIView {
+     @objc private func libraryTapped() { onLibrary?() }
+     @objc private func downloadsTapped() { onDownloads?() }
+     @objc private func tabOverviewTapped() { onTabOverview?() }
++    @objc private func newTabTapped() { onNewTab?() }
+     
+     // MARK: - View Setup
+     
+@@ -326,6 +333,8 @@ final class BottomToolbar: UIView {
+     
+     private func configureInitialState() {
+         shareButton.isEnabled = false
++        // Share & Downloads live in the overflow menu; keep them hidden.
++        shareButton.isHidden = true
+         downloadButton.isHidden = true
+     }
+     
+diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
+index 5383025..1fe7da7 100644
+--- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
++++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
+@@ -33,6 +33,7 @@ final class ToolbarButton: UIButton {
+         case download
+         case newTab
+         case sidebar
++        case favorite
+     }
+     
+     private lazy var downloadIconView: UIImageView = {
+@@ -204,6 +205,7 @@ final class ToolbarButton: UIButton {
+         case .download: return "reynard.arrow.down.circle"
+         case .newTab: return "reynard.plus"
+         case .sidebar: return "reynard.sidebar.left"
++        case .favorite: return "reynard.star"
+         }
+     }
+     
+diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
+index 1f56afc..fd9333a 100644
+--- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
++++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
+@@ -12,6 +12,9 @@ final class TopToolbar: UIView {
+         static let topToolbarContentHeight: CGFloat = 60
+         static let topToolbarButtonStackHeight: CGFloat = 30
+         static let topToolbarStandardButtonStackWidth: CGFloat = 126
++        // Landscape / pad address-bar right side has 4 buttons
++        // (share, favorite, tab-overview, hamburger).
++        static let trailingButtonStackWidth: CGFloat = (4 * 30) + (3 * 10)
+         static let topToolbarHorizontalInset: CGFloat = 12
+         static let topToolbarButtonSpacing: CGFloat = 10
+         static let topToolbarAddressBarSpacing: CGFloat = 12
+@@ -35,6 +38,8 @@ final class TopToolbar: UIView {
+     var onShare: (() -> Void)?
+     var onNewTab: (() -> Void)?
+     var onTabOverview: (() -> Void)?
++    var onFavorite: (() -> Void)?
++    var onMenu: (() -> Void)?
+     
+     private let contentView: UIView = {
+         let view = UIView()
+@@ -105,6 +110,16 @@ final class TopToolbar: UIView {
+         target: self,
+         action: #selector(tabOverviewTapped)
+     )
++    private lazy var favoriteButton = ToolbarButton(
++        buttonType: .favorite,
++        target: self,
++        action: #selector(favoriteTapped)
++    )
++    private lazy var menuButton = ToolbarButton(
++        buttonType: .library,
++        target: self,
++        action: #selector(menuTapped)
++    )
+     private let buttonMenus = ToolbarButtonMenus()
+     
+     private lazy var leadingButtons: UIStackView = {
+@@ -118,7 +133,9 @@ final class TopToolbar: UIView {
+     }()
+     
+     private lazy var trailingButtons: UIStackView = {
+-        let stack = UIStackView(arrangedSubviews: [shareButton, newTabButton, tabOverviewButton])
++        // Landscape / pad address-bar right side: share, favorite, tab
++        // overview, hamburger menu.
++        let stack = UIStackView(arrangedSubviews: [shareButton, favoriteButton, tabOverviewButton, menuButton])
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .horizontal
+         stack.spacing = UX.topToolbarButtonSpacing
+@@ -236,7 +253,7 @@ final class TopToolbar: UIView {
+                 sidebarButtonVisible: sidebarButtonVisible,
+                 showsDownloads: downloadButton.isShowingDownloads
+             )
+-            trailingWidthConstraint.constant = isCompact ? 0 : UX.topToolbarStandardButtonStackWidth
++            trailingWidthConstraint.constant = isCompact ? 0 : UX.trailingButtonStackWidth
+             
+             sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
+             libraryButton.isHidden = interfaceIdiom == .pad
+@@ -351,6 +368,8 @@ final class TopToolbar: UIView {
+     @objc private func shareTapped() { onShare?() }
+     @objc private func newTabTapped() { onNewTab?() }
+     @objc private func tabOverviewTapped() { onTabOverview?() }
++    @objc private func favoriteTapped() { onFavorite?() }
++    @objc private func menuTapped() { onMenu?() }
+     
+     // MARK: - View Setup
+     
+@@ -372,7 +391,7 @@ final class TopToolbar: UIView {
+         contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
+         backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
+         leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
+-        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
++        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.trailingButtonStackWidth)
+         
+         NSLayoutConstraint.activate([
+             backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..3303a87
+index 0000000..7331e1b
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,152 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -4140,7 +4312,9 @@ index 0000000..3303a87
 +        case .downloads:
 +            presentLibrary(initialSection: .downloads)
 +        case .settings:
-+            presentLibrary(initialSection: .settings)
++            // Settings always opens as the modal (portrait) settings screen,
++            // in both portrait and landscape - reused as-is.
++            presentEdgeSettings()
 +        case .home:
 +            openHomepage()
 +        case .newInPrivateTab:
@@ -4166,7 +4340,26 @@ index 0000000..3303a87
 +        }
 +    }
 +
++    /// Dismisses the Edge overflow menu when the device layout changes
++    /// (portrait <-> landscape), like Edge. The Settings modal is intentionally
++    /// left open, matching the "except ??" behaviour.
++    func dismissEdgeMenuOnLayoutChange() {
++        guard let presented = presentedViewController else {
++            return
++        }
++        if presented is EdgeMenuViewController {
++            dismiss(animated: true)
++        }
++    }
++
 +    // MARK: - Individual Actions
++
++    /// Settings always opens as the modal (portrait) settings screen in both
++    /// orientations, reusing the same settings UI as portrait.
++    func presentEdgeSettings() {
++        let settingsController = SettingsViewController()
++        presentContentModal(settingsController)
++    }
 +
 +    private func openHomepage() {
 +        createNewTab(mode: .regular)
@@ -4210,7 +4403,7 @@ index 0000000..3303a87
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..ee1562f
+index 0000000..756e424
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 @@ -0,0 +1,448 @@
@@ -4259,39 +4452,39 @@ index 0000000..ee1562f
 +        var title: String {
 +            switch self {
 +            case .favorites:
-+                return NSLocalizedString("???", comment: "Edge menu")
++                return "???"
 +            case .history:
-+                return NSLocalizedString("????", comment: "Edge menu")
++                return "????"
 +            case .downloads:
-+                return NSLocalizedString("??", comment: "Edge menu")
++                return "??"
 +            case .settings:
-+                return NSLocalizedString("??", comment: "Edge menu")
++                return "??"
 +            case .home:
-+                return NSLocalizedString("??", comment: "Edge menu")
++                return "??"
 +            case .newInPrivateTab:
-+                return NSLocalizedString("? InPrivate ???", comment: "Edge menu")
++                return "?? InPrivate ???"
 +            case .addToFavorites:
-+                return NSLocalizedString("??????", comment: "Edge menu")
++                return "??????"
 +            case .requestDesktopWebsite:
-+                return NSLocalizedString("??????", comment: "Edge menu")
++                return "??????"
 +            case .clearData:
-+                return NSLocalizedString("????", comment: "Edge menu")
++                return "????"
 +            case .shareExtension:
-+                return NSLocalizedString("????", comment: "Edge menu")
++                return "????"
 +            case .sendToDevice:
-+                return NSLocalizedString("?????", comment: "Edge menu")
++                return "?????"
 +            case .translate:
-+                return NSLocalizedString("??", comment: "Edge menu")
++                return "??"
 +            case .addToPhone:
-+                return NSLocalizedString("?????", comment: "Edge menu")
++                return "?????"
 +            case .downloadPage:
-+                return NSLocalizedString("?????", comment: "Edge menu")
++                return "?????"
 +            case .findInPage:
-+                return NSLocalizedString("??????", comment: "Edge menu")
++                return "??????"
 +            case .fontSize:
-+                return NSLocalizedString("????", comment: "Edge menu")
++                return "????"
 +            case .exitBrowser:
-+                return NSLocalizedString("?????", comment: "Edge menu")
++                return "?????"
 +            }
 +        }
 +
@@ -4662,3 +4855,210 @@ index 0000000..ee1562f
 +        }
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarMenuViewController.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarMenuViewController.swift
+index ba6bc10..dd2d858 100644
+--- a/browser/Reynard/Client/Interface/Sidebar/SidebarMenuViewController.swift
++++ b/browser/Reynard/Client/Interface/Sidebar/SidebarMenuViewController.swift
+@@ -166,12 +166,17 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
+             if showChromeSidebarButton {
+                 navigationItem.leftBarButtonItem = nil
+                 navigationItem.leftBarButtonItems = nil
++                navigationItem.rightBarButtonItem = nil
+             } else {
++                // Menu panel now lives on the RIGHT; put its collapse (back)
++                // button on the trailing side.
+                 configureSidebarButton(sidebarButton)
+                 navigationItem.leftBarButtonItem = nil
+-                navigationItem.leftBarButtonItems = standaloneSidebarButtonItems(for: sidebarButton)
++                navigationItem.leftBarButtonItems = nil
++                let item = UIBarButtonItem(customView: sidebarButton)
++                item.tag = childSidebarButtonTag
++                navigationItem.rightBarButtonItems = [item]
+             }
+-            navigationItem.rightBarButtonItem = nil
+             return
+         }
+         
+diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
+index 6404d69..2c6033f 100644
+--- a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
++++ b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
+@@ -91,12 +91,14 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+         if #available(iOS 14.0, *) {
+             updateSplitBehavior()
+             if visible {
+-                show(.primary)
++                // The menu (library sections) lives in the trailing/secondary
++                // column so it slides in from the RIGHT in landscape.
++                show(.secondary)
+             } else {
+-                hide(.primary)
++                hide(.secondary)
+             }
+         } else {
+-            preferredDisplayMode = visible ? .allVisible : .primaryHidden
++            preferredDisplayMode = visible ? .allVisible : .secondaryHidden
+         }
+         updateBrowserLayoutIfNeeded()
+     }
+@@ -137,7 +139,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+     }
+     
+     func refreshVisibility() {
+-        sidebarVisible = displayMode != .secondaryOnly
++        sidebarVisible = displayMode != .primaryOnly
+         updateBrowserLayoutIfNeeded()
+     }
+     
+@@ -167,7 +169,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+     // MARK: - UISplitViewControllerDelegate
+     
+     func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
+-        sidebarVisible = displayMode != .secondaryOnly
++        sidebarVisible = displayMode != .primaryOnly
+         updateBrowserLayoutIfNeeded()
+         if !sidebarVisible {
+             menuNavigationController.view.endEditing(true)
+@@ -215,7 +217,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+         delegate = self
+         presentsWithGesture = false
+         if #available(iOS 14.0, *) {
+-            preferredDisplayMode = .secondaryOnly
++            preferredDisplayMode = .primaryOnly
+             preferredSplitBehavior = .tile
+             preferredPrimaryColumnWidth = UX.preferredPrimaryWidth
+             minimumPrimaryColumnWidth = UX.minimumPrimaryWidth
+@@ -224,8 +226,8 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+             if #available(iOS 14.5, *) {
+                 displayModeButtonVisibility = .never
+             }
+-            setViewController(menuNavigationController, for: .primary)
+-            setViewController(browserNavigationController, for: .secondary)
++            setViewController(browserNavigationController, for: .primary)
++            setViewController(menuNavigationController, for: .secondary)
+             menuNavigationController.loadViewIfNeeded()
+         } else {
+             preferredDisplayMode = .primaryHidden
+diff --git a/browser/Reynard/Client/Preferences/BrowserPreferences.swift b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
+index 5c0503c..b38aaaf 100644
+--- a/browser/Reynard/Client/Preferences/BrowserPreferences.swift
++++ b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
+@@ -38,9 +38,9 @@ final class BrowserPreferences {
+         
+         UserDefaults.standard.register(defaults: [
+             // Search
+-            key("SearchSettings", "searchEngine"): SearchEngine.google.rawValue,
++            key("SearchSettings", "searchEngine"): SearchEngine.baidu.rawValue,
+             key("SearchSettings", "customSearchTemplate"): "",
+-            key("SearchSettings", "searchSuggestionProvider"): SearchCompletion.Provider.google.rawValue,
++            key("SearchSettings", "searchSuggestionProvider"): SearchCompletion.Provider.baidu.rawValue,
+             key("SearchSettings", "showSearchSuggestions"): true,
+             key("SearchSettings", "showSearchSuggestionsInPrivateBrowsing"): true,
+             key("SearchSettings", "searchBrowsingHistory"): true,
+@@ -197,8 +197,8 @@ final class BrowserPreferences {
+     struct SearchSettings {
+         static var searchEngine: SearchEngine {
+             get {
+-                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchEngine") ?? SearchEngine.google.rawValue
+-                return SearchEngine(rawValue: rawValue) ?? .google
++                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchEngine") ?? SearchEngine.baidu.rawValue
++                return SearchEngine(rawValue: rawValue) ?? .baidu
+             }
+             set {
+                 prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchEngine")
+@@ -216,8 +216,8 @@ final class BrowserPreferences {
+         
+         static var searchSuggestionProvider: SearchCompletion.Provider {
+             get {
+-                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchSuggestionProvider") ?? SearchCompletion.Provider.google.rawValue
+-                return SearchCompletion.Provider(rawValue: rawValue) ?? .google
++                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchSuggestionProvider") ?? SearchCompletion.Provider.baidu.rawValue
++                return SearchCompletion.Provider(rawValue: rawValue) ?? .baidu
+             }
+             set {
+                 prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchSuggestionProvider")
+diff --git a/browser/Reynard/Client/Search/SearchCompletion.swift b/browser/Reynard/Client/Search/SearchCompletion.swift
+index 854b671..a3f58b7 100644
+--- a/browser/Reynard/Client/Search/SearchCompletion.swift
++++ b/browser/Reynard/Client/Search/SearchCompletion.swift
+@@ -10,6 +10,7 @@ import Foundation
+ final class SearchCompletion {
+     enum Provider: String, CaseIterable {
+         case google
++        case baidu
+         case yahoo
+         case bing
+         case duckduckgo
+@@ -52,6 +53,7 @@ extension SearchCompletion.Provider {
+     var name: String {
+         switch self {
+         case .google: return "Google"
++        case .baidu: return "??"
+         case .yahoo: return "Yahoo"
+         case .bing: return "Bing"
+         case .duckduckgo: return "DuckDuckGo"
+@@ -72,6 +74,9 @@ private extension SearchCompletion.Provider {
+                 URLQueryItem(name: "client", value: "firefox"),
+                 URLQueryItem(name: "q", value: query),
+             ]
++        case .baidu:
++            endpoint = "https://www.baidu.com/sug"
++            queryItems = [URLQueryItem(name: "wd", value: query)]
+         case .yahoo:
+             endpoint = "https://search.yahoo.com/sugg/chrome"
+             queryItems = [
+@@ -130,6 +135,12 @@ private extension SearchCompletion {
+             return payload
+         }
+         
++        // Baidu `/sug` returns a dict: { "q": ..., "p": false, "s": ["a","b"] }.
++        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
++           let suggestions = object["s"] as? [String] {
++            return ["", suggestions]
++        }
++        
+         guard let encodingName = response.textEncodingName,
+               let encoding = String.Encoding.ianaCharacterSetName(encodingName),
+               let text = String(data: data, encoding: encoding),
+@@ -137,6 +148,11 @@ private extension SearchCompletion {
+             return nil
+         }
+         
++        if let object = try? JSONSerialization.jsonObject(with: utf8Data) as? [String: Any],
++           let suggestions = object["s"] as? [String] {
++            return ["", suggestions]
++        }
++        
+         return try? JSONSerialization.jsonObject(with: utf8Data) as? [Any]
+     }
+ }
+diff --git a/browser/Reynard/Client/Search/SearchEngines.swift b/browser/Reynard/Client/Search/SearchEngines.swift
+index b169af8..8adc285 100644
+--- a/browser/Reynard/Client/Search/SearchEngines.swift
++++ b/browser/Reynard/Client/Search/SearchEngines.swift
+@@ -9,6 +9,7 @@ import Foundation
+ 
+ enum SearchEngine: String, CaseIterable {
+     case google
++    case baidu
+     case yahoo
+     case bing
+     case brave
+@@ -21,6 +22,8 @@ enum SearchEngine: String, CaseIterable {
+         switch self {
+         case .google:
+             return "Google"
++        case .baidu:
++            return "??"
+         case .yahoo:
+             return "Yahoo"
+         case .bing:
+@@ -57,6 +60,8 @@ enum SearchEngine: String, CaseIterable {
+         switch self {
+         case .google:
+             return "https://www.google.com/search?q=%s"
++        case .baidu:
++            return "https://www.baidu.com/s?wd=%s"
+         case .yahoo:
+             return "https://search.yahoo.com/search?p=%s"
+         case .bing:
