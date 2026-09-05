@@ -3460,7 +3460,7 @@ index 3244d3b..734f5c5 100644
 +        : topToolbar.sharePopoverSourceView()
 +    }
 +
-+    /// Anchor rect used to present the Edge overflow menu ("?") from the
++    /// Anchor rect used to present the Edge overflow menu ("≡") from the
 +    /// library button, on whichever toolbar is currently visible.
 +    func menuButtonAnchorRect() -> CGRect {
 +        guard let state else {
@@ -4245,17 +4245,17 @@ index 1f56afc..fd9333a 100644
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..7331e1b
+index 0000000..34feafc
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,179 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
 +//
 +//  Created by Edge UI instrumentation.
 +//
-+//  Presents the Edge-style overflow menu ("?") and dispatches each menu item
++//  Presents the Edge-style overflow menu ("≡") and dispatches each menu item
 +//  to the building blocks that already exist in the app. Items without a real
 +//  implementation yet are left as icon placeholders inside the menu.
 +//
@@ -4265,7 +4265,7 @@ index 0000000..7331e1b
 +
 +extension BrowserViewController {
 +
-+    /// Presents the Edge-style overflow menu from the "?" (library) button.
++    /// Presents the Edge-style overflow menu from the "≡" (library) button.
 +    func presentEdgeMenu() {
 +        toolbarController.reset()
 +        browserChrome.dismissActionBar(animated: false)
@@ -4313,7 +4313,7 @@ index 0000000..7331e1b
 +            presentLibrary(initialSection: .downloads)
 +        case .settings:
 +            // Settings always opens as the modal (portrait) settings screen,
-+            // in both portrait and landscape - reused as-is.
++            // in both portrait and landscape — reused as-is.
 +            presentEdgeSettings()
 +        case .home:
 +            openHomepage()
@@ -4342,7 +4342,7 @@ index 0000000..7331e1b
 +
 +    /// Dismisses the Edge overflow menu when the device layout changes
 +    /// (portrait <-> landscape), like Edge. The Settings modal is intentionally
-+    /// left open, matching the "except ??" behaviour.
++    /// left open, matching the "except 设置" behaviour.
 +    func dismissEdgeMenuOnLayoutChange() {
 +        guard let presented = presentedViewController else {
 +            return
@@ -4367,7 +4367,7 @@ index 0000000..7331e1b
 +
 +    private func presentClearBrowsingData() {
 +        let controller = ClearBrowsingDataViewController()
-+        controller.title = NSLocalizedString("????", comment: "Edge menu")
++        controller.title = NSLocalizedString("删除数据", comment: "Edge menu")
 +        presentContentModal(controller)
 +    }
 +
@@ -4393,12 +4393,302 @@ index 0000000..7331e1b
 +
 +    /// Font size is exposed as per-site page zoom, backed by SiteSettingsStore
 +    /// so the level is remembered for the current host only.
++    /// Presents the Edge-style Font size window for the current site. The zoom
++    /// level is applied per host by `setSelectedPageZoomLevel`, which persists
++    /// to SiteSettingsStore and updates the live session.
 +    private func presentPerSitePageZoom() {
 +        guard let selectedTab = tabManager.selectedTab else {
 +            return
 +        }
-+        browserChrome.setPageZoomLevel(selectedTab.session.settings.pageZoom.level)
-+        browserChrome.showActionBar(.pageZoom, animated: true)
++
++        let controller = EdgeFontSizeViewController(
++            level: selectedTab.session.settings.pageZoom.level
++        )
++        controller.onApply = { [weak self] level in
++            self?.setSelectedPageZoomLevel(level)
++        }
++
++        if browserLayout.interfaceIdiom == .pad {
++            controller.modalPresentationStyle = .popover
++            if let popover = controller.popoverPresentationController {
++                popover.sourceView = browserChrome
++                popover.sourceRect = browserChrome.menuButtonAnchorRect()
++                popover.permittedArrowDirections = [.up, .down]
++                popover.backgroundColor = .systemBackground
++            }
++        } else {
++            controller.modalPresentationStyle = .pageSheet
++            if #available(iOS 16.0, *), let sheet = controller.sheetPresentationController {
++                sheet.detents = [.medium(), .large()]
++                sheet.prefersGrabberVisible = true
++                sheet.preferredCornerRadius = 18
++            }
++        }
++
++        present(controller, animated: true)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
+new file mode 100644
+index 0000000..811c2ef
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
+@@ -0,0 +1,257 @@
++//
++//  EdgeFontSizeViewController.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Edge-style "Font size" (字体大小) popup. It reads and writes the current
++//  site's page-zoom level (stored per host in SiteSettingsStore) and lets the
++//  user drag a slider between the smallest and the largest supported level.
++//
++//  Layout follows Edge:
++//    < 字体大小                     (header: back chevron + title)
++//      ─────────────────────────
++//      网页字体大小                 (section label)
++//      A  ────●──────  A           (small A, slider, large A)
++//             100%                 (current level)
++//      此字号仅适用于此域中的网站。  (footer note)
++//
++
++import UIKit
++
++final class EdgeFontSizeViewController: UIViewController {
++
++    private enum UX {
++        static let contentWidth: CGFloat = 360
++        static let contentHeight: CGFloat = 250
++        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
++        static let smallAFontSize: CGFloat = 11
++        static let largeAFontSize: CGFloat = 26
++        static let percentFontSize: CGFloat = 17
++        static let noteFontSize: CGFloat = 12
++        static let sectionFontSize: CGFloat = 14
++        static let headerFontSize: CGFloat = 18
++    }
++
++    /// Invoked with the newly selected level; the presenter applies it per-site
++    /// (persisting to SiteSettingsStore and updating the session).
++    var onApply: ((Int) -> Void)?
++
++    /// The zoom levels, in ascending order. The slider maps continuously to the
++    /// index of this array so every step is evenly spaced; the value snaps to
++    /// the nearest level on change (and on release).
++    private let levels = PageZoomLevels.all
++
++    private var currentLevel: Int = Prefs.BrowsingSettings.defaultPageZoomLevel
++
++    // MARK: - View Construction
++
++    private let headerView: UIView = {
++        let view = UIView()
++        view.translatesAutoresizingMaskIntoConstraints = false
++        return view
++    }()
++
++    private lazy var backButton: UIButton = {
++        let button = UIButton(type: .system)
++        button.translatesAutoresizingMaskIntoConstraints = false
++        button.setImage(UIImage(systemName: "chevron.backward"), for: .normal)
++        button.tintColor = UX.blueTint
++        button.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
++        return button
++    }()
++
++    private let titleLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = "字体大小"
++        label.font = .systemFont(ofSize: UX.headerFontSize, weight: .semibold)
++        label.textColor = .label
++        return label
++    }()
++
++    private let topDivider: UIView = {
++        let view = UIView()
++        view.translatesAutoresizingMaskIntoConstraints = false
++        view.backgroundColor = .separator
++        return view
++    }()
++
++    private let sectionLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = "网页字体大小"
++        label.font = .systemFont(ofSize: UX.sectionFontSize, weight: .regular)
++        label.textColor = .label
++        return label
++    }()
++
++    private let smallALabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = "A"
++        label.font = .systemFont(ofSize: UX.smallAFontSize, weight: .medium)
++        label.textColor = .secondaryLabel
++        return label
++    }()
++
++    private lazy var slider: UISlider = {
++        let slider = UISlider()
++        slider.translatesAutoresizingMaskIntoConstraints = false
++        slider.minimumValue = 0
++        slider.maximumValue = Float(levels.count - 1)
++        slider.isContinuous = true
++        slider.tintColor = UX.blueTint
++        slider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
++        slider.addTarget(
++            self,
++            action: #selector(sliderReleased(_:)),
++            for: [.touchUpInside, .touchUpOutside, .touchCancel]
++        )
++        return slider
++    }()
++
++    private let largeALabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = "A"
++        label.font = .systemFont(ofSize: UX.largeAFontSize, weight: .medium)
++        label.textColor = .label
++        label.setContentHuggingPriority(.required, for: .horizontal)
++        label.setContentCompressionResistancePriority(.required, for: .horizontal)
++        return label
++    }()
++
++    private let percentLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.font = .systemFont(ofSize: UX.percentFontSize, weight: .medium)
++        label.textColor = .label
++        label.textAlignment = .center
++        return label
++    }()
++
++    private let noteLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.text = "此字号仅适用于此域中的网站。"
++        label.font = .systemFont(ofSize: UX.noteFontSize, weight: .regular)
++        label.textColor = .secondaryLabel
++        label.textAlignment = .center
++        label.numberOfLines = 0
++        return label
++    }()
++
++    // MARK: - Lifecycle
++
++    init(level: Int? = nil) {
++        if let level, levels.contains(level) {
++            currentLevel = level
++        }
++        super.init(nibName: nil, bundle: nil)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        view.backgroundColor = .systemBackground
++        preferredContentSize = CGSize(width: UX.contentWidth, height: UX.contentHeight)
++        configureHierarchy()
++        configureConstraints()
++        refreshUI()
++    }
++
++    // MARK: - Setup
++
++    private func configureHierarchy() {
++        headerView.addSubview(backButton)
++        headerView.addSubview(titleLabel)
++        [headerView, topDivider, sectionLabel, smallALabel, slider, largeALabel, percentLabel, noteLabel].forEach {
++            view.addSubview($0)
++        }
++    }
++
++    private func configureConstraints() {
++        NSLayoutConstraint.activate([
++            headerView.topAnchor.constraint(equalTo: view.topAnchor),
++            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            headerView.heightAnchor.constraint(equalToConstant: 52),
++
++            backButton.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
++            backButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
++            backButton.widthAnchor.constraint(equalToConstant: 36),
++            backButton.heightAnchor.constraint(equalToConstant: 36),
++
++            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 6),
++            titleLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
++            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: headerView.trailingAnchor, constant: -12),
++
++            topDivider.topAnchor.constraint(equalTo: headerView.bottomAnchor),
++            topDivider.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            topDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            topDivider.heightAnchor.constraint(equalToConstant: 0.5),
++
++            sectionLabel.topAnchor.constraint(equalTo: topDivider.bottomAnchor, constant: 16),
++            sectionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
++            sectionLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
++
++            smallALabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
++            smallALabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
++
++            slider.topAnchor.constraint(equalTo: sectionLabel.bottomAnchor, constant: 16),
++            slider.leadingAnchor.constraint(equalTo: smallALabel.trailingAnchor, constant: 10),
++            slider.trailingAnchor.constraint(equalTo: largeALabel.leadingAnchor, constant: -10),
++
++            largeALabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
++            largeALabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
++
++            percentLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 8),
++            percentLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++
++            noteLabel.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 20),
++            noteLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
++            noteLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
++            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16),
++        ])
++    }
++
++    // MARK: - State
++
++    private func refreshUI() {
++        guard let index = levels.firstIndex(of: currentLevel) else {
++            return
++        }
++        slider.value = Float(index)
++        percentLabel.text = PageZoomLevels.displayText(for: currentLevel)
++    }
++
++    private func applyLevel(_ level: Int) {
++        currentLevel = level
++        percentLabel.text = PageZoomLevels.displayText(for: level)
++        onApply?(level)
++    }
++
++    // MARK: - Actions
++
++    @objc private func sliderChanged(_ sender: UISlider) {
++        let index = Int(sender.value.rounded())
++        sender.value = Float(index)
++        applyLevel(levels[index])
++    }
++
++    /// Snaps to the nearest level once the finger lifts, in case the slider was
++    /// still between two steps when `isContinuous` delivered the last value.
++    @objc private func sliderReleased(_ sender: UISlider) {
++        let index = Int(sender.value.rounded())
++        sender.value = Float(index)
++        applyLevel(levels[index])
++    }
++
++    @objc private func backTapped() {
++        dismiss(animated: true)
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
@@ -4413,7 +4703,7 @@ index 0000000..756e424
 +//
 +//  Created by Edge UI instrumentation.
 +//
-+//  Edge-style overflow menu (the "?" button). Behaves adaptively like the
++//  Edge-style overflow menu (the "≡" button). Behaves adaptively like the
 +//  rest of the app:
 +//     - wide / regular width  -> a grid of icon + label tiles (matrix)
 +//     - narrow / compact      -> a vertical list of icon + label rows
@@ -4452,39 +4742,39 @@ index 0000000..756e424
 +        var title: String {
 +            switch self {
 +            case .favorites:
-+                return "???"
++                return "收藏夹"
 +            case .history:
-+                return "????"
++                return "历史记录"
 +            case .downloads:
-+                return "??"
++                return "下载"
 +            case .settings:
-+                return "??"
++                return "设置"
 +            case .home:
-+                return "??"
++                return "主页"
 +            case .newInPrivateTab:
-+                return "?? InPrivate ???"
++                return "新建 InPrivate 标签页"
 +            case .addToFavorites:
-+                return "??????"
++                return "添加到收藏夹"
 +            case .requestDesktopWebsite:
-+                return "??????"
++                return "查看桌面网页"
 +            case .clearData:
-+                return "????"
++                return "删除数据"
 +            case .shareExtension:
-+                return "????"
++                return "扩展共享"
 +            case .sendToDevice:
-+                return "?????"
++                return "发送到设备"
 +            case .translate:
-+                return "??"
++                return "翻译"
 +            case .addToPhone:
-+                return "?????"
++                return "添加至手机"
 +            case .downloadPage:
-+                return "?????"
++                return "下载此页面"
 +            case .findInPage:
-+                return "??????"
++                return "在页面上查找"
 +            case .fontSize:
-+                return "????"
++                return "字体大小"
 +            case .exitBrowser:
-+                return "?????"
++                return "退出浏览器"
 +            }
 +        }
 +
@@ -4993,7 +5283,7 @@ index 854b671..a3f58b7 100644
      var name: String {
          switch self {
          case .google: return "Google"
-+        case .baidu: return "??"
++        case .baidu: return "百度"
          case .yahoo: return "Yahoo"
          case .bing: return "Bing"
          case .duckduckgo: return "DuckDuckGo"
@@ -5049,7 +5339,7 @@ index b169af8..8adc285 100644
          case .google:
              return "Google"
 +        case .baidu:
-+            return "??"
++            return "百度"
          case .yahoo:
              return "Yahoo"
          case .bing:
