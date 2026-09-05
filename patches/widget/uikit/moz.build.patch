@@ -1,0 +1,60 @@
+diff --git a/widget/uikit/moz.build b/widget/uikit/moz.build
+index f5d8821773c0..37c5fcbd1413 100644
+--- a/widget/uikit/moz.build
++++ b/widget/uikit/moz.build
+@@ -8,35 +8,55 @@ with Files("**"):
+ with Files("*TextInput*"):
+     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
+ 
++with Files("GeckoEditableSupport.*"):
++    BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
++
+ EXPORTS += [
+     "IOSBridge.h",
+ ]
+ 
+ EXPORTS.mozilla.widget += [
++    "BackgroundColor.h",
++    "CompositorWidgetChild.h",
++    "CompositorWidgetParent.h",
+     "EventDispatcher.h",
++    "GeckoViewRuntimeSupport.h",
+     "GeckoViewSupport.h",
+     "IOSView.h",
+     "nsWindow.h",
++    "UIKitCompositorWidget.h",
+ ]
+ 
+ EXPORTS.GeckoView += [
++    "GeckoViewRuntimeSupport.h",
+     "GeckoViewSwiftSupport.h",
+ ]
+ 
+ SOURCES += [
++    "BackgroundColor.mm",
++    "CompositorWidgetChild.cpp",
++    "CompositorWidgetParent.cpp",
+     "EventDispatcher.mm",
++    "ExternalResponseService.mm",
++    "GeckoEditableSupport.mm",
++    "GeckoKeyboardSupport.mm",
++    "GeckoPointerSupport.mm",
++    "GeckoTouchSupport.mm",
+     "GfxInfo.cpp",
+     "IOSBridge.mm",
+     "MediaKeysEventSourceFactory.cpp",
+     "nsAppShell.mm",
+     "nsBidiKeyboard.mm",
++    "nsClipboard.mm",
+     "nsLookAndFeel.mm",
+     "nsNativeThemeUIKit.mm",
+     "nsUserIdleServiceUIKit.cpp",
+     "nsWidgetFactory.mm",
+     "nsWindow.mm",
++    "PictureInPictureSupport.mm",
+     "ScreenHelperUIKit.mm",
+     "TextInputHandler.mm",
++    "UIKitCompositorWidget.cpp",
+     "UIKitUtils.mm",
+ ]
+ 

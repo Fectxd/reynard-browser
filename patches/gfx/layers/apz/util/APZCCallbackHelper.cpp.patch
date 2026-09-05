@@ -1,0 +1,35 @@
+diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
+index 2f77c6ca1893..26a36a1b0845 100644
+--- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
++++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
+@@ -30,6 +30,8 @@
+ #include "nsIDOMWindowUtils.h"
+ #include "nsIInterfaceRequestorUtils.h"
+ #include "nsLayoutUtils.h"
++#include "nsIWidget.h"
++#include "PuppetWidget.h"
+ #include "nsMenuPopupFrame.h"
+ #include "nsPIDOMWindow.h"
+ #include "nsPrintfCString.h"
+@@ -183,6 +185,21 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
+   CSSPoint actualScrollOffset = ScrollFrameTo(sf, aRequest, scrollUpdated);
+   CSSPoint scrollDelta = apzScrollOffset - actualScrollOffset;
+ 
++  // If the scroll position was updated and an editable element is
++  // focused, notify the widget of position change so that the parent process
++  // updates the cached editor/caret/selection rects for UIKit's selection
++  // display.
++  if (scrollUpdated && sf && sf->IsRootScrollFrameOfDocument()) {
++    if (PresShell* ps = sf->PresShell()) {
++      if (nsIWidget* widget = ps->GetOwnWidget()) {
++        if (widget->GetInputContext().mIMEState.IsEditable()) {
++          static_cast<widget::PuppetWidget*>(widget)->AdjustIMECacheForScroll(
++              actualScrollOffset);
++        }
++      }
++    }
++  }
++
+   if (scrollUpdated) {
+     if (aRequest.IsScrollInfoLayer()) {
+       // In cases where the APZ scroll offset is different from the content

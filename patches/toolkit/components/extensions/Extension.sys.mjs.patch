@@ -1,0 +1,33 @@
+diff --git a/toolkit/components/extensions/Extension.sys.mjs b/toolkit/components/extensions/Extension.sys.mjs
+index d67edb4ec1fe..b6efc29bd279 100644
+--- a/toolkit/components/extensions/Extension.sys.mjs
++++ b/toolkit/components/extensions/Extension.sys.mjs
+@@ -203,7 +203,7 @@ const PRIVILEGED_PERMS_ANDROID_ONLY = new Set([
+ 
+ const PRIVILEGED_PERMS_DESKTOP_ONLY = new Set(["normandyAddonStudy"]);
+ 
+-if (AppConstants.platform == "android") {
++if (lazy.AddonSettings.IS_EMBEDDED) {
+   for (const perm of PRIVILEGED_PERMS_ANDROID_ONLY) {
+     PRIVILEGED_PERMS.add(perm);
+   }
+@@ -211,7 +211,7 @@ if (AppConstants.platform == "android") {
+ 
+ if (
+   AppConstants.MOZ_APP_NAME != "firefox" ||
+-  AppConstants.platform == "android"
++  lazy.AddonSettings.IS_EMBEDDED
+ ) {
+   for (const perm of PRIVILEGED_PERMS_DESKTOP_ONLY) {
+     PRIVILEGED_PERMS.delete(perm);
+@@ -711,8 +711,8 @@ export var ExtensionProcessCrashObserver = {
+   // foreground for the first time then onPause/onResumed LifecycleListener
+   // are called, the application-foreground/-background topics will be
+   // notified to Gecko and this flag will be updated accordingly.
+-  _appInForeground: AppConstants.platform !== "android",
+-  _isAndroid: AppConstants.platform === "android",
++  _appInForeground: !lazy.AddonSettings.IS_EMBEDDED,
++  _isAndroid: lazy.AddonSettings.IS_EMBEDDED,
+   _processSpawningDisabled: false,
+ 
+   // Technically there is at most one child extension process,

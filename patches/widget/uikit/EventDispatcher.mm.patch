@@ -1,0 +1,31 @@
+diff --git a/widget/uikit/EventDispatcher.mm b/widget/uikit/EventDispatcher.mm
+index db8380bd78c2..ab2e5dfb4d8e 100644
+--- a/widget/uikit/EventDispatcher.mm
++++ b/widget/uikit/EventDispatcher.mm
+@@ -84,7 +84,7 @@ nsresult BoxArray(JSContext* aCx, JS::Handle<JSObject*> aArray,
+     }
+     nsresult rv = BoxValue(aCx, valJS, valCF);
+     NS_ENSURE_SUCCESS(rv, rv);
+-    CFArrayAppendValue(array.get(), valCF.get());
++    CFArrayAppendValue(array.get(), valCF ? valCF.get() : kCFNull);
+   }
+ 
+   // NOTE: A CFRetain() and CFRelease() could be avoided here if we could steal
+@@ -520,6 +520,17 @@ - (BOOL)hasListener:(NSString*)type {
+   return NS_OK;
+ }
+ 
++void EventDispatcher::DispatchToEmbedder(const nsAString& aEvent) {
++  AssertIsOnMainThread();
++  if (!mDispatcher) {
++    return;
++  }
++  id<SwiftEventDispatcher> dispatcher = (id<SwiftEventDispatcher>)mDispatcher;
++  [dispatcher dispatchToSwift:XPCOMStringToNSString(aEvent)
++                      message:nil
++                     callback:nil];
++}
++
+ void EventDispatcher::Attach(id aDispatcher) {
+   AssertIsOnMainThread();
+   MOZ_ASSERT(aDispatcher);

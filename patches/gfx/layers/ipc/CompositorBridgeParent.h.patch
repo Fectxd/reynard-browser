@@ -1,0 +1,13 @@
+diff --git a/gfx/layers/ipc/CompositorBridgeParent.h b/gfx/layers/ipc/CompositorBridgeParent.h
+index e4b5f7be74cc..0ae96265de03 100644
+--- a/gfx/layers/ipc/CompositorBridgeParent.h
++++ b/gfx/layers/ipc/CompositorBridgeParent.h
+@@ -252,7 +252,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase {
+   void InitSameProcess(widget::CompositorWidget* aWidget,
+                        const LayersId& aLayerTreeId);
+ 
+-#ifdef XP_MACOSX
++#if defined(XP_MACOSX) || defined(XP_IOS)
+   // macOS platform-specific initdata uses move semantics, which
+   // changes the method signature. Other platforms don't need to
+   // override the existing method.
