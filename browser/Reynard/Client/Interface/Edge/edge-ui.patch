@@ -20,7 +20,7 @@ index 3244d3b..b791275 100644
          : topToolbar.sharePopoverSourceView()
      }
 +
-+    /// Anchor rect used to present the Edge overflow menu ("≡") from the
++    /// Anchor rect used to present the Edge overflow menu ("?") from the
 +    /// library button, on whichever toolbar is currently visible.
 +    func menuButtonAnchorRect() -> CGRect {
 +        guard let state else {
@@ -55,16 +55,17 @@ index 0000000..09ac4d1
 +//
 +//  Created by Edge UI instrumentation.
 +//
-+//  Presents the Edge-style overflow menu ("≡") and dispatches each menu item
++//  Presents the Edge-style overflow menu ("?") and dispatches each menu item
 +//  to the building blocks that already exist in the app. Items without a real
 +//  implementation yet are left as icon placeholders inside the menu.
 +//
 +
++import GeckoView
 +import UIKit
 +
 +extension BrowserViewController {
 +
-+    /// Presents the Edge-style overflow menu from the "≡" (library) button.
++    /// Presents the Edge-style overflow menu from the "?" (library) button.
 +    func presentEdgeMenu() {
 +        toolbarController.reset()
 +        browserChrome.dismissActionBar(animated: false)
@@ -145,7 +146,7 @@ index 0000000..09ac4d1
 +
 +    private func presentClearBrowsingData() {
 +        let controller = ClearBrowsingDataViewController()
-+        controller.title = NSLocalizedString("删除数据", comment: "Edge menu")
++        controller.title = NSLocalizedString("????", comment: "Edge menu")
 +        presentContentModal(controller)
 +    }
 +
@@ -191,7 +192,7 @@ index 0000000..32762c4
 +//
 +//  Created by Edge UI instrumentation.
 +//
-+//  Edge-style overflow menu (the "≡" button). Behaves adaptively like the
++//  Edge-style overflow menu (the "?" button). Behaves adaptively like the
 +//  rest of the app:
 +//     - wide / regular width  -> a grid of icon + label tiles (matrix)
 +//     - narrow / compact      -> a vertical list of icon + label rows
@@ -230,39 +231,39 @@ index 0000000..32762c4
 +        var title: String {
 +            switch self {
 +            case .favorites:
-+                return NSLocalizedString("收藏夹", comment: "Edge menu")
++                return NSLocalizedString("???", comment: "Edge menu")
 +            case .history:
-+                return NSLocalizedString("历史记录", comment: "Edge menu")
++                return NSLocalizedString("????", comment: "Edge menu")
 +            case .downloads:
-+                return NSLocalizedString("下载", comment: "Edge menu")
++                return NSLocalizedString("??", comment: "Edge menu")
 +            case .settings:
-+                return NSLocalizedString("设置", comment: "Edge menu")
++                return NSLocalizedString("??", comment: "Edge menu")
 +            case .home:
-+                return NSLocalizedString("主页", comment: "Edge menu")
++                return NSLocalizedString("??", comment: "Edge menu")
 +            case .newInPrivateTab:
-+                return NSLocalizedString("新 InPrivate 标签页", comment: "Edge menu")
++                return NSLocalizedString("? InPrivate ???", comment: "Edge menu")
 +            case .addToFavorites:
-+                return NSLocalizedString("添加到收藏夹", comment: "Edge menu")
++                return NSLocalizedString("??????", comment: "Edge menu")
 +            case .requestDesktopWebsite:
-+                return NSLocalizedString("查看桌面网页", comment: "Edge menu")
++                return NSLocalizedString("??????", comment: "Edge menu")
 +            case .clearData:
-+                return NSLocalizedString("删除数据", comment: "Edge menu")
++                return NSLocalizedString("????", comment: "Edge menu")
 +            case .shareExtension:
-+                return NSLocalizedString("扩展共享", comment: "Edge menu")
++                return NSLocalizedString("????", comment: "Edge menu")
 +            case .sendToDevice:
-+                return NSLocalizedString("发送到设备", comment: "Edge menu")
++                return NSLocalizedString("?????", comment: "Edge menu")
 +            case .translate:
-+                return NSLocalizedString("翻译", comment: "Edge menu")
++                return NSLocalizedString("??", comment: "Edge menu")
 +            case .addToPhone:
-+                return NSLocalizedString("添加至手机", comment: "Edge menu")
++                return NSLocalizedString("?????", comment: "Edge menu")
 +            case .downloadPage:
-+                return NSLocalizedString("下载此页面", comment: "Edge menu")
++                return NSLocalizedString("?????", comment: "Edge menu")
 +            case .findInPage:
-+                return NSLocalizedString("在页面上查找", comment: "Edge menu")
++                return NSLocalizedString("??????", comment: "Edge menu")
 +            case .fontSize:
-+                return NSLocalizedString("字体大小", comment: "Edge menu")
++                return NSLocalizedString("????", comment: "Edge menu")
 +            case .exitBrowser:
-+                return NSLocalizedString("退出浏览器", comment: "Edge menu")
++                return NSLocalizedString("?????", comment: "Edge menu")
 +            }
 +        }
 +
