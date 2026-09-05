@@ -1,0 +1,635 @@
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
+index 2e63179..7e695b3 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
+@@ -399,7 +399,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+             )
+         }
+         browserChrome.onLibrary = { [weak self] in
+-            self?.presentLibrary()
++            self?.presentEdgeMenu()
+         }
+         browserChrome.onDownloads = { [weak self] in
+             self?.presentLibrary(initialSection: .downloads)
+diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
+index 3244d3b..b791275 100644
+--- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
++++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
+@@ -156,6 +156,27 @@ final class BrowserChrome: UIView {
+         ? bottomToolbar.sharePopoverSourceView()
+         : topToolbar.sharePopoverSourceView()
+     }
++
++    /// Anchor rect used to present the Edge overflow menu ("≡") from the
++    /// library button, on whichever toolbar is currently visible.
++    func menuButtonAnchorRect() -> CGRect {
++        guard let state else {
++            return CGRect(x: bounds.width - 40, y: 0, width: 40, height: 40)
++        }
++        let anchorView: UIView
++        switch state.mode {
++        case .phone:
++            anchorView = bottomToolbar
++        case .compact, .pad:
++            anchorView = topToolbar
++        }
++        return CGRect(
++            x: anchorView.bounds.width - 52,
++            y: anchorView.bounds.height - 12,
++            width: 48,
++            height: 48
++        )
++    }
+     
+     var addressBarButton: AddressBarButton {
+         return addressBar.addressBarButton
+diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
+new file mode 100644
+index 0000000..09ac4d1
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
+@@ -0,0 +1,130 @@
++//
++//  BrowserViewController+EdgeMenu.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Presents the Edge-style overflow menu ("≡") and dispatches each menu item
++//  to the building blocks that already exist in the app. Items without a real
++//  implementation yet are left as icon placeholders inside the menu.
++//
++
++import UIKit
++
++extension BrowserViewController {
++
++    /// Presents the Edge-style overflow menu from the "≡" (library) button.
++    func presentEdgeMenu() {
++        toolbarController.reset()
++        browserChrome.dismissActionBar(animated: false)
++
++        let menu = EdgeMenuViewController()
++        menu.onSelect = { [weak self] item in
++            guard let self else { return }
++            // Placeholder items stay open (no action yet); everything else
++            // dismisses the menu first, then runs the action.
++            guard !item.isUnavailablePlaceholder else {
++                return
++            }
++            self.dismiss(animated: true) {
++                self.handleEdgeMenuItem(item)
++            }
++        }
++
++        if browserLayout.interfaceIdiom == .pad {
++            menu.modalPresentationStyle = .popover
++            if let popover = menu.popoverPresentationController {
++                popover.sourceView = browserChrome
++                popover.sourceRect = browserChrome.menuButtonAnchorRect()
++                popover.permittedArrowDirections = [.up, .down]
++                popover.backgroundColor = .systemBackground
++            }
++            menu.preferredContentSize = CGSize(width: 380, height: 620)
++        } else {
++            menu.modalPresentationStyle = .pageSheet
++            if #available(iOS 16.0, *), let sheet = menu.sheetPresentationController {
++                sheet.detents = [.medium(), .large()]
++                sheet.prefersGrabberVisible = true
++                sheet.preferredCornerRadius = 18
++            }
++        }
++        present(menu, animated: true)
++    }
++
++    private func handleEdgeMenuItem(_ item: EdgeMenuViewController.Item) {
++        switch item {
++        case .favorites:
++            presentLibrary(initialSection: .bookmarks)
++        case .history:
++            presentLibrary(initialSection: .history)
++        case .downloads:
++            presentLibrary(initialSection: .downloads)
++        case .settings:
++            presentLibrary(initialSection: .settings)
++        case .home:
++            openHomepage()
++        case .newInPrivateTab:
++            createNewTab(mode: .private)
++        case .addToFavorites:
++            presentBookmarkEditor(addToFavorites: true)
++        case .requestDesktopWebsite:
++            _ = tabManager.changeWebsiteModeForSelectedTab()
++            refreshAddressBar()
++        case .clearData:
++            presentClearBrowsingData()
++        case .shareExtension:
++            presentShareExtension()
++        case .sendToDevice, .translate, .addToPhone, .exitBrowser:
++            // Not implemented yet: keep the menu item as an icon placeholder.
++            break
++        case .downloadPage:
++            presentLibrary(initialSection: .downloads)
++        case .findInPage:
++            presentFindInPage()
++        case .fontSize:
++            presentPerSitePageZoom()
++        }
++    }
++
++    // MARK: - Individual Actions
++
++    private func openHomepage() {
++        createNewTab(mode: .regular)
++    }
++
++    private func presentClearBrowsingData() {
++        let controller = ClearBrowsingDataViewController()
++        controller.title = NSLocalizedString("删除数据", comment: "Edge menu")
++        presentContentModal(controller)
++    }
++
++    private func presentShareExtension() {
++        guard let tab = tabManager.selectedTab,
++              let url = tabManager.shareableURL(for: tab) else {
++            return
++        }
++        let sourceView = browserChrome.sharePopoverSourceView()
++        presentShareSheet(
++            items: [url],
++            sourceView: sourceView,
++            sourceRect: sourceView.bounds
++        )
++    }
++
++    private func presentFindInPage() {
++        guard tabManager.selectedTab != nil else {
++            return
++        }
++        browserChrome.showActionBar(.findInPage, animated: true)
++    }
++
++    /// Font size is exposed as per-site page zoom, backed by SiteSettingsStore
++    /// so the level is remembered for the current host only.
++    private func presentPerSitePageZoom() {
++        guard let selectedTab = tabManager.selectedTab else {
++            return
++        }
++        browserChrome.setPageZoomLevel(selectedTab.session.settings.pageZoom.level)
++        browserChrome.showActionBar(.pageZoom, animated: true)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
+new file mode 100644
+index 0000000..32762c4
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
+@@ -0,0 +1,448 @@
++//
++//  EdgeMenuViewController.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Edge-style overflow menu (the "≡" button). Behaves adaptively like the
++//  rest of the app:
++//     - wide / regular width  -> a grid of icon + label tiles (matrix)
++//     - narrow / compact      -> a vertical list of icon + label rows
++//
++//  A thin horizontal divider separates the primary (top) group, whose icons
++//  are tinted blue, from the secondary group below it.
++//
++
++import UIKit
++
++final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
++
++    /// The full set of menu items, in display order.
++    enum Item: Int, CaseIterable {
++        // Primary group (above the line, tinted blue)
++        case favorites
++        case history
++        case downloads
++        case settings
++
++        // Secondary group (below the line)
++        case home
++        case newInPrivateTab
++        case addToFavorites
++        case requestDesktopWebsite
++        case clearData
++        case shareExtension
++        case sendToDevice
++        case translate
++        case addToPhone
++        case downloadPage
++        case findInPage
++        case fontSize
++        case exitBrowser
++
++        var title: String {
++            switch self {
++            case .favorites:
++                return NSLocalizedString("收藏夹", comment: "Edge menu")
++            case .history:
++                return NSLocalizedString("历史记录", comment: "Edge menu")
++            case .downloads:
++                return NSLocalizedString("下载", comment: "Edge menu")
++            case .settings:
++                return NSLocalizedString("设置", comment: "Edge menu")
++            case .home:
++                return NSLocalizedString("主页", comment: "Edge menu")
++            case .newInPrivateTab:
++                return NSLocalizedString("新 InPrivate 标签页", comment: "Edge menu")
++            case .addToFavorites:
++                return NSLocalizedString("添加到收藏夹", comment: "Edge menu")
++            case .requestDesktopWebsite:
++                return NSLocalizedString("查看桌面网页", comment: "Edge menu")
++            case .clearData:
++                return NSLocalizedString("删除数据", comment: "Edge menu")
++            case .shareExtension:
++                return NSLocalizedString("扩展共享", comment: "Edge menu")
++            case .sendToDevice:
++                return NSLocalizedString("发送到设备", comment: "Edge menu")
++            case .translate:
++                return NSLocalizedString("翻译", comment: "Edge menu")
++            case .addToPhone:
++                return NSLocalizedString("添加至手机", comment: "Edge menu")
++            case .downloadPage:
++                return NSLocalizedString("下载此页面", comment: "Edge menu")
++            case .findInPage:
++                return NSLocalizedString("在页面上查找", comment: "Edge menu")
++            case .fontSize:
++                return NSLocalizedString("字体大小", comment: "Edge menu")
++            case .exitBrowser:
++                return NSLocalizedString("退出浏览器", comment: "Edge menu")
++            }
++        }
++
++        var symbolName: String {
++            switch self {
++            case .favorites:
++                return "reynard.star"
++            case .history:
++                return "reynard.clock"
++            case .downloads:
++                return "reynard.arrow.down.circle"
++            case .settings:
++                return "reynard.gearshape"
++            case .home:
++                return "reynard.globe"
++            case .newInPrivateTab:
++                return "reynard.plus.square.fill.on.square.fill"
++            case .addToFavorites:
++                return "reynard.book"
++            case .requestDesktopWebsite:
++                return "reynard.desktopcomputer"
++            case .clearData:
++                return "reynard.trash"
++            case .shareExtension:
++                return "reynard.puzzlepiece.extension"
++            case .sendToDevice:
++                return "reynard.arrow.up.right"
++            case .translate:
++                return "reynard.globe"
++            case .addToPhone:
++                return "reynard.smartphone"
++            case .downloadPage:
++                return "reynard.square.and.arrow.down"
++            case .findInPage:
++                return "reynard.magnifyingglass"
++            case .fontSize:
++                return "reynard.textformat.size"
++            case .exitBrowser:
++                return "reynard.xmark"
++            }
++        }
++
++        /// The primary (above the line) group keeps a blue tint, matching Edge.
++        var usesPrimaryTint: Bool {
++            switch self {
++            case .favorites, .history, .downloads, .settings:
++                return true
++            default:
++                return false
++            }
++        }
++
++        /// Items with no real implementation yet are rendered with a faded
++        /// icon as a placeholder (to be wired up later).
++        var isUnavailablePlaceholder: Bool {
++            switch self {
++            case .sendToDevice, .translate, .addToPhone, .exitBrowser:
++                return true
++            default:
++                return false
++            }
++        }
++    }
++
++    private enum UX {
++        static let primarySymbolPointSize: CGFloat = 26
++        static let secondarySymbolPointSize: CGFloat = 22
++        static let gridItemSpacing: CGFloat = 18
++        static let gridContentInset: CGFloat = 16
++        static let gridGroupHeight: CGFloat = 92
++        static let listRowHeight: CGFloat = 56
++        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
++    }
++
++    /// Invoked with the selected item; the presenter decides the action and
++    /// dismisses this controller.
++    var onSelect: ((Item) -> Void)?
++
++    private enum Section: Int, CaseIterable {
++        case primary
++        case secondary
++    }
++
++    private let cellReuseIdentifier = "EdgeMenuCell"
++    private let dividerReuseIdentifier = "EdgeMenuDivider"
++
++    private lazy var collectionView: UICollectionView = {
++        let layout = UICollectionViewFlowLayout()
++        let view = UICollectionView(frame: .zero, collectionViewLayout: layout)
++        view.translatesAutoresizingMaskIntoConstraints = false
++        view.backgroundColor = .systemBackground
++        view.delegate = self
++        view.dataSource = self
++        view.alwaysBounceVertical = true
++        return view
++    }()
++
++    private var isWideLayout: Bool {
++        return traitCollection.horizontalSizeClass == .regular
++    }
++
++    // MARK: - Lifecycle
++
++    init() {
++        super.init(nibName: nil, bundle: nil)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        view.backgroundColor = .systemBackground
++        view.addSubview(collectionView)
++        NSLayoutConstraint.activate([
++            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
++            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
++        ])
++        collectionView.register(EdgeMenuCell.self, forCellWithReuseIdentifier: cellReuseIdentifier)
++        collectionView.register(
++            UICollectionReusableView.self,
++            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
++            withReuseIdentifier: dividerReuseIdentifier
++        )
++    }
++
++    override func viewWillAppear(_ animated: Bool) {
++        super.viewWillAppear(animated)
++        collectionView.reloadData()
++    }
++
++    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
++        super.traitCollectionDidChange(previousTraitCollection)
++        guard previousTraitCollection?.horizontalSizeClass != traitCollection.horizontalSizeClass else {
++            return
++        }
++        collectionView.collectionViewLayout.invalidateLayout()
++        collectionView.reloadData()
++    }
++
++    // MARK: - Data
++
++    private func items(in section: Section) -> [Item] {
++        switch section {
++        case .primary:
++            return [.favorites, .history, .downloads, .settings]
++        case .secondary:
++            return [
++                .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
++                .clearData, .shareExtension, .sendToDevice, .translate,
++                .addToPhone, .downloadPage, .findInPage, .fontSize, .exitBrowser,
++            ]
++        }
++    }
++
++    // MARK: - UICollectionViewDataSource
++
++    func numberOfSections(in collectionView: UICollectionView) -> Int {
++        return Section.allCases.count
++    }
++
++    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
++        guard let menuSection = Section(rawValue: section) else {
++            return 0
++        }
++        return items(in: menuSection).count
++    }
++
++    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
++        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellReuseIdentifier, for: indexPath) as! EdgeMenuCell
++        guard let menuSection = Section(rawValue: indexPath.section) else {
++            return cell
++        }
++        let item = items(in: menuSection)[indexPath.row]
++        cell.configure(
++            title: item.title,
++            symbolName: item.symbolName,
++            tint: item.usesPrimaryTint ? UX.blueTint : .label,
++            usesPrimaryTint: item.usesPrimaryTint,
++            symbolPointSize: item.usesPrimaryTint ? UX.primarySymbolPointSize : UX.secondarySymbolPointSize,
++            wideLayout: isWideLayout,
++            isPlaceholder: item.isUnavailablePlaceholder
++        )
++        return cell
++    }
++
++    // MARK: - UICollectionViewDelegate
++
++    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
++        collectionView.deselectItem(at: indexPath, animated: true)
++        guard let menuSection = Section(rawValue: indexPath.section) else {
++            return
++        }
++        let items = items(in: menuSection)
++        guard items.indices.contains(indexPath.row) else {
++            return
++        }
++        onSelect?(items[indexPath.row])
++    }
++
++    // MARK: - UICollectionViewDelegateFlowLayout
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        layout collectionViewLayout: UICollectionViewLayout,
++        insetForSectionAt section: Int
++    ) -> UIEdgeInsets {
++        let horizontalInset: CGFloat = isWideLayout ? UX.gridContentInset : 0
++        return UIEdgeInsets(top: UX.gridContentInset, left: horizontalInset, bottom: UX.gridContentInset, right: horizontalInset)
++    }
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        layout collectionViewLayout: UICollectionViewLayout,
++        minimumLineSpacingForSectionAt section: Int
++    ) -> CGFloat {
++        return isWideLayout ? UX.gridItemSpacing : 0
++    }
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        layout collectionViewLayout: UICollectionViewLayout,
++        minimumInteritemSpacingForSectionAt section: Int
++    ) -> CGFloat {
++        return isWideLayout ? UX.gridItemSpacing : 0
++    }
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        layout collectionViewLayout: UICollectionViewLayout,
++        sizeForItemAt indexPath: IndexPath
++    ) -> CGSize {
++        let availableWidth = collectionView.bounds.width - (isWideLayout ? (UX.gridContentInset * 2) : 0)
++        if isWideLayout {
++            let columnCount = max(1, Int(availableWidth / 110))
++            let itemWidth = (availableWidth - (CGFloat(columnCount - 1) * UX.gridItemSpacing)) / CGFloat(columnCount)
++            return CGSize(width: itemWidth, height: UX.gridGroupHeight)
++        }
++        return CGSize(width: availableWidth, height: UX.listRowHeight)
++    }
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        layout collectionViewLayout: UICollectionViewLayout,
++        referenceSizeForHeaderInSection section: Int
++    ) -> CGSize {
++        guard let menuSection = Section(rawValue: section), menuSection == .secondary else {
++            return .zero
++        }
++        return CGSize(width: collectionView.bounds.width, height: 1)
++    }
++
++    func collectionView(
++        _ collectionView: UICollectionView,
++        viewForSupplementaryElementOfKind kind: String,
++        at indexPath: IndexPath
++    ) -> UICollectionReusableView {
++        guard kind == UICollectionView.elementKindSectionHeader else {
++            return UICollectionReusableView()
++        }
++        let header = collectionView.dequeueReusableSupplementaryView(
++            ofKind: kind,
++            withReuseIdentifier: dividerReuseIdentifier,
++            for: indexPath
++        )
++        header.backgroundColor = .separator
++        return header
++    }
++}
++
++/// A single tile (grid) or row (list) in the Edge menu.
++final class EdgeMenuCell: UICollectionViewCell {
++
++    private let titleLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.textAlignment = .center
++        label.font = .systemFont(ofSize: 13, weight: .medium)
++        label.numberOfLines = 2
++        return label
++    }()
++
++    private let symbolView: UIImageView = {
++        let view = UIImageView()
++        view.translatesAutoresizingMaskIntoConstraints = false
++        view.contentMode = .center
++        return view
++    }()
++
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        contentView.backgroundColor = .clear
++        contentView.layer.cornerRadius = 12
++        contentView.layer.cornerCurve = .continuous
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    private var wideConstraints: [NSLayoutConstraint] = []
++    private var listConstraints: [NSLayoutConstraint] = []
++
++    func configure(
++        title: String,
++        symbolName: String,
++        tint: UIColor,
++        usesPrimaryTint: Bool,
++        symbolPointSize: CGFloat,
++        wideLayout: Bool,
++        isPlaceholder: Bool
++    ) {
++        titleLabel.text = title
++        titleLabel.textColor = tint
++
++        let configuration = UIImage.SymbolConfiguration(pointSize: symbolPointSize, weight: usesPrimaryTint ? .medium : .regular)
++        symbolView.image = UIImage(named: symbolName, in: .main, with: configuration)
++        symbolView.tintColor = tint
++
++        let alpha: CGFloat = isPlaceholder ? 0.4 : 1
++        symbolView.alpha = alpha
++        titleLabel.alpha = alpha
++
++        contentView.backgroundColor = wideLayout ? UIColor.secondarySystemBackground : .clear
++
++        applyLayout(wideLayout: wideLayout)
++    }
++
++    private func applyLayout(wideLayout: Bool) {
++        if contentView.subviews.isEmpty {
++            contentView.addSubview(symbolView)
++            contentView.addSubview(titleLabel)
++        }
++
++        NSLayoutConstraint.deactivate(wideConstraints + listConstraints)
++        wideConstraints = []
++        listConstraints = []
++
++        if wideLayout {
++            wideConstraints = [
++                symbolView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
++                symbolView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
++                symbolView.widthAnchor.constraint(equalToConstant: 44),
++                symbolView.heightAnchor.constraint(equalToConstant: 44),
++
++                titleLabel.topAnchor.constraint(equalTo: symbolView.bottomAnchor, constant: 8),
++                titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
++                titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
++                titleLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
++            ]
++            NSLayoutConstraint.activate(wideConstraints)
++        } else {
++            listConstraints = [
++                symbolView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
++                symbolView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
++                symbolView.widthAnchor.constraint(equalToConstant: 40),
++                symbolView.heightAnchor.constraint(equalToConstant: 40),
++
++                titleLabel.leadingAnchor.constraint(equalTo: symbolView.trailingAnchor, constant: 16),
++                titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
++                titleLabel.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
++            ]
++            titleLabel.textAlignment = .natural
++            NSLayoutConstraint.activate(listConstraints)
++        }
++    }
++}
