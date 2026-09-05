@@ -1499,7 +1499,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@”未通过安全验证，已被禁用。"
+            "value": "无法验证“%@”，因此已将其停用。"
           }
         },
         "zh-Hant": {
@@ -1900,7 +1900,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@”已受限，无法安装到 Reynard。"
+            "value": "“%@”受到限制，无法安装到 Reynard。"
           }
         },
         "zh-Hant": {
@@ -2403,7 +2403,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "“%@”与您当前版本的 Reynard 不兼容。"
+            "value": "“%@”与此版本的 Reynard 不兼容。"
           }
         },
         "zh-Hant": {
@@ -3534,7 +3534,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "获知浏览器导航时的行为状态"
+            "value": "获取浏览网页时的浏览器活动信息"
           }
         },
         "zh-Hant": {
@@ -4180,13 +4180,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "获取浏览器标签页"
+            "value": "访问浏览器标签页"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取瀏覽器分頁"
+            "value": "存取瀏覽器標籤頁"
           }
         },
         "pa-Guru-IN": {
@@ -4826,13 +4826,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "获取浏览历史"
+            "value": "访问浏览历史记录"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取瀏覽紀錄"
+            "value": "存取瀏覽記錄"
           }
         },
         "pa-Guru-IN": {
@@ -5478,7 +5478,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "取得最近關閉的分頁清單"
+            "value": "取得最近關閉的標籤頁清單"
           }
         },
         "pa-Guru-IN": {
@@ -6089,13 +6089,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在 %@ 上的数据"
+            "value": "访问你在 %@ 上的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在 %@ 上的資料"
+            "value": "存取你在 %@ 上的資料"
           }
         },
         "pa-Guru-IN": {
@@ -6741,13 +6741,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在所有网站的数据"
+            "value": "访问你在所有网站上的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在所有網站上的資料"
+            "value": "存取你在所有網站上的資料"
           }
         },
         "pa-Guru-IN": {
@@ -7207,13 +7207,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在另一域名下的数据"
+            "value": "访问你在另一域名下的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在另一個網域中的資料"
+            "value": "存取你在另一個網域中的資料"
           }
         },
         "pa-Guru-IN": {
@@ -7673,13 +7673,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在另一个网站的数据"
+            "value": "访问你在另一个网站上的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在另一個網站中的資料"
+            "value": "存取你在另一個網站中的資料"
           }
         },
         "pa-Guru-IN": {
@@ -8133,13 +8133,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在其他域名下的数据"
+            "value": "访问你在其他域名下的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在其他網域中的資料"
+            "value": "存取你在其他網域中的資料"
           }
         },
         "pa-Guru-IN": {
@@ -8599,13 +8599,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在其他网站的数据"
+            "value": "访问你在其他网站上的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在其他網站中的資料"
+            "value": "存取你在其他網站中的資料"
           }
         },
         "pa-Guru-IN": {
@@ -9204,13 +9204,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问您在 %@ 域名下网站中的数据"
+            "value": "访问你在 %@ 域名下各网站上的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "存取您在 %@ 網域內各網站上的資料"
+            "value": "存取你在 %@ 網域內各網站上的資料"
           }
         },
         "pa-Guru-IN": {
@@ -9856,13 +9856,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "获知您的位置"
+            "value": "获取你的位置"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "取得您的所在位置"
+            "value": "取得你的所在位置"
           }
         },
         "pa-Guru-IN": {
@@ -10340,13 +10340,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "允许未经验证的第三方脚本访问您的数据"
+            "value": "允许未经验证的第三方脚本访问你的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "允許未驗證的第三方指令碼存取您的資料"
+            "value": "允許未驗證的第三方指令碼存取你的資料"
           }
         },
         "pa-Guru-IN": {
@@ -12958,13 +12958,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "清除最近的浏览历史、Cookie 及有关数据"
+            "value": "清除最近的浏览历史记录、Cookie 及相关数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "清除最近的瀏覽紀錄、Cookie 等相關資料"
+            "value": "清除最近的瀏覽記錄、Cookie 及相關資料"
           }
         },
         "pa-Guru-IN": {
@@ -14232,13 +14232,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "向您显示通知"
+            "value": "向你显示通知"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "向您顯示通知"
+            "value": "向你顯示通知"
           }
         },
         "pa-Guru-IN": {
@@ -14716,13 +14716,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在您的设备上下载并运行 AI 模型"
+            "value": "在你的设备上下载并运行 AI 模型"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "下載 AI 模型，並在您的裝置上執行"
+            "value": "下載 AI 模型，並在你的裝置上執行"
           }
         },
         "pa-Guru-IN": {
@@ -15356,13 +15356,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下载文件和读写浏览器的下载历史"
+            "value": "下载文件，并读取和修改浏览器的下载历史记录"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "下載檔案，並讀取及修改瀏覽器的下載紀錄"
+            "value": "下載檔案，並讀取及修改瀏覽器的下載記錄"
           }
         },
         "pa-Guru-IN": {
@@ -15996,7 +15996,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "与本应用外的其他应用交换消息"
+            "value": "与其他应用交换消息"
           }
         },
         "zh-Hant": {
@@ -16624,13 +16624,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "让开发者工具可以存取您打开的标签页中的数据"
+            "value": "扩展开发者工具，以访问你在已打开标签页中的数据"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "擴充開發者工具，以存取您在已開啟分頁中的資料"
+            "value": "擴充開發者工具，以存取你在已開啟標籤頁中的資料"
           }
         },
         "pa-Guru-IN": {
@@ -18860,7 +18860,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "隱藏或顯示瀏覽器分頁"
+            "value": "隱藏或顯示瀏覽器標籤頁"
           }
         },
         "pa-Guru-IN": {
@@ -21270,13 +21270,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "打开已下载到您设备上的文件"
+            "value": "打开已下载到你设备上的文件"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "開啟下載到您裝置上的檔案"
+            "value": "開啟下載到你裝置上的檔案"
           }
         },
         "pa-Guru-IN": {
@@ -21736,7 +21736,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个人通信"
+            "value": "个人通信内容"
           }
         },
         "zh-Hant": {
@@ -25420,7 +25420,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "讀取所有已開啟分頁中的文字內容"
+            "value": "讀取所有已開啟標籤頁中的文字內容"
           }
         },
         "pa-Guru-IN": {
@@ -25946,13 +25946,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "读取您的浏览历史"
+            "value": "读取你的浏览历史记录"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "讀取您的上網紀錄"
+            "value": "讀取你的瀏覽記錄"
           }
         },
         "pa-Guru-IN": {
@@ -29638,7 +29638,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "与扩展开发者分享个人通信"
+            "value": "与扩展开发者分享个人通信内容"
           }
         },
         "zh-Hant": {
@@ -32859,7 +32859,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开发者称此扩展收集：%@"
+            "value": "开发者表示此扩展会收集以下数据：%@"
           }
         },
         "zh-Hant": {
@@ -33804,7 +33804,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开发者称此扩展希望收集：%@"
+            "value": "开发者表示此扩展希望收集以下数据：%@"
           }
         },
         "zh-Hant": {
@@ -35716,13 +35716,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "此扩展受到限制且已被禁用。您可以重新启用，但可能存在风险。"
+            "value": "此扩展受到限制，已被停用。你可以重新启用，但可能存在风险。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "此附加元件受到限制，已被停用。您仍可將其啟用，但這樣做可能會有風險。"
+            "value": "此附加元件受到限制，已被停用。你仍可將其啟用，但這樣做可能會有風險。"
           }
         },
         "pa-Guru-IN": {
@@ -36122,13 +36122,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "此扩展已受限，继续使用可能存在风险。"
+            "value": "此扩展受到限制，使用可能存在风险。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "此附加元件受到限制，繼續使用可能會有風險。"
+            "value": "此附加元件受到限制，使用可能會有風險。"
           }
         },
         "pa-Guru-IN": {
@@ -36612,7 +36612,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "此扩展因违反 Mozilla 的政策而被阻止，并且已被禁用。"
+            "value": "此扩展因违反 Mozilla 的政策而被阻止，并已被停用。"
           }
         },
         "zh-Hant": {
@@ -37096,13 +37096,13 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未经验证的脚本可能带来安全和隐私风险。请确保只运行来自可信扩展或来源的脚本。"
+            "value": "未经验证的脚本可能带来安全和隐私风险。请只允许运行来自你信任的扩展或其他来源的脚本。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "未經驗證的指令碼可能會造成安全性與隱私風險。請只允許來自您信任的附加元件或來源的指令碼。"
+            "value": "未經驗證的指令碼可能會造成安全性與隱私風險。請只允許來自你信任的附加元件或來源的指令碼。"
           }
         },
         "pa-Guru-IN": {

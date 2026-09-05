@@ -7404,7 +7404,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DNS Over HTTPS"
+            "value" : "DNS over HTTPS"
           }
         }
       }
@@ -7858,13 +7858,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "基于 HTTPS 的 DNS 会通过加密的连接发送您对域名的请求，从而提供安全 DNS，使他人更难得知您要访问的网站。"
+            "value" : "基于 HTTPS 的 DNS 会通过加密连接发送域名查询请求，保护 DNS 查询安全，让他人更难得知你要访问的网站。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "DNS over HTTPS 會將您的網域名稱查詢請求加密後傳送，使其他人更難得知您要開啟的網站，讓 DNS 查詢變得安全。"
+            "value" : "DNS over HTTPS 會透過加密連線傳送網域名稱查詢請求，保護 DNS 查詢安全，讓他人更難得知你要造訪的網站。"
           }
         }
       }
@@ -8396,13 +8396,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅在隐私标签页启用"
+            "value" : "仅在无痕标签页中启用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅在隱私瀏覽分頁中啟用"
+            "value" : "僅在私密標籤頁中啟用"
           }
         }
       }
@@ -8934,13 +8934,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "对所有标签页启用"
+            "value" : "在所有标签页中启用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在所有分頁中啟用"
+            "value" : "在所有標籤頁中啟用"
           }
         }
       }
@@ -9394,13 +9394,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "启用数字指纹跟踪防护，以拦截存疑的数字指纹跟踪程序。"
+            "value" : "启用数字指纹跟踪防护，拦截疑似数字指纹跟踪程序。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "啟用數位指紋追蹤防護，以阻擋疑似的數位指紋追蹤程式。"
+            "value" : "啟用數位指紋追蹤防護，封鎖疑似數位指紋追蹤程式。"
           }
         }
       }
@@ -10332,7 +10332,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "修复严重网站问题"
+            "value" : "修复网站的严重问题"
           }
         },
         "zh-Hant" : {
@@ -10738,7 +10738,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "修复轻微网站问题"
+            "value" : "修复网站的轻微问题"
           }
         },
         "zh-Hant" : {
@@ -11270,7 +11270,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "HTTPS-Only 模式"
+            "value" : "仅 HTTPS 模式"
           }
         },
         "zh-Hant" : {
@@ -11886,13 +11886,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所有标签页"
+            "value" : "在所有标签页中"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所有分頁"
+            "value" : "在所有標籤頁中"
           }
         }
       }
@@ -13452,13 +13452,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "限制社交网络跨网站跟踪您的浏览活动。"
+            "value" : "限制社交网络跨网站跟踪你的浏览活动。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "限制社群網站跨網站追蹤您的瀏覽活動。"
+            "value" : "限制社群網站跨網站追蹤你的瀏覽活動。"
           }
         }
       }
@@ -14660,13 +14660,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "仅在隐私标签页中"
+            "value" : "仅在无痕标签页中"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "僅在隱私瀏覽分頁中"
+            "value" : "僅在私密標籤頁中"
           }
         }
       }
@@ -15730,13 +15730,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "防止恶意脚本利用您的设备来挖取数字货币。"
+            "value" : "防止恶意脚本利用你的设备挖矿。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "防止惡意指令碼存取您的裝置以挖掘數位貨幣。"
+            "value" : "防止惡意指令碼利用你的裝置挖礦。"
           }
         }
       }
@@ -18408,13 +18408,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "阻止收集可用于跟踪目的的设备唯一标识数据。"
+            "value" : "阻止收集可唯一识别你的设备、并可用于跟踪的数据。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "防止收集可唯一識別您裝置、並可用於追蹤的資料。"
+            "value" : "防止收集可唯一識別你的裝置、並可用於追蹤的資料。"
           }
         }
       }
@@ -20004,7 +20004,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "存疑的数字指纹跟踪程序"
+            "value" : "疑似数字指纹跟踪程序"
           }
         },
         "zh-Hant" : {
@@ -20494,7 +20494,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要求網站不要分享或銷售我的資料"
+            "value" : "要求網站不要分享或出售我的資料"
           }
         }
       }
@@ -20990,13 +20990,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“全方位 Cookie 保护”会将 Cookie 隔离在您当前访问的网站内，使广告网络等跟踪器无法利用这些 Cookie 跨站跟踪您。"
+            "value" : "“全方位 Cookie 保护”会将 Cookie 隔离在你当前访问的网站内，使广告网络等跟踪器无法利用这些 Cookie 跨站跟踪你。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "全方位 Cookie 保護會將 Cookie 隔離在您目前造訪的網站中，讓廣告網路等追蹤器無法利用這些 Cookie 跨網站追蹤您。"
+            "value" : "全方位 Cookie 保護會將 Cookie 隔離在你目前造訪的網站中，讓廣告網路等追蹤器無法利用這些 Cookie 跨網站追蹤你。"
           }
         }
       }
