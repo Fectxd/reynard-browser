@@ -28,7 +28,7 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-PATCH_FILE="$ROOT_DIR/patches/edge-ui.patch"
+PATCH_FILE="$ROOT_DIR/browser/Reynard/Client/Interface/Edge/edge-ui.patch"
 BROWSER_DIR="$ROOT_DIR/browser"
 
 # Non-interactive mode (used by CI): fail instead of prompting on conflict.

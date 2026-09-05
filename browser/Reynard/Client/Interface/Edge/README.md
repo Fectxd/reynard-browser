@@ -53,10 +53,16 @@ asked to borrow from the fork. No engine change is required.
   — adaptive grid/list collection-view menu.
 - `browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift`
   — presents the menu and dispatches each item.
-- `patches/edge-ui.patch` — the replayable unified diff.
+- `browser/Reynard/Client/Interface/Edge/edge-ui.patch` — the replayable unified diff.
 - `tools/development/apply-edge-ui.sh` — applies the patch (idempotent).
 - `.github/workflows/edge-ui-build.yml` — fork build that replay-applies the patch
   then compiles.
+
+The Edge UI patch lives **outside** the engine `patches/` directory on purpose:
+`patches/` is consumed by `tools/development/apply-patches.sh` and applied to the
+`engine/firefox` submodule. Keeping `edge-ui.patch` under
+`browser/Reynard/Client/Interface/Edge/` prevents the engine patch script from
+trying to apply it to the wrong tree.
 
 Two existing files get a one-line hook each (both captured by the patch):
 - `BrowserViewController.swift` — `onLibrary` now calls `presentEdgeMenu()`.
@@ -104,13 +110,13 @@ takes a long time.
 
 ## Regenerating the patch after further edits
 
-After editing the Edge UI files, regenerate `patches/edge-ui.patch` by diffing
-against upstream:
+After editing the Edge UI files, regenerate `edge-ui.patch` by diffing against
+upstream:
 
 ```sh
 # assuming `upstream` is minh-ton/reynard-browser's main
 git fetch upstream
-git diff upstream/main -- browser/ > patches/edge-ui.patch
+git diff upstream/main -- browser/ > browser/Reynard/Client/Interface/Edge/edge-ui.patch
 ```
 
 Keep the diff limited to `browser/` so the Gecko-engine `patches/` flow
