@@ -96,7 +96,7 @@ jobs:
           submodules: false
 
       - name: Replay Edge UI instrumentation patch
-        run: ./tools/development/apply-edge-ui.sh --non-interactive
+        run: sh ./tools/development/apply-edge-ui.sh --non-interactive
 
       - name: Set up latest Xcode
         uses: maxim-lobanov/setup-xcode@v1

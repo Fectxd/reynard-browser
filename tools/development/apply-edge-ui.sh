@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/sh
 #
 # apply-edge-ui.sh
 #
@@ -20,40 +20,45 @@
 #
 # Usage
 # -----
-#   ./tools/development/apply-edge-ui.sh
+#   ./tools/development/apply-edge-ui.sh [--non-interactive]
 #
-# It is safe to run on a clean upstream checkout: new files are created, and
-# the small edits to existing files are applied with `git apply --3way`, so
-# they merge even when the surrounding code shifted.
+# Idempotent: if the patch is already applied it exits 0 immediately.
 
-set -euo pipefail
+set -eu
 
-SCRIPT_DIR="${0:A:h}"
-ROOT_DIR="${SCRIPT_DIR:h:h}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 PATCH_FILE="$ROOT_DIR/patches/edge-ui.patch"
 BROWSER_DIR="$ROOT_DIR/browser"
 
 # Non-interactive mode (used by CI): fail instead of prompting on conflict.
 NON_INTERACTIVE=false
-if [[ "${1:-}" == "--non-interactive" ]]; then
-	NON_INTERACTIVE=true
-fi
+for argument in "$@"; do
+	case "$argument" in
+		--non-interactive)
+			NON_INTERACTIVE=true
+			;;
+	esac
+done
 
-if [[ ! -f "$PATCH_FILE" ]]; then
+if [ ! -f "$PATCH_FILE" ]; then
 	echo "Missing Edge UI patch: $PATCH_FILE"
 	exit 1
 fi
 
-if [[ ! -d "$BROWSER_DIR" ]]; then
+if [ ! -d "$BROWSER_DIR" ]; then
 	echo "Missing browser directory: $BROWSER_DIR"
 	exit 1
 fi
 
-echo "Applying Edge UI patch to $BROWSER_DIR ..."
+echo "Applying Edge UI patch."
+echo "  patch:  $PATCH_FILE"
+echo "  target: $BROWSER_DIR"
 
 # Idempotency: if the patch is already applied, `git apply --reverse --check`
-# succeeds, so we skip rather than failing on a fresh upstream that already has
-# our tooling committed.
+# succeeds, so we skip rather than failing on a fresh tree that already has our
+# tooling committed. We must not let `set -e` abort on the non-zero (not
+# applied) case, hence the `if`.
 if git -C "$ROOT_DIR" -c core.autocrlf=false apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
 	echo "Edge UI patch is already applied; nothing to do."
 	exit 0
@@ -64,13 +69,13 @@ fi
 # keeps CRLF/LF noise from aborting the apply.
 if ! git -C "$ROOT_DIR" -c core.autocrlf=false apply --3way --whitespace=nowarn "$PATCH_FILE"; then
 	echo "Failed to apply edge-ui.patch."
-	if [[ "$NON_INTERACTIVE" == "true" ]]; then
+	if [ "$NON_INTERACTIVE" = "true" ]; then
 		echo "Non-interactive mode: aborting."
 		exit 1
 	fi
 	echo "Resolve conflicts in $BROWSER_DIR, then press Enter to continue or type q to stop."
-	read -r response
-	if [[ "$response" == "q" || "$response" == "Q" ]]; then
+	read response
+	if [ "$response" = "q" ] || [ "$response" = "Q" ]; then
 		exit 1
 	fi
 fi
