@@ -52,10 +52,10 @@ index f29fe54..aba87e3 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..4fa2cf3 100644
+index 2e63179..2cc2c84 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1270 @@
+@@ -1,1262 +1,1277 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1949,22 +1949,29 @@ index 2e63179..4fa2cf3 100644
 +    }
 +    
 +    private func resolveBrowserLayout() -> BrowserLayout {
-+        let interfaceIdiom = traitCollection.userInterfaceIdiom
 +        let orientation = currentViewportOrientation()
-+        
-+        if interfaceIdiom == .pad {
-+            return isCompactPadLayout
-+            ? resolveCompactLayout(interfaceIdiom: .pad, orientation: orientation)
-+            : resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
++        // The layout is decided purely by window width, not by the device
++        // idiom: <= compactWidthThreshold (1200pt) uses the narrow (phone)
++        // bottom-toolbar layout; wider uses the full pad top-toolbar layout.
++        let width = browserWindowWidth(fallback: view.bounds.width)
++        let isWideLayout = width > compactWidthThreshold
++
++        if isWideLayout {
++            return resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
 +        }
-+        
-+        guard orientation == .portrait else {
-+            return resolvePadLayout(interfaceIdiom: .phone, orientation: .landscape)
-+        }
-+        
++
++        // Narrow: phone layout (bottom toolbar). Keep the existing compact
++        // treatment when the address bar is pinned to the top, otherwise the
++        // standard phone bottom-toolbar layout.
 +        return Prefs.AppearanceSettings.addressBarPosition == .top
-+        ? resolveCompactLayout(interfaceIdiom: .phone, orientation: .portrait)
++        ? resolveCompactLayout(interfaceIdiom: .phone, orientation: orientation)
 +        : resolvePhoneLayout()
++    }
++
++    /// The window width threshold (in points) that separates the narrow
++    /// (phone / bottom-toolbar) layout from the wide (pad / top-toolbar) one.
++    private var compactWidthThreshold: CGFloat {
++        return 1200
 +    }
 +    
 +    private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
@@ -4314,10 +4321,10 @@ index 1f56afc..1bf6c6c 100644
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..1f09ac1
+index 0000000..16e0dd8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,284 @@
+@@ -0,0 +1,287 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -4554,8 +4561,11 @@ index 0000000..1f09ac1
 +    }
 +
 +    /// "退出浏览器" — background the app, like pressing the Home button.
++    /// Uses the same selector that the app's existing quit flow uses
++    /// (UIApplication suspend), which references a real method so #selector
++    /// compiles.
 +    private func exitBrowserToBackground() {
-+        UIApplication.shared.perform(#selector(NSSelectorFromString("suspend")))
++        UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
 +    }
 +
 +    private func presentFindInPage() {
