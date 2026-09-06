@@ -52,10 +52,10 @@ index f29fe54..aba87e3 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..2cc2c84 100644
+index 2e63179..b4d1849 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1277 @@
+@@ -1,1262 +1,1278 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1524,6 +1524,7 @@ index 2e63179..2cc2c84 100644
 +        )
 +        homepageOverlayCoordinator.updateVisibleContentInsets()
 +        invalidateNavigationThumbnailsIfNeeded()
++        revalidateBrowserLayoutIfNeeded()
 +    }
 +    
 +    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -1842,6 +1843,25 @@ index 2e63179..2cc2c84 100644
 +        updateBrowserLayout(animated: animated, duration: duration)
 +    }
 +    
++    /// The layout is chosen by window width, so it must be re-evaluated when
++    /// the window actually resizes (e.g. iPad multitasking/Stage Manager,
++    /// resizable simulator windows, or the window being sized after the first
++    /// layout pass). This defers to the next run loop so it never re-enters the
++    /// current layout pass.
++    private func revalidateBrowserLayoutIfNeeded() {
++        guard view.window != nil else {
++            return
++        }
++        DispatchQueue.main.async { [weak self] in
++            guard let self,
++                  self.isViewLoaded,
++                  self.view.window != nil else {
++                return
++            }
++            self.updateBrowserLayoutIfNeeded(animated: false)
++        }
++    }
++    
 +    func applyBrowserLayout(animated: Bool = false) {
 +        if isShowingFullscreenMedia {
 +            applyFullscreenLayout()
@@ -1874,7 +1894,7 @@ index 2e63179..2cc2c84 100644
 +        let isSearchFocused = searchOverlayCoordinator.isFocused && !tabOverview.isPresented
 +        contentView.applyLayout(
 +            ContentView.LayoutState(mode: isSearchFocused ? .searchFocused : .standard),
-+            topAnchor: view.safeAreaLayoutGuide.topAnchor,
++            topAnchor: browserChrome.topToolbarBottomAnchor,
 +            bottomAnchor: isSearchFocused
 +            ? view.safeAreaLayoutGuide.bottomAnchor
 +            : browserChrome.bottomToolbarTopAnchor
@@ -1894,7 +1914,7 @@ index 2e63179..2cc2c84 100644
 +    private func applyPadLayout(animated: Bool) {
 +        contentView.applyLayout(
 +            ContentView.LayoutState(mode: .standard),
-+            topAnchor: browserChrome.tabBarBottomAnchor,
++            topAnchor: browserChrome.topToolbarBottomAnchor,
 +            bottomAnchor: view.bottomAnchor
 +        )
 +        tabBar.setVisibility(targetTabBarVisibility, animated: animated)
@@ -1939,7 +1959,7 @@ index 2e63179..2cc2c84 100644
 +            ? .fullscreenMedia
 +            : (tabOverview.isPresented ? .tabOverview : .browsing),
 +            search: searchState,
-+            topInset: browserTopInset(),
++            topInset: 0,
 +            interfaceIdiom: browserLayout.interfaceIdiom,
 +            orientation: browserLayout.orientation,
 +            isTwoThirdSplitScreenOrSmaller: isSidebarOverlayLayout,
@@ -1952,7 +1972,8 @@ index 2e63179..2cc2c84 100644
 +        let orientation = currentViewportOrientation()
 +        // The layout is decided purely by window width, not by the device
 +        // idiom: <= compactWidthThreshold (1200pt) uses the narrow (phone)
-+        // bottom-toolbar layout; wider uses the full pad top-toolbar layout.
++        // layout (address bar at the top, five-button bottom toolbar); wider
++        // uses the full pad top-toolbar layout (tab bar above address bar).
 +        let width = browserWindowWidth(fallback: view.bounds.width)
 +        let isWideLayout = width > compactWidthThreshold
 +
@@ -1960,12 +1981,9 @@ index 2e63179..2cc2c84 100644
 +            return resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
 +        }
 +
-+        // Narrow: phone layout (bottom toolbar). Keep the existing compact
-+        // treatment when the address bar is pinned to the top, otherwise the
-+        // standard phone bottom-toolbar layout.
-+        return Prefs.AppearanceSettings.addressBarPosition == .top
-+        ? resolveCompactLayout(interfaceIdiom: .phone, orientation: orientation)
-+        : resolvePhoneLayout()
++        // Narrow: phone layout with the address bar pinned to the top toolbar
++        // and the five-button navigation row in the bottom toolbar.
++        return resolvePhoneLayout(orientation: orientation)
 +    }
 +
 +    /// The window width threshold (in points) that separates the narrow
@@ -2027,34 +2045,21 @@ index 2e63179..2cc2c84 100644
 +    }
 +    
 +    private func browserWindowWidth(fallback: CGFloat) -> CGFloat {
-+        guard let rootView = view.window?.rootViewController?.view,
-+              rootView.bounds.width > 0 else {
-+            return fallback
++        if let windowWidth = view.window?.bounds.width, windowWidth > 0 {
++            return windowWidth
 +        }
-+        
-+        return rootView.bounds.width
++        if view.bounds.width > 0 {
++            return view.bounds.width
++        }
++        return fallback
 +    }
 +    
-+    private func resolvePhoneLayout() -> BrowserLayout {
++    private func resolvePhoneLayout(orientation: BrowserLayout.ViewportOrientation) -> BrowserLayout {
 +        return BrowserLayout(
 +            interfaceIdiom: .phone,
-+            orientation: .portrait,
-+            chromeMode: .phone,
-+            chromePosition: .bottom,
-+            tabOverviewToolbarPosition: .bottom,
-+            overlayHost: .embedded
-+        )
-+    }
-+    
-+    private func resolveCompactLayout(
-+        interfaceIdiom: UIUserInterfaceIdiom,
-+        orientation: BrowserLayout.ViewportOrientation
-+    ) -> BrowserLayout {
-+        return BrowserLayout(
-+            interfaceIdiom: interfaceIdiom,
 +            orientation: orientation,
-+            chromeMode: .compact,
-+            chromePosition: interfaceIdiom == .phone ? .top : .bottom,
++            chromeMode: .phone,
++            chromePosition: .top,
 +            tabOverviewToolbarPosition: .bottom,
 +            overlayHost: .embedded
 +        )
@@ -2072,10 +2077,6 @@ index 2e63179..2cc2c84 100644
 +            tabOverviewToolbarPosition: isHalfSplitScreenOrSmaller ? .bottom : .top,
 +            overlayHost: .detached
 +        )
-+    }
-+    
-+    private func browserTopInset() -> CGFloat {
-+        return sidebarCoordinator.topInset(fallback: UX.fallbackTopInset)
 +    }
 +    
 +    // MARK: - Sidebar
@@ -2596,10 +2597,10 @@ index 2e63179..2cc2c84 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 3244d3b..734f5c5 100644
+index 3244d3b..0f4f586 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -1,759 +1,785 @@
+@@ -1,759 +1,789 @@
 -//
 -//  BrowserChrome.swift
 -//  Reynard
@@ -4019,19 +4020,22 @@ index 3244d3b..734f5c5 100644
 +        overlayWidthConstraint = overlayContentView.widthAnchor.constraint(equalToConstant: 0)
 +        overlayHeightConstraint = overlayContentView.heightAnchor.constraint(equalToConstant: 0)
 +        NSLayoutConstraint.activate([
-+            topToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
-+            topToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
-+            topToolbar.topAnchor.constraint(equalTo: topAnchor),
-+            
++            // The tab bar sits ABOVE the address bar (top toolbar): the top
++            // chrome runs tab bar -> address bar -> content in every mode. In a
++            // hidden tab bar (height 0) this collapses to address bar -> content.
 +            tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
 +            tabBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-+            tabBar.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
++            tabBar.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
++            
++            topToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
++            topToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
++            topToolbar.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
 +            
 +            bottomToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
 +            bottomToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
 +            bottomToolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
 +            
-+            overlayDismissView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
++            overlayDismissView.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
 +            overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
 +            overlayDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
 +            overlayDismissView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
@@ -4042,7 +4046,7 @@ index 3244d3b..734f5c5 100644
 +            actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
 +            actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
 +        ])
-+        topToolbar.extendBackground(to: tabBar.bottomAnchor)
++        topToolbar.extendBackground(to: topToolbar.bottomAnchor)
 +        bottomToolbar.configureTopAnchor(to: safeAreaLayoutGuide.bottomAnchor)
 +    }
 +    
@@ -4064,10 +4068,11 @@ index 3244d3b..734f5c5 100644
 +    private func attachAddressBar(for mode: BrowserChromeMode) {
 +        topToolbar.detachAddressBar()
 +        bottomToolbar.detachAddressBar()
++        // The address bar always lives on the top toolbar so that the phone
++        // (narrow) layout can pin the address bar to the top while the bottom
++        // toolbar keeps the five-button navigation row.
 +        switch mode {
-+        case .phone:
-+            bottomToolbar.attachAddressBar(addressBar)
-+        case .compact, .pad:
++        case .phone, .compact, .pad:
 +            topToolbar.attachAddressBar(addressBar)
 +        }
 +    }
@@ -4124,7 +4129,7 @@ index 3244d3b..734f5c5 100644
 +    
 +    private func resolvedTopState(for state: State) -> TopToolbar.LayoutState {
 +        switch state.mode {
-+        case .phone: return .hidden
++        case .phone: return .compact
 +        case .compact: return .compact
 +        case .pad: return .standard
 +        }
@@ -4145,7 +4150,7 @@ index 3244d3b..734f5c5 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index 8858456..2a22227 100644
+index 8858456..bf31fcc 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 @@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
@@ -4177,7 +4182,7 @@ index 8858456..2a22227 100644
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
          stack.distribution = .fillEqually
-@@ -170,7 +174,9 @@ final class BottomToolbar: UIView {
+@@ -170,14 +174,22 @@ final class BottomToolbar: UIView {
      }
      
      func sharePopoverSourceView() -> UIView {
@@ -4188,7 +4193,21 @@ index 8858456..2a22227 100644
      }
      
      func apply(state: LayoutState, hidesButtons: Bool) {
-@@ -268,6 +274,7 @@ final class BottomToolbar: UIView {
+         let contentHeight: CGFloat
+         switch state {
+-        case .hidden, .standard:
++        case .hidden:
+             contentHeight = UX.bottomToolbarStandardContentHeight
++        case .standard:
++            // When the address bar lives on the top toolbar (phone layout), the
++            // bottom toolbar only needs to host the five-button navigation row.
++            contentHeight = addressBar == nil
++            ? UX.bottomToolbarCompactContentHeight
++            : UX.bottomToolbarStandardContentHeight
+         case .collapsed, .compact:
+             contentHeight = UX.bottomToolbarCompactContentHeight
+         }
+@@ -268,6 +280,7 @@ final class BottomToolbar: UIView {
      @objc private func libraryTapped() { onLibrary?() }
      @objc private func downloadsTapped() { onDownloads?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4196,7 +4215,7 @@ index 8858456..2a22227 100644
      
      // MARK: - View Setup
      
-@@ -326,6 +333,8 @@ final class BottomToolbar: UIView {
+@@ -326,6 +339,8 @@ final class BottomToolbar: UIView {
      
      private func configureInitialState() {
          shareButton.isEnabled = false
