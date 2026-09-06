@@ -4321,10 +4321,10 @@ index 1f56afc..1bf6c6c 100644
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..16e0dd8
+index 0000000..48426b0
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,287 @@
+@@ -0,0 +1,319 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -4359,6 +4359,19 @@ index 0000000..16e0dd8
 +            }
 +        }
 +
++        // Make the desktop/mobile website toggle label reflect the current mode.
++        let isDesktop = tabManager.selectedTab.flatMap { tab in
++            tab.url.flatMap { sessionManager.isDesktopMode(for: $0, tabID: tab.id) }
++        } ?? false
++        menu.titleOverride = { item in
++            guard item == .requestDesktopWebsite else { return nil }
++            return isDesktop ? "查看移动版网页" : "查看桌面网页"
++        }
++        menu.symbolOverride = { item in
++            guard item == .requestDesktopWebsite else { return nil }
++            return isDesktop ? "reynard.smartphone" : "reynard.desktopcomputer"
++        }
++
 +        if browserLayout.interfaceIdiom == .pad {
 +            menu.modalPresentationStyle = .popover
 +            if let popover = menu.popoverPresentationController {
@@ -4371,7 +4384,12 @@ index 0000000..16e0dd8
 +        } else {
 +            menu.modalPresentationStyle = .pageSheet
 +            if #available(iOS 16.0, *), let sheet = menu.sheetPresentationController {
-+                sheet.detents = [.medium(), .large()]
++                // Keep the menu ≤60% of the screen height so it never covers the
++                // whole page, with a grabber at the top to pull it down.
++                sheet.detents = [.custom { _ in
++                    let height = (menu.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height) * 0.6
++                    return height
++                }]
 +                sheet.prefersGrabberVisible = true
 +                sheet.preferredCornerRadius = 18
 +            }
@@ -4406,6 +4424,8 @@ index 0000000..16e0dd8
 +            presentClearBrowsingData()
 +        case .shareExtension:
 +            presentExtensions()
++        case .share:
++            presentShareCurrentPage()
 +        case .translate:
 +            presentPageTranslation()
 +        case .addToPhone:
@@ -4454,25 +4474,7 @@ index 0000000..16e0dd8
 +            Prefs.AppearanceSettings.appAppearance = appearance
 +            AppAppearanceController.apply(appearance)
 +        }
-+
-+        if browserLayout.interfaceIdiom == .pad {
-+            controller.modalPresentationStyle = .popover
-+            if let popover = controller.popoverPresentationController {
-+                popover.sourceView = browserChrome
-+                popover.sourceRect = browserChrome.menuButtonAnchorRect()
-+                popover.permittedArrowDirections = [.up, .down]
-+                popover.backgroundColor = .systemBackground
-+            }
-+        } else {
-+            controller.modalPresentationStyle = .pageSheet
-+            if #available(iOS 16.0, *), let sheet = controller.sheetPresentationController {
-+                sheet.detents = [.medium(), .large()]
-+                sheet.prefersGrabberVisible = true
-+                sheet.preferredCornerRadius = 18
-+            }
-+        }
-+
-+        present(controller, animated: true)
++        presentEdgePopup(controller)
 +    }
 +
 +    private func openHomepage() {
@@ -4489,6 +4491,20 @@ index 0000000..16e0dd8
 +        let controller = AddonsPreferencesViewController()
 +        controller.title = "拓展"
 +        presentContentModal(controller)
++    }
++
++    /// Shares the current page (reuses the standard share sheet).
++    private func presentShareCurrentPage() {
++        guard let tab = tabManager.selectedTab,
++              let url = tabManager.shareableURL(for: tab) else {
++            return
++        }
++        let sourceView = browserChrome.sharePopoverSourceView()
++        presentShareSheet(
++            items: [url],
++            sourceView: sourceView,
++            sourceRect: sourceView.bounds
++        )
 +    }
 +
 +    /// Translates the current page, in the spirit of Firefox Android's built-in
@@ -4592,6 +4608,14 @@ index 0000000..16e0dd8
 +            self?.setSelectedPageZoomLevel(level)
 +        }
 +
++        presentEdgePopup(controller)
++    }
++
++    /// Presents an Edge-style popup sheet, shared by the Font-size, Appearance,
++    /// and other small windows. Pad → popover anchored to the menu button;
++    /// phone → a compact pageSheet (detent sized to the content or maxHeight)
++    /// with a grabber.
++    private func presentEdgePopup(_ controller: UIViewController, maxHeight: CGFloat? = nil) {
 +        if browserLayout.interfaceIdiom == .pad {
 +            controller.modalPresentationStyle = .popover
 +            if let popover = controller.popoverPresentationController {
@@ -4603,21 +4627,29 @@ index 0000000..16e0dd8
 +        } else {
 +            controller.modalPresentationStyle = .pageSheet
 +            if #available(iOS 16.0, *), let sheet = controller.sheetPresentationController {
-+                sheet.detents = [.medium(), .large()]
++                let detentHeight: CGFloat
++                if let maxHeight {
++                    detentHeight = maxHeight
++                } else {
++                    detentHeight = min(
++                        controller.preferredContentSize.height,
++                        (controller.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height) * 0.6
++                    )
++                }
++                sheet.detents = [.custom { _ in detentHeight }]
 +                sheet.prefersGrabberVisible = true
 +                sheet.preferredCornerRadius = 18
 +            }
 +        }
-+
 +        present(controller, animated: true)
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
 new file mode 100644
-index 0000000..49ae786
+index 0000000..1028ec4
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,141 @@
 +//
 +//  EdgeAppearanceViewController.swift
 +//  Reynard
@@ -4634,12 +4666,14 @@ index 0000000..49ae786
 +
 +    private enum UX {
 +        static let contentWidth: CGFloat = 300
-+        static let contentHeight: CGFloat = 240
++        static let contentHeight: CGFloat = 292
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +        static let headerFontSize: CGFloat = 18
 +        static let rowFontSize: CGFloat = 16
-+        static let rowHeight: CGFloat = 52
++        static let rowHeight: CGFloat = 50
 +        static let rowSpacing: CGFloat = 8
++        static let topPadding: CGFloat = 28
++        static let bottomPadding: CGFloat = 20
 +    }
 +
 +    /// Invoked when the user picks an appearance; the presenter persists the
@@ -4717,14 +4751,14 @@ index 0000000..49ae786
 +
 +    private func configureConstraints() {
 +        NSLayoutConstraint.activate([
-+            titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 16),
++            titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: UX.topPadding),
 +            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
 +            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
 +
-+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
++            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
 +            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
 +
-+            optionButtons[0].topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 14),
++            optionButtons[0].topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 18),
 +        ])
 +
 +        var previousButton: UIButton?
@@ -4741,6 +4775,11 @@ index 0000000..49ae786
 +            }
 +            previousButton = button
 +        }
++        if let last = optionButtons.last {
++            NSLayoutConstraint.activate([
++                last.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -UX.bottomPadding),
++            ])
++        }
 +    }
 +
 +    @objc private func optionTapped(_ sender: UIButton) {
@@ -4754,7 +4793,7 @@ index 0000000..49ae786
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
 new file mode 100644
-index 0000000..811c2ef
+index 0000000..5f9842c
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
 @@ -0,0 +1,257 @@
@@ -4783,7 +4822,7 @@ index 0000000..811c2ef
 +
 +    private enum UX {
 +        static let contentWidth: CGFloat = 360
-+        static let contentHeight: CGFloat = 250
++        static let contentHeight: CGFloat = 236
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +        static let smallAFontSize: CGFloat = 11
 +        static let largeAFontSize: CGFloat = 26
@@ -4955,27 +4994,27 @@ index 0000000..811c2ef
 +            topDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 +            topDivider.heightAnchor.constraint(equalToConstant: 0.5),
 +
-+            sectionLabel.topAnchor.constraint(equalTo: topDivider.bottomAnchor, constant: 16),
++            sectionLabel.topAnchor.constraint(equalTo: topDivider.bottomAnchor, constant: 12),
 +            sectionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 +            sectionLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
 +
 +            smallALabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 +            smallALabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
 +
-+            slider.topAnchor.constraint(equalTo: sectionLabel.bottomAnchor, constant: 16),
++            slider.topAnchor.constraint(equalTo: sectionLabel.bottomAnchor, constant: 12),
 +            slider.leadingAnchor.constraint(equalTo: smallALabel.trailingAnchor, constant: 10),
 +            slider.trailingAnchor.constraint(equalTo: largeALabel.leadingAnchor, constant: -10),
 +
 +            largeALabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
 +            largeALabel.centerYAnchor.constraint(equalTo: slider.centerYAnchor),
 +
-+            percentLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 8),
++            percentLabel.topAnchor.constraint(equalTo: slider.bottomAnchor, constant: 6),
 +            percentLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
 +
-+            noteLabel.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 20),
++            noteLabel.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 14),
 +            noteLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 +            noteLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-+            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -16),
++            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
 +        ])
 +    }
 +
@@ -5017,10 +5056,10 @@ index 0000000..811c2ef
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..fde1735
+index 0000000..8138d71
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,473 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -5056,6 +5095,7 @@ index 0000000..fde1735
 +        case appearance
 +        case clearData
 +        case shareExtension
++        case share
 +        case sendToDevice
 +        case translate
 +        case addToPhone
@@ -5088,6 +5128,8 @@ index 0000000..fde1735
 +                return "删除数据"
 +            case .shareExtension:
 +                return "拓展"
++            case .share:
++                return "分享"
 +            case .sendToDevice:
 +                return "发送到设备"
 +            case .translate:
@@ -5129,6 +5171,8 @@ index 0000000..fde1735
 +                return "reynard.trash"
 +            case .shareExtension:
 +                return "reynard.puzzlepiece.extension"
++            case .share:
++                return "reynard.square.and.arrow.up"
 +            case .sendToDevice:
 +                return "reynard.arrow.up.right"
 +            case .translate:
@@ -5168,16 +5212,30 @@ index 0000000..fde1735
 +    private enum UX {
 +        static let primarySymbolPointSize: CGFloat = 26
 +        static let secondarySymbolPointSize: CGFloat = 22
-+        static let gridItemSpacing: CGFloat = 8
-+        static let gridContentInset: CGFloat = 10
-+        static let gridGroupHeight: CGFloat = 88
-+        static let listRowHeight: CGFloat = 56
++        static let gridItemSpacing: CGFloat = 6
++        static let gridContentInset: CGFloat = 8
++        static let gridGroupHeight: CGFloat = 78
++        static let listRowHeight: CGFloat = 50
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +    }
 +
 +    /// Invoked with the selected item; the presenter decides the action and
 +    /// dismisses this controller.
 +    var onSelect: ((Item) -> Void)?
++
++    /// Lets the presenter override an item's title (e.g. the desktop/mobile
++    /// website toggle label depends on the current mode).
++    var titleOverride: ((Item) -> String?)?
++    /// Lets the presenter override an item's symbol.
++    var symbolOverride: ((Item) -> String?)?
++
++    private func displayTitle(for item: Item) -> String {
++        return titleOverride?(item) ?? item.title
++    }
++
++    private func displaySymbol(for item: Item) -> String {
++        return symbolOverride?(item) ?? item.symbolName
++    }
 +
 +    private enum Section: Int, CaseIterable {
 +        case primary
@@ -5253,7 +5311,7 @@ index 0000000..fde1735
 +        case .secondary:
 +            return [
 +                .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
-+                .appearance, .clearData, .shareExtension, .translate,
++                .appearance, .clearData, .shareExtension, .share, .translate,
 +                .addToPhone, .findInPage, .fontSize, .exitBrowser,
 +            ]
 +        }
@@ -5279,8 +5337,8 @@ index 0000000..fde1735
 +        }
 +        let item = items(in: menuSection)[indexPath.row]
 +        cell.configure(
-+            title: item.title,
-+            symbolName: item.symbolName,
++            title: displayTitle(for: item),
++            symbolName: displaySymbol(for: item),
 +            tint: item.usesPrimaryTint ? UX.blueTint : .label,
 +            usesPrimaryTint: item.usesPrimaryTint,
 +            symbolPointSize: item.usesPrimaryTint ? UX.primarySymbolPointSize : UX.secondarySymbolPointSize,
@@ -5429,7 +5487,9 @@ index 0000000..fde1735
 +        symbolView.alpha = alpha
 +        titleLabel.alpha = alpha
 +
-+        contentView.backgroundColor = wideLayout ? UIColor.secondarySystemBackground : .clear
++        // No tile background: Edge shows plain icon + label (only a selection
++        // tint on highlight), keeping the menu light.
++        contentView.backgroundColor = .clear
 +
 +        applyLayout(wideLayout: wideLayout)
 +    }
@@ -5805,7 +5865,7 @@ index 5c0503c..b38aaaf 100644
              set {
                  prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchSuggestionProvider")
 diff --git a/browser/Reynard/Client/Search/SearchCompletion.swift b/browser/Reynard/Client/Search/SearchCompletion.swift
-index 854b671..a3f58b7 100644
+index 854b671..1f912b2 100644
 --- a/browser/Reynard/Client/Search/SearchCompletion.swift
 +++ b/browser/Reynard/Client/Search/SearchCompletion.swift
 @@ -10,6 +10,7 @@ import Foundation
@@ -5824,30 +5884,41 @@ index 854b671..a3f58b7 100644
          case .yahoo: return "Yahoo"
          case .bing: return "Bing"
          case .duckduckgo: return "DuckDuckGo"
-@@ -72,6 +74,9 @@ private extension SearchCompletion.Provider {
+@@ -72,6 +74,13 @@ private extension SearchCompletion.Provider {
                  URLQueryItem(name: "client", value: "firefox"),
                  URLQueryItem(name: "q", value: query),
              ]
 +        case .baidu:
-+            endpoint = "https://www.baidu.com/sug"
-+            queryItems = [URLQueryItem(name: "wd", value: query)]
++            // Baidu's modern suggestion endpoint is /sugrec (the old /sug is 404).
++            endpoint = "https://www.baidu.com/sugrec"
++            queryItems = [
++                URLQueryItem(name: "prod", value: "pc"),
++                URLQueryItem(name: "wd", value: query),
++            ]
          case .yahoo:
              endpoint = "https://search.yahoo.com/sugg/chrome"
              queryItems = [
-@@ -130,6 +135,12 @@ private extension SearchCompletion {
+@@ -126,6 +135,19 @@ private extension SearchCompletion {
+     }
+     
+     static func decodePayload(data: Data, response: URLResponse) -> [Any]? {
++        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
++            // Baidu /sugrec: { "q": ..., "g": [{ "q": "suggestion", ... }, ...] }.
++            if let groups = object["g"] as? [[String: Any]] {
++                let suggestions = groups.compactMap { $0["q"] as? String }
++                return ["", suggestions]
++            }
++            // Other dict forms with an "s" array of plain strings.
++            if let suggestions = object["s"] as? [String] {
++                return ["", suggestions]
++            }
++            return nil
++        }
++
+         if let payload = try? JSONSerialization.jsonObject(with: data) as? [Any] {
              return payload
          }
-         
-+        // Baidu `/sug` returns a dict: { "q": ..., "p": false, "s": ["a","b"] }.
-+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-+           let suggestions = object["s"] as? [String] {
-+            return ["", suggestions]
-+        }
-+        
-         guard let encodingName = response.textEncodingName,
-               let encoding = String.Encoding.ianaCharacterSetName(encodingName),
-               let text = String(data: data, encoding: encoding),
-@@ -137,6 +148,11 @@ private extension SearchCompletion {
+@@ -137,6 +159,11 @@ private extension SearchCompletion {
              return nil
          }
          
