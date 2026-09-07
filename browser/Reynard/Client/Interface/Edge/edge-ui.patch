@@ -5926,7 +5926,7 @@ index 0000000..c7a61ab
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..da28a93
+index 0000000..be1ca8e
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 @@ -0,0 +1,501 @@
@@ -6183,7 +6183,7 @@ index 0000000..da28a93
 +        let columnCount = 4
 +        let secondaryRowCount = (items(in: .secondary).count + columnCount - 1) / columnCount
 +        let totalRowCount = 1 + secondaryRowCount // primary is exactly one row
-+        let interRowSpacing = max(0, secondaryRowCount - 1) * UX.gridItemSpacing
++        let interRowSpacing = CGFloat(max(0, secondaryRowCount - 1)) * UX.gridItemSpacing
 +        let sectionVerticalInsets = (UX.gridContentInset * 2) * CGFloat(Section.allCases.count)
 +        return CGFloat(totalRowCount) * UX.gridGroupHeight
 +            + interRowSpacing
