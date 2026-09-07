@@ -85,10 +85,10 @@ index 441cf2d..7403ad9 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..8ee5a08 100644
+index 2e63179..f3688cf 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1282 @@
+@@ -1,1262 +1,1306 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1933,7 +1933,10 @@ index 2e63179..8ee5a08 100644
 +            ? view.safeAreaLayoutGuide.bottomAnchor
 +            : browserChrome.bottomToolbarTopAnchor
 +        )
-+        tabBar.setVisibility(.hidden, animated: false)
++        // The narrow (phone) layout shows the same top tab strip as the wide
++        // (pad) layout: it sits above the address bar and needs to keep its
++        // height when the overview is presented, so reuse the shared target.
++        tabBar.setVisibility(targetTabBarVisibility, animated: false)
 +    }
 +    
 +    private func applyCompactLayout() {
@@ -1961,17 +1964,32 @@ index 2e63179..8ee5a08 100644
 +        return tabs.count
 +    }
 +    
++    /// Whether the top tab strip should be shown. The strip is part of the top
++    /// chrome in both the wide (pad) and the narrow (phone) layouts — the phone
++    /// layout shows it above the address bar too — and it stays visible even
++    /// with a single tab. When the tab overview is presented the strip only
++    /// reserves its layout height (its cells are hidden by the overview).
 +    var targetTabBarVisibility: TabBar.Visibility {
-+        guard browserLayout.chromeMode == .pad else {
++        switch browserLayout.chromeMode {
++        case .pad, .phone:
++            break
++        case .compact:
 +            return .hidden
 +        }
 +        
-+        let showsTabBar = browserLayout.interfaceIdiom == .pad
-+        ? visibleTabCount > 1
-+        : visibleTabCount > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
-+        guard showsTabBar else {
++        guard visibleTabCount > 0 else {
 +            return .hidden
 +        }
++        
++        // iPad windows always get the strip; on iPhone-class layouts honor the
++        // existing "Show Tab Bar in Landscape" appearance preference (default
++        // on) so users can still turn the phone strip off.
++        let showsByPreference = browserLayout.interfaceIdiom == .pad
++        || Prefs.AppearanceSettings.showsLandscapeTabBar
++        guard showsByPreference else {
++            return .hidden
++        }
++        
 +        return tabOverview.isPresented ? .layoutReserved : .visible
 +    }
 +    
@@ -2005,10 +2023,12 @@ index 2e63179..8ee5a08 100644
 +    private func resolveBrowserLayout() -> BrowserLayout {
 +        let orientation = currentViewportOrientation()
 +        // The layout is decided purely by window width (in points), not by the
-+        // device idiom. iPad landscape (width >= 1024pt) uses the full pad
-+        // top-toolbar layout (tab bar above address bar); anything narrower
-+        // (iPhone, and iPad in portrait) uses the phone layout with the address
-+        // bar on top and the five-button bottom toolbar.
++        // device idiom. Windows at or above compactWidthThreshold use the wide
++        // pad top-toolbar layout (tab bar above address bar); anything narrower
++        // uses the phone layout with the address bar on top and the five-button
++        // bottom toolbar. 600pt keeps iPad portrait (768pt) and most split /
++        // resizable iPad windows on the wide layout while iPhones in portrait
++        // stay narrow (trade-off: iPhone landscape, >= 600pt wide, becomes wide).
 +        let width = browserWindowWidth(fallback: view.bounds.width)
 +        let isWideLayout = width >= compactWidthThreshold
 +
@@ -2023,10 +2043,14 @@ index 2e63179..8ee5a08 100644
 +
 +    /// The window width threshold (in points) that separates the narrow
 +    /// (phone / bottom-toolbar) layout from the wide (pad / top-toolbar) one.
-+    /// 1024pt = the narrowest full iPad landscape width, so any iPad in
-+    /// landscape is treated as pad while iPhones (and iPad portrait) stay narrow.
++    /// Lowered from 1024 so the wide layout survives much smaller windows:
++    /// iPad portrait (>= 768pt) and common split / resizable iPad widths now
++    /// render wide, and the pad layout is kept while the window shrinks far
++    /// below the old full-screen-only 1024pt cap. 600pt is still above the
++    /// widest iPhone portrait logical width (~430pt), so portrait iPhones
++    /// remain on the narrow layout.
 +    private var compactWidthThreshold: CGFloat {
-+        return 1024
++        return 600
 +    }
 +    
 +    private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
@@ -2634,10 +2658,10 @@ index 2e63179..8ee5a08 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 3244d3b..f5d76bb 100644
+index 3244d3b..c4e0507 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -1,759 +1,794 @@
+@@ -1,759 +1,797 @@
 -//
 -//  BrowserChrome.swift
 -//  Reynard
@@ -3978,6 +4002,9 @@ index 3244d3b..f5d76bb 100644
 +        bottomToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
 +        bottomToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
 +        
++        // The "+" new-tab button on the tab strip row inserts a new tab.
++        tabBar.onNewTab = { [weak self] in self?.onNewTab?() }
++        
 +        actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
 +        actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
 +        actionBar.onPageZoomReset = { [weak self] in self?.onPageZoomReset?() }
@@ -4192,7 +4219,7 @@ index 3244d3b..f5d76bb 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index 8858456..e852e81 100644
+index 8858456..82ebdff 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 @@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
@@ -4203,13 +4230,20 @@ index 8858456..e852e81 100644
      
      private let contentView: UIView = {
          let view = UIView()
-@@ -77,14 +78,17 @@ final class BottomToolbar: UIView {
+@@ -77,14 +78,24 @@ final class BottomToolbar: UIView {
      
      private lazy var backButton = ToolbarButton(buttonType: .back, target: self, action: #selector(backTapped))
      private lazy var forwardButton = ToolbarButton(buttonType: .forward, target: self, action: #selector(forwardTapped))
 -    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
 +    private lazy var newTabButton = ToolbarButton(buttonType: .newTab, target: self, action: #selector(newTabTapped))
-+    private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
++    private lazy var tabOverviewButton = ToolbarButton(
++        buttonType: .tabOverview,
++        target: self,
++        action: #selector(tabOverviewTapped),
++        // This toolbar only hosts buttons in the short phone/narrow row, so
++        // the count badge uses the compact style that stays fully inside it.
++        tabCountBadgeStyle: .compact
++    )
      private lazy var libraryButton = ToolbarButton(buttonType: .library, target: self, action: #selector(libraryTapped))
 +    // Share & Downloads live in the Edge overflow menu. Keep hidden buttons so
 +    // the share popover anchor and download badge updates still have a view.
@@ -4224,7 +4258,7 @@ index 8858456..e852e81 100644
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
          stack.distribution = .fillEqually
-@@ -170,14 +174,22 @@ final class BottomToolbar: UIView {
+@@ -170,14 +181,22 @@ final class BottomToolbar: UIView {
      }
      
      func sharePopoverSourceView() -> UIView {
@@ -4249,7 +4283,7 @@ index 8858456..e852e81 100644
          case .collapsed, .compact:
              contentHeight = UX.bottomToolbarCompactContentHeight
          }
-@@ -259,6 +271,10 @@ final class BottomToolbar: UIView {
+@@ -259,6 +278,10 @@ final class BottomToolbar: UIView {
              for: .normal
          )
      }
@@ -4260,7 +4294,7 @@ index 8858456..e852e81 100644
      
      // MARK: - Action Wiring
      
-@@ -268,6 +284,7 @@ final class BottomToolbar: UIView {
+@@ -268,6 +291,7 @@ final class BottomToolbar: UIView {
      @objc private func libraryTapped() { onLibrary?() }
      @objc private func downloadsTapped() { onDownloads?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4268,7 +4302,7 @@ index 8858456..e852e81 100644
      
      // MARK: - View Setup
      
-@@ -326,6 +343,8 @@ final class BottomToolbar: UIView {
+@@ -326,6 +350,8 @@ final class BottomToolbar: UIView {
      
      private func configureInitialState() {
          shareButton.isEnabled = false
@@ -4278,28 +4312,39 @@ index 8858456..e852e81 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-index 5383025..f9f21b0 100644
+index 5383025..3e0f2dc 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-@@ -22,6 +22,9 @@ final class ToolbarButton: UIButton {
+@@ -22,6 +22,15 @@ final class ToolbarButton: UIButton {
          static let standardSymbolPointSize: CGFloat = 20
          static let newTabSymbolPointSize: CGFloat = 20
          static let downloadSymbolPointSize: CGFloat = 17
 +        static let tabCountBadgeSideLength: CGFloat = 14
 +        static let tabCountBadgeInset: CGFloat = 2
 +        static let tabCountBadgeFontSize: CGFloat = 9
++        // The phone (narrow) bottom toolbar button row is short, so its tab
++        // badge uses a smaller, more inset pill that is guaranteed to stay
++        // fully inside the visible button.
++        static let compactTabCountBadgeSideLength: CGFloat = 12
++        static let compactTabCountBadgeInset: CGFloat = 3
++        static let compactTabCountBadgeFontSize: CGFloat = 8
      }
      
      enum ButtonType {
-@@ -33,6 +36,7 @@ final class ToolbarButton: UIButton {
+@@ -33,6 +42,12 @@ final class ToolbarButton: UIButton {
          case download
          case newTab
          case sidebar
 +        case favorite
++    }
++    
++    enum TabCountBadgeStyle {
++        case standard
++        case compact
      }
      
      private lazy var downloadIconView: UIImageView = {
-@@ -64,7 +68,33 @@ final class ToolbarButton: UIButton {
+@@ -64,14 +79,47 @@ final class ToolbarButton: UIButton {
      }()
      
      private lazy var downloadProgressFillWidthConstraint = downloadProgressFillView.widthAnchor.constraint(equalToConstant: 0)
@@ -4323,7 +4368,7 @@ index 5383025..f9f21b0 100644
 +        let label = UILabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.isUserInteractionEnabled = false
-+        label.font = .monospacedDigitSystemFont(ofSize: UX.tabCountBadgeFontSize, weight: .bold)
++        label.font = .monospacedDigitSystemFont(ofSize: badgeFontSize, weight: .bold)
 +        label.textColor = UIColor { trait in
 +            trait.userInterfaceStyle == .dark ? .black : .white
 +        }
@@ -4332,9 +4377,24 @@ index 5383025..f9f21b0 100644
 +    }()
 +
      private let toolbarButtonType: ButtonType
++    private let tabCountBadgeStyle: TabCountBadgeStyle
      private(set) var isShowingDownloads = false
      
-@@ -80,6 +110,7 @@ final class ToolbarButton: UIButton {
+     // MARK: - Lifecycle
+     
+-    init(buttonType: ButtonType, target: AnyObject, action: Selector) {
++    init(
++        buttonType: ButtonType,
++        target: AnyObject,
++        action: Selector,
++        tabCountBadgeStyle: TabCountBadgeStyle = .standard
++    ) {
+         toolbarButtonType = buttonType
++        self.tabCountBadgeStyle = tabCountBadgeStyle
+         super.init(frame: .zero)
+         if #available(iOS 13.4, *) {
+             isPointerInteractionEnabled = true
+@@ -80,6 +128,7 @@ final class ToolbarButton: UIButton {
          configureImage()
          configureTarget(target, action: action)
          configureDownloadViewsIfNeeded()
@@ -4342,7 +4402,7 @@ index 5383025..f9f21b0 100644
      }
      
      required init?(coder: NSCoder) {
-@@ -191,6 +222,61 @@ final class ToolbarButton: UIButton {
+@@ -191,6 +240,81 @@ final class ToolbarButton: UIButton {
              downloadProgressFillWidthConstraint,
          ])
      }
@@ -4357,10 +4417,10 @@ index 5383025..f9f21b0 100644
 +        tabCountBadgeView.addSubview(tabCountBadgeLabel)
 +
 +        NSLayoutConstraint.activate([
-+            tabCountBadgeView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.tabCountBadgeInset),
-+            tabCountBadgeView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -UX.tabCountBadgeInset),
-+            tabCountBadgeView.heightAnchor.constraint(equalToConstant: UX.tabCountBadgeSideLength),
-+            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: UX.tabCountBadgeSideLength),
++            tabCountBadgeView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -badgeInset),
++            tabCountBadgeView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -badgeInset),
++            tabCountBadgeView.heightAnchor.constraint(equalToConstant: badgeSideLength),
++            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: badgeSideLength),
 +
 +            tabCountBadgeLabel.leadingAnchor.constraint(equalTo: tabCountBadgeView.leadingAnchor, constant: 3),
 +            tabCountBadgeLabel.trailingAnchor.constraint(equalTo: tabCountBadgeView.trailingAnchor, constant: -3),
@@ -4378,7 +4438,7 @@ index 5383025..f9f21b0 100644
 +        let normalizedCount = max(count, 0)
 +        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
 +        tabCountBadgeView.isHidden = normalizedCount == 0
-+        tabCountBadgeView.layer.cornerRadius = UX.tabCountBadgeSideLength / 2
++        tabCountBadgeView.layer.cornerRadius = badgeSideLength / 2
 +
 +        applyTabCountPrivateStyle(isPrivate: isPrivate)
 +
@@ -4386,6 +4446,26 @@ index 5383025..f9f21b0 100644
 +        accessibilityLabel = isPrivate
 +        ? NSLocalizedString("Private Tabs", comment: "")
 +        : NSLocalizedString("Tabs", comment: "")
++    }
++
++    // MARK: - Tab Count Badge Metrics
++
++    private var badgeSideLength: CGFloat {
++        return tabCountBadgeStyle == .compact
++        ? UX.compactTabCountBadgeSideLength
++        : UX.tabCountBadgeSideLength
++    }
++
++    private var badgeInset: CGFloat {
++        return tabCountBadgeStyle == .compact
++        ? UX.compactTabCountBadgeInset
++        : UX.tabCountBadgeInset
++    }
++
++    private var badgeFontSize: CGFloat {
++        return tabCountBadgeStyle == .compact
++        ? UX.compactTabCountBadgeFontSize
++        : UX.tabCountBadgeFontSize
 +    }
 +
 +    private func applyTabCountPrivateStyle(isPrivate: Bool) {
@@ -4404,7 +4484,7 @@ index 5383025..f9f21b0 100644
      
      // MARK: - Button
      
-@@ -204,6 +290,7 @@ final class ToolbarButton: UIButton {
+@@ -204,6 +328,7 @@ final class ToolbarButton: UIButton {
          case .download: return "reynard.arrow.down.circle"
          case .newTab: return "reynard.plus"
          case .sidebar: return "reynard.sidebar.left"
@@ -4413,10 +4493,10 @@ index 5383025..f9f21b0 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 1f56afc..037e7b2 100644
+index 1f56afc..c3b1ae3 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-@@ -12,10 +12,14 @@ final class TopToolbar: UIView {
+@@ -12,11 +12,14 @@ final class TopToolbar: UIView {
          static let topToolbarContentHeight: CGFloat = 60
          static let topToolbarButtonStackHeight: CGFloat = 30
          static let topToolbarStandardButtonStackWidth: CGFloat = 126
@@ -4428,11 +4508,12 @@ index 1f56afc..037e7b2 100644
 -        static let topToolbarAddressBarSpacing: CGFloat = 12
 +        static let topToolbarAddressBarSpacing: CGFloat = 5
          static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
+-        static let topToolbarAddressBarWidthLimit: CGFloat = 650
 +        static let topToolbarPortraitHorizontalInset: CGFloat = 12
-         static let topToolbarAddressBarWidthLimit: CGFloat = 650
          static let backgroundViewHorizontalExtension: CGFloat = 16
          static let borderWidth: CGFloat = 0.5
-@@ -35,6 +39,8 @@ final class TopToolbar: UIView {
+     }
+@@ -35,6 +38,8 @@ final class TopToolbar: UIView {
      var onShare: (() -> Void)?
      var onNewTab: (() -> Void)?
      var onTabOverview: (() -> Void)?
@@ -4441,7 +4522,7 @@ index 1f56afc..037e7b2 100644
      
      private let contentView: UIView = {
          let view = UIView()
-@@ -105,6 +111,16 @@ final class TopToolbar: UIView {
+@@ -105,6 +110,16 @@ final class TopToolbar: UIView {
          target: self,
          action: #selector(tabOverviewTapped)
      )
@@ -4458,7 +4539,7 @@ index 1f56afc..037e7b2 100644
      private let buttonMenus = ToolbarButtonMenus()
      
      private lazy var leadingButtons: UIStackView = {
-@@ -118,7 +134,9 @@ final class TopToolbar: UIView {
+@@ -118,7 +133,9 @@ final class TopToolbar: UIView {
      }()
      
      private lazy var trailingButtons: UIStackView = {
@@ -4469,9 +4550,31 @@ index 1f56afc..037e7b2 100644
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
          stack.spacing = UX.topToolbarButtonSpacing
-@@ -189,8 +207,8 @@ final class TopToolbar: UIView {
+@@ -141,12 +158,10 @@ final class TopToolbar: UIView {
+     private var trailingWidthConstraint: NSLayoutConstraint!
+     private var standardAddressBarConstraints: [NSLayoutConstraint] = []
+     private var compactAddressBarConstraints: [NSLayoutConstraint] = []
+-    private var widthLimitedStandardAddressBarConstraints: [NSLayoutConstraint] = []
+     
+     private var layoutState: LayoutState = .hidden
+     private var layoutInterfaceIdiom: UIUserInterfaceIdiom = .unspecified
+     private var layoutSidebarButtonVisible = false
+-    private var isUsingStandardAddressBarWidthLimit = false
+     
+     // MARK: - Lifecycle
+     
+@@ -180,17 +195,9 @@ final class TopToolbar: UIView {
+                 addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                  addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
              ]
+-            widthLimitedStandardAddressBarConstraints = [
+-                addressBar.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
+-                addressBar.widthAnchor.constraint(equalToConstant: UX.topToolbarAddressBarWidthLimit),
+-                addressBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingButtons.trailingAnchor, constant: UX.topToolbarAddressBarSpacing),
+-                addressBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingButtons.leadingAnchor, constant: -UX.topToolbarAddressBarSpacing),
+-                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
+-                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
+-            ]
              compactAddressBarConstraints = [
 -                addressBar.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor),
 -                addressBar.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor),
@@ -4480,7 +4583,17 @@ index 1f56afc..037e7b2 100644
                  addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                  addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
              ]
-@@ -236,7 +254,7 @@ final class TopToolbar: UIView {
+@@ -198,8 +205,7 @@ final class TopToolbar: UIView {
+     }
+     
+     func detachAddressBar() {
+-        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
+-        isUsingStandardAddressBarWidthLimit = false
++        NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
+     }
+     
+     func sharePopoverSourceView() -> UIView {
+@@ -236,18 +242,20 @@ final class TopToolbar: UIView {
                  sidebarButtonVisible: sidebarButtonVisible,
                  showsDownloads: downloadButton.isShowingDownloads
              )
@@ -4489,7 +4602,23 @@ index 1f56afc..037e7b2 100644
              
              sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
              libraryButton.isHidden = interfaceIdiom == .pad
-@@ -326,6 +344,10 @@ final class TopToolbar: UIView {
+             downloadButton.isHidden = isCompact || !downloadButton.isShowingDownloads
+             
+-            NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
+-            isUsingStandardAddressBarWidthLimit = false
++            NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
+             if isCompact {
+                 NSLayoutConstraint.activate(compactAddressBarConstraints)
+             } else {
+-                setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
++                // Wide (standard) layout: the address bar always stretches all
++                // the way between the leading and trailing button groups (the
++                // old 650pt center cap is gone), so the plain set is enough.
++                NSLayoutConstraint.activate(standardAddressBarConstraints)
+             }
+             layoutIfNeeded()
+         }
+@@ -326,6 +334,10 @@ final class TopToolbar: UIView {
              for: .normal
          )
      }
@@ -4500,7 +4629,7 @@ index 1f56afc..037e7b2 100644
      
      func syncSidebarButton(splitViewController: UISplitViewController?) {
          sidebarButton.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
-@@ -351,6 +373,8 @@ final class TopToolbar: UIView {
+@@ -351,6 +363,8 @@ final class TopToolbar: UIView {
      @objc private func shareTapped() { onShare?() }
      @objc private func newTabTapped() { onNewTab?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4509,7 +4638,7 @@ index 1f56afc..037e7b2 100644
      
      // MARK: - View Setup
      
-@@ -372,7 +396,7 @@ final class TopToolbar: UIView {
+@@ -372,7 +386,7 @@ final class TopToolbar: UIView {
          contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
          backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
          leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
@@ -4518,6 +4647,61 @@ index 1f56afc..037e7b2 100644
          
          NSLayoutConstraint.activate([
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
+@@ -414,51 +428,14 @@ final class TopToolbar: UIView {
+         + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
+     }
+     
+-    private var shouldLimitStandardAddressBarWidth: Bool {
+-        let layoutInsets = contentLayoutInsets
+-        let safeWidth = bounds.width - layoutInsets.left - layoutInsets.right
+-        guard safeWidth > 0 else { return false }
+-        
+-        let leadingBoundary = UX.topToolbarHorizontalInset
+-        + leadingWidthConstraint.constant
+-        + UX.topToolbarAddressBarSpacing
+-        let trailingBoundary = safeWidth
+-        - UX.topToolbarHorizontalInset
+-        - trailingWidthConstraint.constant
+-        - UX.topToolbarAddressBarSpacing
+-        let centeredWidth = min(
+-            (safeWidth / 2) - leadingBoundary,
+-            trailingBoundary - (safeWidth / 2)
+-        ) * 2
+-        
+-        return centeredWidth > UX.topToolbarAddressBarWidthLimit
+-    }
+-    
+-    private var contentLayoutInsets: UIEdgeInsets {
+-        if #available(iOS 26.0, *) {
+-            return edgeInsets(for: .safeArea(cornerAdaptation: .horizontal))
+-        }
+-        
+-        return safeAreaInsets
+-    }
+-    
+     private func updateStandardAddressBarLayout() {
++        // The wide address bar is always pinned between the two button groups;
++        // re-assert those constraints (no width cap exists anymore).
+         guard layoutState == .standard else {
+             return
+         }
+         
+-        setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
+-    }
+-    
+-    private func setStandardAddressBarWidthLimitEnabled(_ isEnabled: Bool) {
+-        let activeConstraints = isEnabled ? widthLimitedStandardAddressBarConstraints : standardAddressBarConstraints
+-        guard activeConstraints.contains(where: { !$0.isActive }) || isUsingStandardAddressBarWidthLimit != isEnabled else {
+-            return
+-        }
+-        
+-        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints)
+-        NSLayoutConstraint.activate(activeConstraints)
+-        isUsingStandardAddressBarWidthLimit = isEnabled
++        NSLayoutConstraint.activate(standardAddressBarConstraints)
+     }
+     
+     private func updateDownloadButtonVisibility() {
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
 index 0000000..f726cda
@@ -5259,10 +5443,10 @@ index 0000000..5f9842c
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..4cc17be
+index 0000000..da28a93
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,501 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -5460,8 +5644,14 @@ index 0000000..4cc17be
 +        return view
 +    }()
 +
++    /// The presenter shows this menu as a popover exactly when the window is
++    /// in the wide (pad) layout (window width >= the chrome threshold), and as
++    /// a pageSheet otherwise. A popover's internal trait collection can report
++    /// a compact horizontal size class even inside a wide window, which made
++    /// the grid never activate here, so the choice is keyed off the actual
++    /// presentation style instead of the trait collection.
 +    private var isWideLayout: Bool {
-+        return traitCollection.horizontalSizeClass == .regular
++        return modalPresentationStyle == .popover
 +    }
 +
 +    // MARK: - Lifecycle
@@ -5490,11 +5680,32 @@ index 0000000..4cc17be
 +            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
 +            withReuseIdentifier: dividerReuseIdentifier
 +        )
++        if isWideLayout {
++            // The popover opens at the presenter-requested size; make sure it
++            // is tall enough for the entire fixed 4-column grid so the menu
++            // never turns into a scrolling column inside the popover.
++            preferredContentSize = CGSize(width: 300, height: gridContentHeight)
++        }
 +    }
 +
 +    override func viewWillAppear(_ animated: Bool) {
 +        super.viewWillAppear(animated)
 +        collectionView.reloadData()
++    }
++
++    /// Exact height of the wide 4-column grid: one primary row + the rows the
++    /// secondary group wraps into, plus inter-row spacing, the per-section
++    /// vertical insets and the 1pt divider between the groups.
++    private var gridContentHeight: CGFloat {
++        let columnCount = 4
++        let secondaryRowCount = (items(in: .secondary).count + columnCount - 1) / columnCount
++        let totalRowCount = 1 + secondaryRowCount // primary is exactly one row
++        let interRowSpacing = max(0, secondaryRowCount - 1) * UX.gridItemSpacing
++        let sectionVerticalInsets = (UX.gridContentInset * 2) * CGFloat(Section.allCases.count)
++        return CGFloat(totalRowCount) * UX.gridGroupHeight
++            + interRowSpacing
++            + sectionVerticalInsets
++            + 1 // divider
 +    }
 +
 +    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -6030,6 +6241,101 @@ index 6404d69..1e0bc21 100644
              menuNavigationController.loadViewIfNeeded()
          } else {
              preferredDisplayMode = .primaryHidden
+diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
+index c2ecd15..2f11418 100644
+--- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
++++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
+@@ -21,6 +21,11 @@ final class TabBar: UIView {
+     private enum UX {
+         static let tabBarHeight: CGFloat = 36
+         static let tabBarBottomPadding: CGFloat = 2
++        // Trailing "+" (new tab) button that shares the strip row. The tab
++        // cells give up this much room so the button never covers a cell.
++        static let newTabButtonSideLength: CGFloat = 30
++        static let newTabButtonTrailingInset: CGFloat = 6
++        static let newTabButtonGap: CGFloat = 4
+     }
+     
+     enum Visibility: Equatable {
+@@ -42,6 +47,9 @@ final class TabBar: UIView {
+     
+     weak var dataSource: TabBarDataSource?
+     
++    /// Invoked when the trailing "+" new-tab button is tapped.
++    var onNewTab: (() -> Void)?
++    
+     private(set) var visibility: Visibility = .hidden
+     private(set) var reorderState: ReorderState = .idle
+     private(set) var pendingExpandedTabIndex: Int?
+@@ -54,6 +62,16 @@ final class TabBar: UIView {
+     private let tabCollection = TabBarCollection()
+     private lazy var presentation = TabBarPresentation(tabBar: self)
+     
++    private lazy var newTabButton: ToolbarButton = {
++        let button = ToolbarButton(
++            buttonType: .newTab,
++            target: self,
++            action: #selector(newTabTapped)
++        )
++        button.isHidden = true
++        return button
++    }()
++    
+     private var heightConstraint: NSLayoutConstraint!
+     
+     // MARK: - Lifecycle
+@@ -231,13 +249,17 @@ final class TabBar: UIView {
+     
+     private func configureAppearance() {
+         translatesAutoresizingMaskIntoConstraints = false
+-        backgroundColor = .clear
++        // Solid theme surface (never transparent): the strip is part of the
++        // top chrome and must not let the page background show through it
++        // while toolbars hide/scroll or during transitions.
++        backgroundColor = .systemBackground
+         clipsToBounds = true
+         isHidden = true
+     }
+     
+     private func configureHierarchy() {
+         addSubview(tabCollection)
++        addSubview(newTabButton)
+     }
+     
+     private func configureConstraints() {
+@@ -245,9 +267,16 @@ final class TabBar: UIView {
+         let tabCollectionHeightConstraint = tabCollection.heightAnchor.constraint(equalToConstant: UX.tabBarHeight)
+         NSLayoutConstraint.activate([
+             tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor),
+-            tabCollection.trailingAnchor.constraint(equalTo: trailingAnchor),
++            // The strip gives up its trailing room to the "+" button.
++            tabCollection.trailingAnchor.constraint(equalTo: newTabButton.leadingAnchor, constant: -UX.newTabButtonGap),
+             tabCollection.topAnchor.constraint(equalTo: topAnchor),
+             tabCollectionHeightConstraint,
++            
++            newTabButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.newTabButtonTrailingInset),
++            newTabButton.centerYAnchor.constraint(equalTo: centerYAnchor),
++            newTabButton.widthAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
++            newTabButton.heightAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
++            
+             heightConstraint,
+         ])
+     }
+@@ -300,5 +329,14 @@ final class TabBar: UIView {
+         self.visibility = visibility
+         let isHidden = visibility == .hidden
+         heightConstraint.constant = isHidden ? 0 : standardHeight
++        // The "+" rides on the strip and is only interactive while the strip
++        // is actually visible (layoutReserved keeps the space but hides it).
++        newTabButton.isHidden = visibility != .visible
++    }
++    
++    // MARK: - Actions
++    
++    @objc private func newTabTapped() {
++        onNewTab?()
+     }
+ }
 diff --git a/browser/Reynard/Client/Preferences/BrowserPreferences.swift b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
 index 5c0503c..b38aaaf 100644
 --- a/browser/Reynard/Client/Preferences/BrowserPreferences.swift
