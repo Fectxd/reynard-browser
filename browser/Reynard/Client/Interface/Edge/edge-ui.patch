@@ -52,10 +52,10 @@ index f29fe54..aba87e3 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..b4d1849 100644
+index 2e63179..8d9de23 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1278 @@
+@@ -1,1262 +1,1281 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1970,12 +1970,13 @@ index 2e63179..b4d1849 100644
 +    
 +    private func resolveBrowserLayout() -> BrowserLayout {
 +        let orientation = currentViewportOrientation()
-+        // The layout is decided purely by window width, not by the device
-+        // idiom: <= compactWidthThreshold (1200pt) uses the narrow (phone)
-+        // layout (address bar at the top, five-button bottom toolbar); wider
-+        // uses the full pad top-toolbar layout (tab bar above address bar).
++        // The layout is decided purely by window width (in points), not by the
++        // device idiom. iPad landscape (width >= 1024pt) uses the full pad
++        // top-toolbar layout (tab bar above address bar); anything narrower
++        // (iPhone, and iPad in portrait) uses the phone layout with the address
++        // bar on top and the five-button bottom toolbar.
 +        let width = browserWindowWidth(fallback: view.bounds.width)
-+        let isWideLayout = width > compactWidthThreshold
++        let isWideLayout = width >= compactWidthThreshold
 +
 +        if isWideLayout {
 +            return resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
@@ -1988,8 +1989,10 @@ index 2e63179..b4d1849 100644
 +
 +    /// The window width threshold (in points) that separates the narrow
 +    /// (phone / bottom-toolbar) layout from the wide (pad / top-toolbar) one.
++    /// 1024pt = the narrowest full iPad landscape width, so any iPad in
++    /// landscape is treated as pad while iPhones (and iPad portrait) stay narrow.
 +    private var compactWidthThreshold: CGFloat {
-+        return 1200
++        return 1024
 +    }
 +    
 +    private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
@@ -5075,10 +5078,10 @@ index 0000000..5f9842c
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..8138d71
+index 0000000..4cc17be
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,473 @@
+@@ -0,0 +1,474 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -5233,8 +5236,9 @@ index 0000000..8138d71
 +        static let secondarySymbolPointSize: CGFloat = 22
 +        static let gridItemSpacing: CGFloat = 6
 +        static let gridContentInset: CGFloat = 8
-+        static let gridGroupHeight: CGFloat = 78
-+        static let listRowHeight: CGFloat = 50
++        // Keep enough vertical room so two-line tile titles are not clipped.
++        static let gridGroupHeight: CGFloat = 104
++        static let listRowHeight: CGFloat = 56
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +    }
 +
