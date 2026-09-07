@@ -85,10 +85,10 @@ index 441cf2d..7403ad9 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..0142b36 100644
+index 2e63179..7a37bdf 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1303 @@
+@@ -1,1262 +1,1319 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -2275,10 +2275,11 @@ index 2e63179..0142b36 100644
 +        let keyboardOverlap = max(0, view.bounds.maxY - keyboardFrame.minY)
 +        let animation = keyboardAnimation(from: notification)
 +        let isInHardwareKeyboardMode = tabManager.selectedTab?.session.isInHardwareKeyboardMode() == true
-+        if !searchOverlayCoordinator.isFocused
-+            && !tabOverview.isPresented
-+            && keyboardInset > 0
-+            && !isInHardwareKeyboardMode {
++        let shouldRelocateFocusedInput = !searchOverlayCoordinator.isFocused
++        && !tabOverview.isPresented
++        && keyboardInset > 0
++        && !isInHardwareKeyboardMode
++        if shouldRelocateFocusedInput {
 +            contentView.relocateFocusedInput(
 +                above: keyboardFrame,
 +                animationDuration: animation.duration,
@@ -2303,7 +2304,12 @@ index 2e63179..0142b36 100644
 +        )
 +        browserChrome.dockActionBar(offset: shouldDockActionBar ? -keyboardOverlap : 0)
 +        browserChrome.dockAddressBar(offset: shouldDockAddressBar ? -keyboardInset : 0)
-+        animateLayout(animation)
++        // When the keyboard no longer overlaps (or a non-content state took
++        // over), restore any scroll-hidden chrome so the content top settles
++        // back below the address bar. Some dismissals (e.g. the dictation /
++        // accessory strip collapsing, iPad) only post a frame change, not
++        // keyboardWillHide, so do it here too.
++        animateLayout(animation, restoringScrollHiddenToolbar: !shouldRelocateFocusedInput)
 +    }
 +    
 +    @objc private func keyboardWillHide(_ notification: Notification) {
@@ -2314,7 +2320,11 @@ index 2e63179..0142b36 100644
 +        )
 +        browserChrome.dockActionBar(offset: 0)
 +        browserChrome.dockAddressBar(offset: 0)
-+        animateLayout(animation)
++        // Revealing a focused input above the keyboard scrolls the page, which
++        // scroll-to-hide translates as user scrolling and can leave the top
++        // chrome hidden after the session. Bring it back so the web content's
++        // top edge settles below the address bar again.
++        animateLayout(animation, restoringScrollHiddenToolbar: true)
 +    }
 +    
 +    private func keyboardAnimation(from notification: Notification) -> KeyboardAnimation {
@@ -2328,8 +2338,14 @@ index 2e63179..0142b36 100644
 +        )
 +    }
 +    
-+    private func animateLayout(_ animation: KeyboardAnimation) {
++    private func animateLayout(
++        _ animation: KeyboardAnimation,
++        restoringScrollHiddenToolbar: Bool = false
++    ) {
 +        UIView.animate(withDuration: animation.duration, delay: 0, options: [animation.curve]) {
++            if restoringScrollHiddenToolbar {
++                self.toolbarController.restoreToolbarOffsets()
++            }
 +            self.view.layoutIfNeeded()
 +        }
 +    }
@@ -4489,6 +4505,29 @@ index 5383025..3e0f2dc 100644
          }
      }
      
+diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarController.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarController.swift
+index 70d48c4..034809b 100644
+--- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarController.swift
++++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarController.swift
+@@ -290,4 +290,18 @@ final class ToolbarController {
+         }
+         beginSnap(to: 0)
+     }
++    
++    /// Returns any scroll-hidden chrome to its fully visible rest position.
++    ///
++    /// Scroll-to-hide also reacts to the compositor scroll that reveals a
++    /// focused input above the keyboard, so after such a keyboard session the
++    /// top chrome can be left scrolled out of view — which makes the web
++    /// content start at the top (the tab-bar band) instead of below the address
++    /// bar. Unlike reset(), this only zeroes the scroll offsets and preserves an
++    /// explicit bottom-toolbar collapse (find-in-page). Animate by calling it
++    /// inside a UIView animation block.
++    func restoreToolbarOffsets() {
++        cancelSnap()
++        setToolbarOffset(0, refresh: true)
++    }
+ }
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 index 1f56afc..c3b1ae3 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
@@ -4699,6 +4738,52 @@ index 1f56afc..c3b1ae3 100644
      }
      
      private func updateDownloadButtonVisibility() {
+diff --git a/browser/Reynard/Client/Interface/ContentView/ContentView.swift b/browser/Reynard/Client/Interface/ContentView/ContentView.swift
+index 2294024..19ec2ac 100644
+--- a/browser/Reynard/Client/Interface/ContentView/ContentView.swift
++++ b/browser/Reynard/Client/Interface/ContentView/ContentView.swift
+@@ -72,6 +72,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
+     private var toolbarTopOffset: CGFloat = 0
+     private var webContentBottomOffset: CGFloat = 0
+     private var focusedInputTask: Task<Void, Never>?
++    private var focusedInputRelocationGeneration = 0
+     private var inputBottomRatio: CGFloat?
+     private var focusedInputOffset: CGFloat = 0
+     
+@@ -383,6 +384,11 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
+         animationOptions: UIView.AnimationOptions
+     ) {
+         focusedInputTask?.cancel()
++        // Supersede any in-flight relocation so an offset computed against an
++        // older keyboard frame (e.g. one that still included a taller
++        // dictation / input-accessory strip) can never be applied late.
++        focusedInputRelocationGeneration += 1
++        let relocationGeneration = focusedInputRelocationGeneration
+         guard let session else {
+             resetFocusedInputRelocation(
+                 animationDuration: animationDuration,
+@@ -394,7 +400,10 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
+         focusedInputTask = Task { @MainActor [weak self] in
+             guard let self else { return }
+             let bottomRatio = await session.focusedInputBottomRatio()
+-            guard !Task.isCancelled else { return }
++            guard !Task.isCancelled,
++                  relocationGeneration == focusedInputRelocationGeneration else {
++                return
++            }
+             
+             inputBottomRatio = bottomRatio
+             superview?.layoutIfNeeded()
+@@ -431,6 +440,9 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
+         animationOptions: UIView.AnimationOptions = []
+     ) {
+         focusedInputTask?.cancel()
++        // Invalidate in-flight relocations too, so a stale keyboard frame can
++        // not re-apply its offset after a reset.
++        focusedInputRelocationGeneration += 1
+         focusedInputTask = nil
+         inputBottomRatio = nil
+         guard focusedInputOffset != 0 else { return }
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
 index 0000000..f726cda
