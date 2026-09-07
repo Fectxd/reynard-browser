@@ -97,10 +97,10 @@ index a40dc9d..2537199 100644
                  self?.setTabOverviewVisible(true, animated: animated)
              }) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..b89480b 100644
+index 2e63179..921cb14 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1350 @@
+@@ -1,1262 +1,1351 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1671,6 +1671,7 @@ index 2e63179..b89480b 100644
 +        let contentTrailingConstraint = contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
 +        contentTrailingConstraint.isActive = true
 +        self.contentTrailingConstraint = contentTrailingConstraint
++    }
 +    
 +    private func configureBrowserChromeActions() {
 +        contentView.onBack = { [weak self] in
