@@ -51,11 +51,44 @@ index f29fe54..aba87e3 100644
          presentLibrary(initialSection: .settings)
      }
      
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
+index 441cf2d..7403ad9 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
+@@ -31,6 +31,7 @@ extension BrowserViewController: TabManagerDelegate {
+         updateBrowserLayout(animated: animateTabBarVisibility)
+         homepageOverlayCoordinator.updatePresentation(animated: false)
+         tabBar.updateLayout()
++        refreshTabOverviewBadge()
+     }
+     
+     func tabManagerDidTerminateSelectedTab(_ tabManager: TabManager) {
+@@ -90,6 +91,7 @@ extension BrowserViewController: TabManagerDelegate {
+            fullscreenSession !== selectedTab.session {
+             applyFullscreenState(false, for: fullscreenSession, mediaIsPlaying: false)
+         }
++        refreshTabOverviewBadge()
+     }
+     
+     func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
+@@ -413,4 +415,12 @@ extension BrowserViewController {
+             isPreparedForNavigation: isPreparedForNavigation
+         )
+     }
++
++    /// Updates the tab-overview button's count badge to reflect the current
++    /// browsing mode (regular vs private tabs are counted separately).
++    func refreshTabOverviewBadge() {
++        let isPrivate = tabManager.selectedTabMode == .private
++        let count = isPrivate ? tabManager.privateTabs.count : tabManager.regularTabs.count
++        browserChrome.setTabOverviewBadge(count: count, isPrivate: isPrivate)
++    }
+ }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..8d9de23 100644
+index 2e63179..8ee5a08 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1281 @@
+@@ -1,1262 +1,1282 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1467,6 +1500,7 @@ index 2e63179..8d9de23 100644
 +        
 +        tabManager.createInitialTab(openingScreen: Prefs.HomepageSettings.openingScreen)
 +        refreshAddressBar()
++        refreshTabOverviewBadge()
 +        homepageOverlayCoordinator.updatePresentation(animated: false)
 +        
 +        Task { @MainActor [weak self] in
@@ -2600,10 +2634,10 @@ index 2e63179..8d9de23 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 3244d3b..0f4f586 100644
+index 3244d3b..f5d76bb 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -1,759 +1,789 @@
+@@ -1,759 +1,794 @@
 -//
 -//  BrowserChrome.swift
 -//  Reynard
@@ -3912,6 +3946,11 @@ index 3244d3b..0f4f586 100644
 +        topToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
 +        bottomToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
 +    }
++
++    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
++        topToolbar.setTabOverviewBadge(count: count, isPrivate: isPrivate)
++        bottomToolbar.setTabOverviewBadge(count: count, isPrivate: isPrivate)
++    }
 +    
 +    func syncSidebarButton(splitViewController: UISplitViewController?) {
 +        topToolbar.syncSidebarButton(splitViewController: splitViewController)
@@ -4153,7 +4192,7 @@ index 3244d3b..0f4f586 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index 8858456..bf31fcc 100644
+index 8858456..e852e81 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 @@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
@@ -4210,7 +4249,18 @@ index 8858456..bf31fcc 100644
          case .collapsed, .compact:
              contentHeight = UX.bottomToolbarCompactContentHeight
          }
-@@ -268,6 +280,7 @@ final class BottomToolbar: UIView {
+@@ -259,6 +271,10 @@ final class BottomToolbar: UIView {
+             for: .normal
+         )
+     }
++
++    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
++        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
++    }
+     
+     // MARK: - Action Wiring
+     
+@@ -268,6 +284,7 @@ final class BottomToolbar: UIView {
      @objc private func libraryTapped() { onLibrary?() }
      @objc private func downloadsTapped() { onDownloads?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4218,7 +4268,7 @@ index 8858456..bf31fcc 100644
      
      // MARK: - View Setup
      
-@@ -326,6 +339,8 @@ final class BottomToolbar: UIView {
+@@ -326,6 +343,8 @@ final class BottomToolbar: UIView {
      
      private func configureInitialState() {
          shareButton.isEnabled = false
@@ -4228,10 +4278,20 @@ index 8858456..bf31fcc 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-index 5383025..1fe7da7 100644
+index 5383025..f9f21b0 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-@@ -33,6 +33,7 @@ final class ToolbarButton: UIButton {
+@@ -22,6 +22,9 @@ final class ToolbarButton: UIButton {
+         static let standardSymbolPointSize: CGFloat = 20
+         static let newTabSymbolPointSize: CGFloat = 20
+         static let downloadSymbolPointSize: CGFloat = 17
++        static let tabCountBadgeSideLength: CGFloat = 14
++        static let tabCountBadgeInset: CGFloat = 2
++        static let tabCountBadgeFontSize: CGFloat = 9
+     }
+     
+     enum ButtonType {
+@@ -33,6 +36,7 @@ final class ToolbarButton: UIButton {
          case download
          case newTab
          case sidebar
@@ -4239,7 +4299,112 @@ index 5383025..1fe7da7 100644
      }
      
      private lazy var downloadIconView: UIImageView = {
-@@ -204,6 +205,7 @@ final class ToolbarButton: UIButton {
+@@ -64,7 +68,33 @@ final class ToolbarButton: UIButton {
+     }()
+     
+     private lazy var downloadProgressFillWidthConstraint = downloadProgressFillView.widthAnchor.constraint(equalToConstant: 0)
+-    
++
++    // Tab-overview count badge (bottom-right corner). Lazy so it only exists
++    // for the tab-overview button.
++    private lazy var tabCountBadgeView: UIView = {
++        let view = UIView()
++        view.translatesAutoresizingMaskIntoConstraints = false
++        view.isUserInteractionEnabled = false
++        view.isHidden = true
++        view.layer.cornerCurve = .continuous
++        view.backgroundColor = UIColor { trait in
++            trait.userInterfaceStyle == .dark ? .white : .black
++        }
++        return view
++    }()
++
++    private lazy var tabCountBadgeLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.isUserInteractionEnabled = false
++        label.font = .monospacedDigitSystemFont(ofSize: UX.tabCountBadgeFontSize, weight: .bold)
++        label.textColor = UIColor { trait in
++            trait.userInterfaceStyle == .dark ? .black : .white
++        }
++        label.textAlignment = .center
++        return label
++    }()
++
+     private let toolbarButtonType: ButtonType
+     private(set) var isShowingDownloads = false
+     
+@@ -80,6 +110,7 @@ final class ToolbarButton: UIButton {
+         configureImage()
+         configureTarget(target, action: action)
+         configureDownloadViewsIfNeeded()
++        configureTabCountViewsIfNeeded()
+     }
+     
+     required init?(coder: NSCoder) {
+@@ -191,6 +222,61 @@ final class ToolbarButton: UIButton {
+             downloadProgressFillWidthConstraint,
+         ])
+     }
++
++    private func configureTabCountViewsIfNeeded() {
++        guard toolbarButtonType == .tabOverview else {
++            return
++        }
++
++        clipsToBounds = false
++        addSubview(tabCountBadgeView)
++        tabCountBadgeView.addSubview(tabCountBadgeLabel)
++
++        NSLayoutConstraint.activate([
++            tabCountBadgeView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.tabCountBadgeInset),
++            tabCountBadgeView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -UX.tabCountBadgeInset),
++            tabCountBadgeView.heightAnchor.constraint(equalToConstant: UX.tabCountBadgeSideLength),
++            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: UX.tabCountBadgeSideLength),
++
++            tabCountBadgeLabel.leadingAnchor.constraint(equalTo: tabCountBadgeView.leadingAnchor, constant: 3),
++            tabCountBadgeLabel.trailingAnchor.constraint(equalTo: tabCountBadgeView.trailingAnchor, constant: -3),
++            tabCountBadgeLabel.centerYAnchor.constraint(equalTo: tabCountBadgeView.centerYAnchor),
++        ])
++    }
++
++    /// Shows the current tab count on the tab-overview button (bottom-right
++    /// corner) and swaps the icon to reflect private vs regular mode.
++    func setTabCount(_ count: Int, isPrivate: Bool) {
++        guard toolbarButtonType == .tabOverview else {
++            return
++        }
++
++        let normalizedCount = max(count, 0)
++        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
++        tabCountBadgeView.isHidden = normalizedCount == 0
++        tabCountBadgeView.layer.cornerRadius = UX.tabCountBadgeSideLength / 2
++
++        applyTabCountPrivateStyle(isPrivate: isPrivate)
++
++        accessibilityValue = normalizedCount == 0 ? nil : "\(normalizedCount)"
++        accessibilityLabel = isPrivate
++        ? NSLocalizedString("Private Tabs", comment: "")
++        : NSLocalizedString("Tabs", comment: "")
++    }
++
++    private func applyTabCountPrivateStyle(isPrivate: Bool) {
++        // Distinguish modes: private uses the filled glyph + a dimmer tint.
++        let baseName = isPrivate ? "reynard.square.on.square.fill" : "reynard.square.on.square"
++        let systemFallback = isPrivate ? "square.on.square.fill" : "square.on.square"
++        let image = UIImage(named: baseName, in: .main, compatibleWith: traitCollection)
++            ?? UIImage(systemName: systemFallback)
++        setImage(image, for: .normal)
++        setPreferredSymbolConfiguration(
++            UIImage.SymbolConfiguration(pointSize: UX.standardSymbolPointSize, weight: .regular),
++            forImageIn: .normal
++        )
++        tintColor = isPrivate ? .secondaryLabel : .label
++    }
+     
+     // MARK: - Button
+     
+@@ -204,6 +290,7 @@ final class ToolbarButton: UIButton {
          case .download: return "reynard.arrow.down.circle"
          case .newTab: return "reynard.plus"
          case .sidebar: return "reynard.sidebar.left"
@@ -4248,7 +4413,7 @@ index 5383025..1fe7da7 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 1f56afc..1bf6c6c 100644
+index 1f56afc..d0c44ab 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 @@ -12,10 +12,14 @@ final class TopToolbar: UIView {
@@ -4323,7 +4488,18 @@ index 1f56afc..1bf6c6c 100644
              
              sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
              libraryButton.isHidden = interfaceIdiom == .pad
-@@ -351,6 +369,8 @@ final class TopToolbar: UIView {
+@@ -326,6 +344,10 @@ final class TopToolbar: UIView {
+             for: .normal
+         )
+     }
++
++    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
++        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
++    }
+     
+     func syncSidebarButton(splitViewController: UISplitViewController?) {
+         sidebarButton.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
+@@ -351,6 +373,8 @@ final class TopToolbar: UIView {
      @objc private func shareTapped() { onShare?() }
      @objc private func newTabTapped() { onNewTab?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4332,7 +4508,7 @@ index 1f56afc..1bf6c6c 100644
      
      // MARK: - View Setup
      
-@@ -372,7 +392,7 @@ final class TopToolbar: UIView {
+@@ -372,7 +396,7 @@ final class TopToolbar: UIView {
          contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
          backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
          leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
@@ -4343,10 +4519,10 @@ index 1f56afc..1bf6c6c 100644
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..48426b0
+index 0000000..f726cda
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,323 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -4649,13 +4825,17 @@ index 0000000..48426b0
 +        } else {
 +            controller.modalPresentationStyle = .pageSheet
 +            if #available(iOS 16.0, *), let sheet = controller.sheetPresentationController {
++                // The sheet detent is measured from the screen bottom. A pageSheet
++                // also reserves a grabber + top inset above the content, so add
++                // clearance so the card is fully visible and not shrunken.
++                let availableHeight = controller.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height
 +                let detentHeight: CGFloat
 +                if let maxHeight {
 +                    detentHeight = maxHeight
 +                } else {
 +                    detentHeight = min(
-+                        controller.preferredContentSize.height,
-+                        (controller.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height) * 0.6
++                        controller.preferredContentSize.height + 48,
++                        availableHeight * 0.62
 +                    )
 +                }
 +                sheet.detents = [.custom { _ in detentHeight }]
