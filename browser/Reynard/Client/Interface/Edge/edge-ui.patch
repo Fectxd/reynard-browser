@@ -84,11 +84,23 @@ index 441cf2d..7403ad9 100644
 +        browserChrome.setTabOverviewBadge(count: count, isPrivate: isPrivate)
 +    }
  }
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
+index a40dc9d..2537199 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
+@@ -132,6 +132,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+     func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
+         if visible {
+             toolbarController.lock(for: .tabOverview)
++            dismissEdgeLibraryPanel(animated: false)
+             if browserChrome.performAfterTransition({ [weak self] in
+                 self?.setTabOverviewVisible(true, animated: animated)
+             }) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..7a37bdf 100644
+index 2e63179..b89480b 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1319 @@
+@@ -1,1262 +1,1350 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1401,6 +1413,15 @@ index 2e63179..7a37bdf 100644
 +    let contentView = ContentView()
 +    lazy var browserChrome = BrowserChrome()
 +    var tabBar: TabBar { return browserChrome.tabBar }
++
++    /// Pins contentView's trailing edge to the container. Its constant is
++    /// adjusted (to the right side-panel width) while the Edge library side
++    /// panel is open on the wide layout, so the web content shifts left and a
++    /// fixed-width panel can sit side-by-side on the right.
++    private var contentTrailingConstraint: NSLayoutConstraint?
++
++    /// The live right side-by-side library panel (pad layout only).
++    var edgeLibraryPanel: EdgeLibrarySidePanelController?
 +    
 +    private(set) lazy var toolbarController = ToolbarController(
 +        browserChrome: browserChrome,
@@ -1629,7 +1650,6 @@ index 2e63179..7a37bdf 100644
 +        
 +        NSLayoutConstraint.activate([
 +            contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-+            contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 +            // Fallback pin: the tab strip now sits at the very top (safe area)
 +            // with the address bar directly beneath it, so the content's top
 +            // must always clear the address row (topToolbarBottomAnchor). Pinning
@@ -1648,7 +1668,9 @@ index 2e63179..7a37bdf 100644
 +            tabOverview.topAnchor.constraint(equalTo: view.topAnchor),
 +            tabOverview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 +        ])
-+    }
++        let contentTrailingConstraint = contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
++        contentTrailingConstraint.isActive = true
++        self.contentTrailingConstraint = contentTrailingConstraint
 +    
 +    private func configureBrowserChromeActions() {
 +        contentView.onBack = { [weak self] in
@@ -1852,6 +1874,9 @@ index 2e63179..7a37bdf 100644
 +        animated
 +        ? UIView.animate(withDuration: duration, animations: layoutBlock)
 +        : layoutBlock()
++        
++        // Keep the side-by-side library panel consistent with the new layout.
++        updateEdgeLibraryPanelForLayout()
 +    }
 +    
 +    func dismissAddressBarEditingAndOverlays() {
@@ -1961,6 +1986,24 @@ index 2e63179..7a37bdf 100644
 +            bottomAnchor: view.bottomAnchor
 +        )
 +        tabBar.setVisibility(targetTabBarVisibility, animated: animated)
++    }
++
++    // MARK: - Edge Library Side Panel (wide layout)
++
++    /// The width (points) the right side-by-side library panel occupies on the
++    /// wide layout. The web content's trailing edge is inset by this amount
++    /// while the panel is open.
++    var edgeLibraryPanelWidth: CGFloat {
++        return EdgeLibrarySidePanelController.panelWidth
++    }
++
++    /// Sets how far the web content's trailing edge is pulled in from the
++    /// container's right edge (0 when the side panel is closed). Positive
++    /// values leave room on the right for the side-by-side library panel. Only
++    /// mutates the constraint constant; callers drive the layout pass so the
++    /// change can be animated or not as appropriate.
++    func setEdgeLibraryContentTrailingInset(_ inset: CGFloat) {
++        contentTrailingConstraint?.constant = -max(0, inset)
 +    }
 +    
 +    private var visibleTabCount: Int {
@@ -4784,9 +4827,140 @@ index 2294024..19ec2ac 100644
          focusedInputTask = nil
          inputBottomRatio = nil
          guard focusedInputOffset != 0 else { return }
+diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift
+new file mode 100644
+index 0000000..223ab25
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift
+@@ -0,0 +1,125 @@
++//
++//  BrowserViewController+EdgeLibraryPanel.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Hosts the Edge right side-by-side Library panel on the wide (pad) layout.
++//  While the panel is open the web content's trailing edge is pulled in by the
++//  panel width (see BrowserViewController.setEdgeLibraryContentTrailingInset)
++//  so the content shifts left and the panel sits side-by-side on the right.
++//  The panel is only ever shown when the layout is pad; narrow/phone keeps the
++//  classic full-screen modal library (presentLibrary). Opening a web page from
++//  a bookmark / history row collapses the panel.
++//
++
++import UIKit
++
++extension BrowserViewController {
++
++    /// Presents the side-by-side library panel (pad only) or falls back to the
++    /// classic full-screen modal (phone / narrow). If the panel is already open
++    /// it just switches to the requested section.
++    func presentEdgeLibraryPanel(section: LibrarySection, animated: Bool = true) {
++        toolbarController.reset()
++        browserChrome.dismissActionBar(animated: false)
++        guard canHostEdgeLibraryPanel else {
++            presentLibrary(initialSection: section)
++            return
++        }
++
++        if let panel = edgeLibraryPanel {
++            panel.showSection(section)
++            return
++        }
++
++        let panel = EdgeLibrarySidePanelController()
++        panel.onClose = { [weak self] in
++            self?.dismissEdgeLibraryPanel(animated: true)
++        }
++
++        addChild(panel)
++        panel.view.translatesAutoresizingMaskIntoConstraints = false
++        view.addSubview(panel.view)
++        NSLayoutConstraint.activate([
++            panel.view.topAnchor.constraint(equalTo: browserChrome.topToolbarBottomAnchor),
++            panel.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            panel.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
++            panel.view.widthAnchor.constraint(equalToConstant: EdgeLibrarySidePanelController.panelWidth),
++        ])
++        panel.didMove(toParent: self)
++        edgeLibraryPanel = panel
++
++        panel.showSection(section)
++        setEdgeLibraryContentTrailingInset(EdgeLibrarySidePanelController.panelWidth)
++        if animated {
++            UIView.animate(withDuration: BrowserViewController.layoutAnimationDuration) {
++                self.view.layoutIfNeeded()
++            }
++        } else {
++            view.layoutIfNeeded()
++        }
++    }
++
++    /// Dismisses the side-by-side library panel, restoring the content to full
++    /// width. No-op when the panel is not open.
++    func dismissEdgeLibraryPanel(animated: Bool = true) {
++        guard let panel = edgeLibraryPanel else {
++            return
++        }
++        let removePanel = {
++            panel.willMove(toParent: nil)
++            panel.view.removeFromSuperview()
++            panel.removeFromParent()
++        }
++        if animated {
++            setEdgeLibraryContentTrailingInset(0)
++            UIView.animate(withDuration: BrowserViewController.layoutAnimationDuration, animations: {
++                self.view.layoutIfNeeded()
++            }, completion: { _ in
++                removePanel()
++            })
++        } else {
++            setEdgeLibraryContentTrailingInset(0)
++            view.layoutIfNeeded()
++            removePanel()
++        }
++        edgeLibraryPanel = nil
++    }
++
++    /// Whether this layout can host the side-by-side panel. Only the wide pad
++    /// layout qualifies; fullscreen media and the tab overview are excluded.
++    var canHostEdgeLibraryPanel: Bool {
++        guard browserLayout.chromeMode == .pad,
++              !isShowingFullscreenMedia,
++              !tabOverview.isPresented else {
++            return false
++        }
++        return true
++    }
++
++    /// Ensures the side panel matches the current layout. Called from layout
++    /// changes (rotation, window resize) so an open panel on the wide layout
++    /// stays put, and collapses itself when the layout stops being wide.
++    func updateEdgeLibraryPanelForLayout() {
++        guard edgeLibraryPanel != nil else {
++            setEdgeLibraryContentTrailingInset(0)
++            return
++        }
++        if canHostEdgeLibraryPanel {
++            setEdgeLibraryContentTrailingInset(EdgeLibrarySidePanelController.panelWidth)
++        } else {
++            dismissEdgeLibraryPanel(animated: false)
++        }
++    }
++
++    /// Called when a web page is opened from inside the panel (bookmarks /
++    /// history rows). Collapses the panel so the content can fill the width.
++    func edgeLibraryPanelDidOpenWebPage() {
++        dismissEdgeLibraryPanel(animated: true)
++    }
++}
++
++private extension BrowserViewController {
++    static var layoutAnimationDuration: TimeInterval { return 0.22 }
++}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..f726cda
+index 0000000..ae1e315
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 @@ -0,0 +1,323 @@
@@ -4865,11 +5039,11 @@ index 0000000..f726cda
 +    private func handleEdgeMenuItem(_ item: EdgeMenuViewController.Item) {
 +        switch item {
 +        case .favorites:
-+            presentLibrary(initialSection: .bookmarks)
++            presentEdgeLibraryPanel(section: .bookmarks)
 +        case .history:
-+            presentLibrary(initialSection: .history)
++            presentEdgeLibraryPanel(section: .history)
 +        case .downloads:
-+            presentLibrary(initialSection: .downloads)
++            presentEdgeLibraryPanel(section: .downloads)
 +        case .settings:
 +            // Settings always opens as the modal (portrait) settings screen,
 +            // in both portrait and landscape — reused as-is.
@@ -5521,6 +5695,233 @@ index 0000000..5f9842c
 +
 +    @objc private func backTapped() {
 +        dismiss(animated: true)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift b/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift
+new file mode 100644
+index 0000000..c7a61ab
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift
+@@ -0,0 +1,221 @@
++//
++//  EdgeLibrarySidePanelController.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  True right side-by-side Library panel for the wide (pad) layout. The web
++//  content region is inset from the trailing edge (see BrowserViewController
++//  contentTrailingConstraint) and this panel occupies the vacated strip on the
++//  right. It hosts the existing standalone library sections (收藏夹 / 历史 /
++//  下载) and lets the user switch among them inline, replacing the old modal
++//  UITabBarController whose bottom 收藏/历史/下载/设置 tab bar is no longer used
++//  on the wide layout. Each section keeps its own navigation stack so folder /
++//  item drill-down (Bookmarks folders etc.) still works.
++//
++
++import UIKit
++
++final class EdgeLibrarySidePanelController: UIViewController {
++
++    /// The sections that appear in the side panel (书签 / 历史 / 下载). Settings
++    /// stays in the modal Settings screen and is intentionally excluded.
++    static let panelSections: [LibrarySection] = [.bookmarks, .history, .downloads]
++
++    /// The width (points) the panel occupies on the trailing edge.
++    static let panelWidth: CGFloat = UX.panelWidth
++
++    /// Invoked when the user taps the panel's close button.
++    var onClose: (() -> Void)?
++
++    private enum UX {
++        static let panelWidth: CGFloat = 340
++        static let headerHeight: CGFloat = 52
++        static let segmentedHeight: CGFloat = 32
++        static let segmentedInset: CGFloat = 12
++        static let closeButtonWidth: CGFloat = 44
++        static let fontSize: CGFloat = 15
++    }
++
++    private let sectionItemIdentifiers = EdgeLibrarySidePanelController.panelSections
++
++    /// One UINavigationController per section so drilling into a section does
++    /// not disturb another section's stack.
++    private var navigationControllers: [LibrarySection: UINavigationController] = [:]
++    private weak var activeNavigationController: UINavigationController?
++
++    private let headerView = UIView()
++    private let segmentedControl = UISegmentedControl()
++    private let contentContainerView = UIView()
++
++    // MARK: - Lifecycle
++
++    init() {
++        super.init(nibName: nil, bundle: nil)
++        preferredContentSize = CGSize(width: UX.panelWidth, height: 700)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        view.backgroundColor = .systemGroupedBackground
++        configureHeader()
++        configureContent()
++    }
++
++    private func configureHeader() {
++        headerView.translatesAutoresizingMaskIntoConstraints = false
++        headerView.backgroundColor = .systemBackground
++        view.addSubview(headerView)
++
++        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
++        sectionItemIdentifiers.forEach { section in
++            segmentedControl.insertSegment(
++                withTitle: section.panelTitle,
++                at: segmentedControl.numberOfSegments,
++                animated: false
++            )
++        }
++        segmentedControl.selectedSegmentIndex = 0
++        segmentedControl.setTitleTextAttributes(
++            [.font: UIFont.systemFont(ofSize: UX.fontSize - 1, weight: .semibold)],
++            for: .normal
++        )
++        segmentedControl.addTarget(
++            self,
++            action: #selector(segmentedControlDidChange),
++            for: .valueChanged
++        )
++        headerView.addSubview(segmentedControl)
++
++        let closeButton = UIButton(type: .system)
++        closeButton.translatesAutoresizingMaskIntoConstraints = false
++        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
++        closeButton.tintColor = .label
++        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
++        headerView.addSubview(closeButton)
++
++        NSLayoutConstraint.activate([
++            headerView.topAnchor.constraint(equalTo: view.topAnchor),
++            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            headerView.heightAnchor.constraint(equalToConstant: UX.headerHeight),
++
++            segmentedControl.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: UX.segmentedInset),
++            segmentedControl.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -UX.segmentedInset),
++            segmentedControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
++            segmentedControl.heightAnchor.constraint(equalToConstant: UX.segmentedHeight),
++
++            closeButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor),
++            closeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
++            closeButton.widthAnchor.constraint(equalToConstant: UX.closeButtonWidth),
++            closeButton.heightAnchor.constraint(equalToConstant: UX.headerHeight),
++        ])
++    }
++
++    private func configureContent() {
++        contentContainerView.translatesAutoresizingMaskIntoConstraints = false
++        view.addSubview(contentContainerView)
++        NSLayoutConstraint.activate([
++            contentContainerView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
++            contentContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
++            contentContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            contentContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
++        ])
++    }
++
++    // MARK: - Section Switching
++
++    func showSection(_ section: LibrarySection) {
++        guard sectionItemIdentifiers.contains(section) else {
++            return
++        }
++
++        if let index = sectionItemIdentifiers.firstIndex(of: section) {
++            segmentedControl.selectedSegmentIndex = index
++        }
++
++        let navigationController = navigationController(for: section)
++        guard activeNavigationController !== navigationController else {
++            return
++        }
++
++        if let activeNavigationController {
++            activeNavigationController.willMove(toParent: nil)
++            activeNavigationController.view.removeFromSuperview()
++            activeNavigationController.removeFromParent()
++        }
++
++        addChild(navigationController)
++        navigationController.view.translatesAutoresizingMaskIntoConstraints = false
++        contentContainerView.addSubview(navigationController.view)
++        NSLayoutConstraint.activate([
++            navigationController.view.topAnchor.constraint(equalTo: contentContainerView.topAnchor),
++            navigationController.view.leadingAnchor.constraint(equalTo: contentContainerView.leadingAnchor),
++            navigationController.view.trailingAnchor.constraint(equalTo: contentContainerView.trailingAnchor),
++            navigationController.view.bottomAnchor.constraint(equalTo: contentContainerView.bottomAnchor),
++        ])
++        navigationController.didMove(toParent: self)
++
++        activeNavigationController = navigationController
++    }
++
++    private func navigationController(for section: LibrarySection) -> UINavigationController {
++        if let existing = navigationControllers[section] {
++            return existing
++        }
++        let rootViewController = makeSectionController(for: section)
++        let navigationController = UINavigationController(rootViewController: rootViewController)
++        navigationController.isNavigationBarHidden = false
++        navigationControllers[section] = navigationController
++        return navigationController
++    }
++
++    private func makeSectionController(for section: LibrarySection) -> UIViewController {
++        switch section {
++        case .bookmarks:
++            return BookmarksViewController()
++        case .history:
++            return HistoryViewController()
++        case .downloads:
++            return DownloadsViewController()
++        case .settings:
++            // Never requested for the side panel; keep exhaustive switch.
++            return SettingsViewController()
++        }
++    }
++
++    // MARK: - Actions
++
++    @objc private func segmentedControlDidChange() {
++        let index = segmentedControl.selectedSegmentIndex
++        guard sectionItemIdentifiers.indices.contains(index) else {
++            return
++        }
++        showSection(sectionItemIdentifiers[index])
++    }
++
++    @objc private func closeTapped() {
++        onClose?()
++    }
++}
++
++private extension LibrarySection {
++    /// Chinese labels used by the Edge UI panel (the stock LibrarySection.title
++    /// is the localised English Bookmarks/History/Downloads).
++    var panelTitle: String {
++        switch self {
++        case .bookmarks:
++            return "收藏夹"
++        case .history:
++            return "历史记录"
++        case .downloads:
++            return "下载"
++        case .settings:
++            return "设置"
++        }
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
@@ -6214,6 +6615,30 @@ index 0000000..6fe8761
 +        present(activity, animated: true)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
+index 5eed112..c3ba416 100644
+--- a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
++++ b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
+@@ -773,6 +773,7 @@ final class BookmarksViewController: UIViewController, UITableViewDataSource, UI
+         browserViewController.loadViewIfNeeded()
+         browserViewController.exitFullscreenIfNeeded()
+         browserViewController.tabManager.browse(to: bookmark.url.absoluteString)
++        browserViewController.edgeLibraryPanelDidOpenWebPage()
+         
+         if navigationController?.presentingViewController is BrowserViewController {
+             navigationController?.dismiss(animated: true)
+diff --git a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift b/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
+index 2bb1312..3899661 100644
+--- a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
++++ b/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
+@@ -464,6 +464,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
+         browserViewController.loadViewIfNeeded()
+         browserViewController.exitFullscreenIfNeeded()
+         browserViewController.tabManager.browse(to: item.url.absoluteString)
++        browserViewController.edgeLibraryPanelDidOpenWebPage()
+         
+         if navigationController?.presentingViewController is BrowserViewController {
+             navigationController?.dismiss(animated: true)
 diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift
 index f78e27d..868d5cc 100644
 --- a/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift
