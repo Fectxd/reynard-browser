@@ -85,10 +85,10 @@ index 441cf2d..7403ad9 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..f3688cf 100644
+index 2e63179..0142b36 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -1,1262 +1,1306 @@
+@@ -1,1262 +1,1303 @@
 -//
 -//  BrowserViewController.swift
 -//  Reynard
@@ -1630,7 +1630,13 @@ index 2e63179..f3688cf 100644
 +        NSLayoutConstraint.activate([
 +            contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 +            contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-+            contentView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor).withPriority(.defaultHigh),
++            // Fallback pin: the tab strip now sits at the very top (safe area)
++            // with the address bar directly beneath it, so the content's top
++            // must always clear the address row (topToolbarBottomAnchor). Pinning
++            // this fallback to the safe area instead would park the content top
++            // at the tab-bar band whenever the per-mode layout top is not yet
++            // (re)applied. This matches every applyPad/Phone/CompactLayout call.
++            contentView.topAnchor.constraint(equalTo: browserChrome.topToolbarBottomAnchor).withPriority(.defaultHigh),
 +            contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
 +            browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 +            browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -1965,31 +1971,22 @@ index 2e63179..f3688cf 100644
 +    }
 +    
 +    /// Whether the top tab strip should be shown. The strip is part of the top
-+    /// chrome in both the wide (pad) and the narrow (phone) layouts — the phone
-+    /// layout shows it above the address bar too — and it stays visible even
-+    /// with a single tab. When the tab overview is presented the strip only
-+    /// reserves its layout height (its cells are hidden by the overview).
++    /// chrome only in the wide (pad) layout — the narrow phone layout has no
++    /// strip (its bottom toolbar carries the tab-overview button). When wide,
++    /// the strip stays visible even with a single tab; when the tab overview is
++    /// presented the strip only reserves its layout height.
 +    var targetTabBarVisibility: TabBar.Visibility {
 +        switch browserLayout.chromeMode {
-+        case .pad, .phone:
++        case .pad:
 +            break
-+        case .compact:
++        case .phone, .compact:
 +            return .hidden
 +        }
-+        
++
 +        guard visibleTabCount > 0 else {
 +            return .hidden
 +        }
-+        
-+        // iPad windows always get the strip; on iPhone-class layouts honor the
-+        // existing "Show Tab Bar in Landscape" appearance preference (default
-+        // on) so users can still turn the phone strip off.
-+        let showsByPreference = browserLayout.interfaceIdiom == .pad
-+        || Prefs.AppearanceSettings.showsLandscapeTabBar
-+        guard showsByPreference else {
-+            return .hidden
-+        }
-+        
++
 +        return tabOverview.isPresented ? .layoutReserved : .visible
 +    }
 +    
