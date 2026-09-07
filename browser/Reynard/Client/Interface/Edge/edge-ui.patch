@@ -4413,7 +4413,7 @@ index 5383025..f9f21b0 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 1f56afc..d0c44ab 100644
+index 1f56afc..037e7b2 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 @@ -12,10 +12,14 @@ final class TopToolbar: UIView {
@@ -4425,7 +4425,8 @@ index 1f56afc..d0c44ab 100644
 +        static let trailingButtonStackWidth: CGFloat = (4 * 30) + (3 * 10)
          static let topToolbarHorizontalInset: CGFloat = 12
          static let topToolbarButtonSpacing: CGFloat = 10
-         static let topToolbarAddressBarSpacing: CGFloat = 12
+-        static let topToolbarAddressBarSpacing: CGFloat = 12
++        static let topToolbarAddressBarSpacing: CGFloat = 5
          static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
 +        static let topToolbarPortraitHorizontalInset: CGFloat = 12
          static let topToolbarAddressBarWidthLimit: CGFloat = 650
