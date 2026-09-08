@@ -97,7 +97,7 @@ index a40dc9d..2537199 100644
                  self?.setTabOverviewVisible(true, animated: animated)
              }) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 2e63179..921cb14 100644
+index 2e63179..0e5064d 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
 @@ -1,1262 +1,1351 @@
@@ -1788,7 +1788,7 @@ index 2e63179..921cb14 100644
 +            self?.presentEdgeMenu()
 +        }
 +        browserChrome.onDownloads = { [weak self] in
-+            self?.presentLibrary(initialSection: .downloads)
++            self?.presentEdgeLibraryPanel(section: .downloads)
 +        }
 +        browserChrome.onNewTab = { [weak self] in
 +            self?.createNewTab()
@@ -4369,7 +4369,7 @@ index 8858456..82ebdff 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-index 5383025..3e0f2dc 100644
+index 5383025..3904c17 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 @@ -22,6 +22,15 @@ final class ToolbarButton: UIButton {
@@ -4459,7 +4459,7 @@ index 5383025..3e0f2dc 100644
      }
      
      required init?(coder: NSCoder) {
-@@ -191,6 +240,81 @@ final class ToolbarButton: UIButton {
+@@ -191,6 +240,89 @@ final class ToolbarButton: UIButton {
              downloadProgressFillWidthConstraint,
          ])
      }
@@ -4473,9 +4473,17 @@ index 5383025..3e0f2dc 100644
 +        addSubview(tabCountBadgeView)
 +        tabCountBadgeView.addSubview(tabCountBadgeLabel)
 +
++        // Anchor the pill to the BUTTON CENTER with a fixed offset rather than
++        // to the button's edges. On the phone (compact) bottom toolbar the tab
++        // button is much wider than the centered glyph (fillEqually), so edge
++        // anchoring made the pill float away from the icon and drift with the
++        // button's width. Center-based anchoring keeps it glued to the glyph's
++        // lower-right regardless of the button's width. The offset is constant:
++        // side/2 - inset - pill/2 = +6 for both styles.
++        let badgeCenterOffset = (UX.standardButtonSideLength / 2) - badgeInset - (badgeSideLength / 2)
 +        NSLayoutConstraint.activate([
-+            tabCountBadgeView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -badgeInset),
-+            tabCountBadgeView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -badgeInset),
++            tabCountBadgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: badgeCenterOffset),
++            tabCountBadgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: badgeCenterOffset),
 +            tabCountBadgeView.heightAnchor.constraint(equalToConstant: badgeSideLength),
 +            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: badgeSideLength),
 +
@@ -4541,7 +4549,7 @@ index 5383025..3e0f2dc 100644
      
      // MARK: - Button
      
-@@ -204,6 +328,7 @@ final class ToolbarButton: UIButton {
+@@ -204,6 +336,7 @@ final class ToolbarButton: UIButton {
          case .download: return "reynard.arrow.down.circle"
          case .newTab: return "reynard.plus"
          case .sidebar: return "reynard.sidebar.left"
@@ -4573,19 +4581,22 @@ index 70d48c4..034809b 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 1f56afc..c3b1ae3 100644
+index 1f56afc..3350b76 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-@@ -12,11 +12,14 @@ final class TopToolbar: UIView {
+@@ -12,11 +12,17 @@ final class TopToolbar: UIView {
          static let topToolbarContentHeight: CGFloat = 60
          static let topToolbarButtonStackHeight: CGFloat = 30
          static let topToolbarStandardButtonStackWidth: CGFloat = 126
-+        // Landscape / pad address-bar right side has 4 buttons
-+        // (share, favorite, tab-overview, hamburger).
++        // Landscape / pad address-bar right side has 4 static buttons
++        // (share, favorite, tab-overview, hamburger) plus the download button,
++        // which only appears while a download is active. The width formula is
++        // computed dynamically (see trailingWidth).
 +        static let trailingButtonStackWidth: CGFloat = (4 * 30) + (3 * 10)
          static let topToolbarHorizontalInset: CGFloat = 12
          static let topToolbarButtonSpacing: CGFloat = 10
 -        static let topToolbarAddressBarSpacing: CGFloat = 12
++        static let topToolbarTrailingButtonSpacing: CGFloat = 11
 +        static let topToolbarAddressBarSpacing: CGFloat = 5
          static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
 -        static let topToolbarAddressBarWidthLimit: CGFloat = 650
@@ -4593,7 +4604,7 @@ index 1f56afc..c3b1ae3 100644
          static let backgroundViewHorizontalExtension: CGFloat = 16
          static let borderWidth: CGFloat = 0.5
      }
-@@ -35,6 +38,8 @@ final class TopToolbar: UIView {
+@@ -35,6 +41,8 @@ final class TopToolbar: UIView {
      var onShare: (() -> Void)?
      var onNewTab: (() -> Void)?
      var onTabOverview: (() -> Void)?
@@ -4602,7 +4613,7 @@ index 1f56afc..c3b1ae3 100644
      
      private let contentView: UIView = {
          let view = UIView()
-@@ -105,6 +110,16 @@ final class TopToolbar: UIView {
+@@ -105,11 +113,20 @@ final class TopToolbar: UIView {
          target: self,
          action: #selector(tabOverviewTapped)
      )
@@ -4619,18 +4630,30 @@ index 1f56afc..c3b1ae3 100644
      private let buttonMenus = ToolbarButtonMenus()
      
      private lazy var leadingButtons: UIStackView = {
-@@ -118,7 +133,9 @@ final class TopToolbar: UIView {
+-        downloadButton.isHidden = true
+-        let stack = UIStackView(arrangedSubviews: [sidebarButton, downloadButton, backButton, forwardButton, libraryButton])
++        let stack = UIStackView(arrangedSubviews: [sidebarButton, backButton, forwardButton, libraryButton])
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .horizontal
+         stack.spacing = UX.topToolbarButtonSpacing
+@@ -118,10 +135,14 @@ final class TopToolbar: UIView {
      }()
      
      private lazy var trailingButtons: UIStackView = {
 -        let stack = UIStackView(arrangedSubviews: [shareButton, newTabButton, tabOverviewButton])
-+        // Landscape / pad address-bar right side: share, favorite, tab
-+        // overview, hamburger menu.
-+        let stack = UIStackView(arrangedSubviews: [shareButton, favoriteButton, tabOverviewButton, menuButton])
++        // Landscape / pad address-bar right side: download (when active), share,
++        // favorite, tab-overview, hamburger menu. Spacing is +1 vs the leading
++        // side (11 instead of 10) for a slightly airier right cluster.
++        downloadButton.isHidden = true
++        let stack = UIStackView(arrangedSubviews: [downloadButton, shareButton, favoriteButton, tabOverviewButton, menuButton])
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
-         stack.spacing = UX.topToolbarButtonSpacing
-@@ -141,12 +158,10 @@ final class TopToolbar: UIView {
+-        stack.spacing = UX.topToolbarButtonSpacing
++        stack.spacing = UX.topToolbarTrailingButtonSpacing
+         stack.distribution = .fillEqually
+         return stack
+     }()
+@@ -141,12 +162,10 @@ final class TopToolbar: UIView {
      private var trailingWidthConstraint: NSLayoutConstraint!
      private var standardAddressBarConstraints: [NSLayoutConstraint] = []
      private var compactAddressBarConstraints: [NSLayoutConstraint] = []
@@ -4643,7 +4666,7 @@ index 1f56afc..c3b1ae3 100644
      
      // MARK: - Lifecycle
      
-@@ -180,17 +195,9 @@ final class TopToolbar: UIView {
+@@ -180,17 +199,9 @@ final class TopToolbar: UIView {
                  addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                  addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
              ]
@@ -4663,7 +4686,7 @@ index 1f56afc..c3b1ae3 100644
                  addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                  addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
              ]
-@@ -198,8 +205,7 @@ final class TopToolbar: UIView {
+@@ -198,8 +209,7 @@ final class TopToolbar: UIView {
      }
      
      func detachAddressBar() {
@@ -4673,12 +4696,14 @@ index 1f56afc..c3b1ae3 100644
      }
      
      func sharePopoverSourceView() -> UIView {
-@@ -236,18 +242,20 @@ final class TopToolbar: UIView {
+@@ -236,18 +246,22 @@ final class TopToolbar: UIView {
                  sidebarButtonVisible: sidebarButtonVisible,
                  showsDownloads: downloadButton.isShowingDownloads
              )
 -            trailingWidthConstraint.constant = isCompact ? 0 : UX.topToolbarStandardButtonStackWidth
-+            trailingWidthConstraint.constant = isCompact ? 0 : UX.trailingButtonStackWidth
++            trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(
++                showsDownloads: downloadButton.isShowingDownloads
++            )
              
              sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
              libraryButton.isHidden = interfaceIdiom == .pad
@@ -4698,7 +4723,7 @@ index 1f56afc..c3b1ae3 100644
              }
              layoutIfNeeded()
          }
-@@ -326,6 +334,10 @@ final class TopToolbar: UIView {
+@@ -326,6 +340,10 @@ final class TopToolbar: UIView {
              for: .normal
          )
      }
@@ -4709,7 +4734,7 @@ index 1f56afc..c3b1ae3 100644
      
      func syncSidebarButton(splitViewController: UISplitViewController?) {
          sidebarButton.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
-@@ -351,6 +363,8 @@ final class TopToolbar: UIView {
+@@ -351,6 +369,8 @@ final class TopToolbar: UIView {
      @objc private func shareTapped() { onShare?() }
      @objc private func newTabTapped() { onNewTab?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -4718,7 +4743,7 @@ index 1f56afc..c3b1ae3 100644
      
      // MARK: - View Setup
      
-@@ -372,7 +386,7 @@ final class TopToolbar: UIView {
+@@ -372,7 +392,7 @@ final class TopToolbar: UIView {
          contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
          backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
          leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
@@ -4727,10 +4752,11 @@ index 1f56afc..c3b1ae3 100644
          
          NSLayoutConstraint.activate([
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
-@@ -414,51 +428,14 @@ final class TopToolbar: UIView {
+@@ -413,62 +433,35 @@ final class TopToolbar: UIView {
+         return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
          + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
      }
-     
+-    
 -    private var shouldLimitStandardAddressBarWidth: Bool {
 -        let layoutInsets = contentLayoutInsets
 -        let safeWidth = bounds.width - layoutInsets.left - layoutInsets.right
@@ -4757,8 +4783,15 @@ index 1f56afc..c3b1ae3 100644
 -        }
 -        
 -        return safeAreaInsets
--    }
--    
++
++    private func trailingWidth(showsDownloads: Bool) -> CGFloat {
++        // Four static buttons (share, favorite, tab-overview, hamburger) plus
++        // the download button when a download is active.
++        let visibleButtonCount = 4 + (showsDownloads ? 1 : 0)
++        return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
++        + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarTrailingButtonSpacing)
+     }
+     
      private func updateStandardAddressBarLayout() {
 +        // The wide address bar is always pinned between the two button groups;
 +        // re-assert those constraints (no width cap exists anymore).
@@ -4782,6 +4815,20 @@ index 1f56afc..c3b1ae3 100644
      }
      
      private func updateDownloadButtonVisibility() {
+         let isCompact = layoutState == .compact
+-        downloadButton.isHidden = layoutState != .standard || !downloadButton.isShowingDownloads
++        let showsDownloads = downloadButton.isShowingDownloads
++        downloadButton.isHidden = layoutState != .standard || !showsDownloads
+         leadingWidthConstraint.constant = isCompact ? 0 : leadingWidth(
+             interfaceIdiom: layoutInterfaceIdiom,
+             sidebarButtonVisible: layoutSidebarButtonVisible,
+-            showsDownloads: downloadButton.isShowingDownloads
++            showsDownloads: showsDownloads
+         )
++        trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(showsDownloads: showsDownloads)
+         updateStandardAddressBarLayout()
+         layoutIfNeeded()
+     }
 diff --git a/browser/Reynard/Client/Interface/ContentView/ContentView.swift b/browser/Reynard/Client/Interface/ContentView/ContentView.swift
 index 2294024..19ec2ac 100644
 --- a/browser/Reynard/Client/Interface/ContentView/ContentView.swift
@@ -4830,10 +4877,10 @@ index 2294024..19ec2ac 100644
          guard focusedInputOffset != 0 else { return }
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift
 new file mode 100644
-index 0000000..223ab25
+index 0000000..8d2e5be
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,122 @@
 +//
 +//  BrowserViewController+EdgeLibraryPanel.swift
 +//  Reynard
@@ -4888,13 +4935,10 @@ index 0000000..223ab25
 +
 +        panel.showSection(section)
 +        setEdgeLibraryContentTrailingInset(EdgeLibrarySidePanelController.panelWidth)
-+        if animated {
-+            UIView.animate(withDuration: BrowserViewController.layoutAnimationDuration) {
-+                self.view.layoutIfNeeded()
-+            }
-+        } else {
-+            view.layoutIfNeeded()
-+        }
++        // Appear in place without the fly-in / slide animation: apply the first
++        // layout synchronously so the panel and content inset both pop into their
++        // final geometry.
++        view.layoutIfNeeded()
 +    }
 +
 +    /// Dismisses the side-by-side library panel, restoring the content to full
@@ -4961,10 +5005,10 @@ index 0000000..223ab25
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..ae1e315
+index 0000000..a5c0b8e
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,325 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -5020,15 +5064,17 @@ index 0000000..ae1e315
 +                popover.permittedArrowDirections = [.up, .down]
 +                popover.backgroundColor = .systemBackground
 +            }
-+            menu.preferredContentSize = CGSize(width: 300, height: 560)
++            menu.preferredContentSize = CGSize(width: 375, height: 560)
 +        } else {
 +            menu.modalPresentationStyle = .pageSheet
 +            if #available(iOS 16.0, *), let sheet = menu.sheetPresentationController {
-+                // Keep the menu ≤60% of the screen height so it never covers the
-+                // whole page, with a grabber at the top to pull it down.
++                // The menu always uses the tall 4-column grid now, so give the
++                // sheet enough height (up to ~92% of screen) to show it without
++                // forcing a scroll; grabber stays for pull-to-dismiss.
 +                sheet.detents = [.custom { _ in
-+                    let height = (menu.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height) * 0.6
-+                    return height
++                    let available = menu.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height
++                    let gridHeight = menu.preferredContentSize.height + 48
++                    return min(available * 0.92, gridHeight)
 +                }]
 +                sheet.prefersGrabberVisible = true
 +                sheet.preferredCornerRadius = 18
@@ -5437,10 +5483,10 @@ index 0000000..1028ec4
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
 new file mode 100644
-index 0000000..5f9842c
+index 0000000..a2f1112
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,261 @@
 +//
 +//  EdgeFontSizeViewController.swift
 +//  Reynard
@@ -5466,7 +5512,11 @@ index 0000000..5f9842c
 +
 +    private enum UX {
 +        static let contentWidth: CGFloat = 360
-+        static let contentHeight: CGFloat = 236
++        // Natural content height is ~198pt (52 header + 0.5 divider + 12 +
++        // section + 12 + slider + 6 + percent + 14 + note + ~12 bottom). The
++        // old 236 left a tall empty band under the footer note. 200 keeps a
++        // small cushion while removing the dead space.
++        static let contentHeight: CGFloat = 200
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +        static let smallAFontSize: CGFloat = 11
 +        static let largeAFontSize: CGFloat = 26
@@ -5700,10 +5750,10 @@ index 0000000..5f9842c
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift b/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift
 new file mode 100644
-index 0000000..c7a61ab
+index 0000000..75d95d3
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeLibrarySidePanelController.swift
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,240 @@
 +//
 +//  EdgeLibrarySidePanelController.swift
 +//  Reynard
@@ -5722,7 +5772,7 @@ index 0000000..c7a61ab
 +
 +import UIKit
 +
-+final class EdgeLibrarySidePanelController: UIViewController {
++final class EdgeLibrarySidePanelController: UIViewController, UINavigationControllerDelegate {
 +
 +    /// The sections that appear in the side panel (书签 / 历史 / 下载). Settings
 +    /// stays in the modal Settings screen and is intentionally excluded.
@@ -5875,9 +5925,28 @@ index 0000000..c7a61ab
 +        }
 +        let rootViewController = makeSectionController(for: section)
 +        let navigationController = UINavigationController(rootViewController: rootViewController)
-+        navigationController.isNavigationBarHidden = false
++        // The panel's segmented header is the only "title" at the section level,
++        // so the per-section nav bar starts hidden (removes the bookmarks "书签"
++        // title and the blank band under history/downloads). The delegate shows
++        // the bar only once the user drills into a folder (push) so the back
++        // chevron remains available.
++        navigationController.isNavigationBarHidden = true
++        navigationController.delegate = self
 +        navigationControllers[section] = navigationController
 +        return navigationController
++    }
++
++    // MARK: - UINavigationControllerDelegate
++
++    func navigationController(
++        _ navigationController: UINavigationController,
++        willShow viewController: UIViewController,
++        animated: Bool
++    ) {
++        // Root level (one view controller): keep the bar hidden. Any push (a
++        // bookmarks folder) reveals it so the back button + title are visible.
++        let isRoot = navigationController.viewControllers.count <= 1
++        navigationController.setNavigationBarHidden(isRoot, animated: animated)
 +    }
 +
 +    private func makeSectionController(for section: LibrarySection) -> UIViewController {
@@ -5927,10 +5996,10 @@ index 0000000..c7a61ab
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..be1ca8e
+index 0000000..0844407
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,501 @@
+@@ -0,0 +1,499 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -6081,12 +6150,14 @@ index 0000000..be1ca8e
 +    }
 +
 +    private enum UX {
-+        static let primarySymbolPointSize: CGFloat = 26
-+        static let secondarySymbolPointSize: CGFloat = 22
++        // Feature icons shrunk ~8% and rounded to whole points: 26→24, 22→20.
++        static let primarySymbolPointSize: CGFloat = 24
++        static let secondarySymbolPointSize: CGFloat = 20
 +        static let gridItemSpacing: CGFloat = 6
 +        static let gridContentInset: CGFloat = 8
-+        // Keep enough vertical room so two-line tile titles are not clipped.
-+        static let gridGroupHeight: CGFloat = 104
++        // Generous vertical room so tile titles can wrap to up to three lines
++        // (smaller font) without clipping or an ellipsis.
++        static let gridGroupHeight: CGFloat = 116
 +        static let listRowHeight: CGFloat = 56
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +    }
@@ -6128,14 +6199,12 @@ index 0000000..be1ca8e
 +        return view
 +    }()
 +
-+    /// The presenter shows this menu as a popover exactly when the window is
-+    /// in the wide (pad) layout (window width >= the chrome threshold), and as
-+    /// a pageSheet otherwise. A popover's internal trait collection can report
-+    /// a compact horizontal size class even inside a wide window, which made
-+    /// the grid never activate here, so the choice is keyed off the actual
-+    /// presentation style instead of the trait collection.
++    /// The Edge menu always uses the fixed 4-column icon+label grid in both
++    /// orientations/layouts (the vertical list variant was removed). This
++    /// constant is kept as a single source of truth so every layout call site
++    /// (tile size, cell insets, symbol/title placement) picks the grid branch.
 +    private var isWideLayout: Bool {
-+        return modalPresentationStyle == .popover
++        return true
 +    }
 +
 +    // MARK: - Lifecycle
@@ -6164,12 +6233,7 @@ index 0000000..be1ca8e
 +            forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
 +            withReuseIdentifier: dividerReuseIdentifier
 +        )
-+        if isWideLayout {
-+            // The popover opens at the presenter-requested size; make sure it
-+            // is tall enough for the entire fixed 4-column grid so the menu
-+            // never turns into a scrolling column inside the popover.
-+            preferredContentSize = CGSize(width: 300, height: gridContentHeight)
-+        }
++        preferredContentSize = CGSize(width: 375, height: gridContentHeight)
 +    }
 +
 +    override func viewWillAppear(_ animated: Bool) {
@@ -6340,8 +6404,11 @@ index 0000000..be1ca8e
 +        let label = UILabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.textAlignment = .center
-+        label.font = .systemFont(ofSize: 13, weight: .medium)
-+        label.numberOfLines = 2
++        // One size smaller so titles fit the slightly widened tiles; wrap up to
++        // three lines without a truncating ellipsis.
++        label.font = .systemFont(ofSize: 12, weight: .medium)
++        label.numberOfLines = 3
++        label.lineBreakMode = .byWordWrapping
 +        return label
 +    }()
 +
@@ -6406,9 +6473,9 @@ index 0000000..be1ca8e
 +        if wideLayout {
 +            wideConstraints = [
 +                symbolView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-+                symbolView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
-+                symbolView.widthAnchor.constraint(equalToConstant: 44),
-+                symbolView.heightAnchor.constraint(equalToConstant: 44),
++                symbolView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 12),
++                symbolView.widthAnchor.constraint(equalToConstant: 40),
++                symbolView.heightAnchor.constraint(equalToConstant: 40),
 +
 +                titleLabel.topAnchor.constraint(equalTo: symbolView.bottomAnchor, constant: 8),
 +                titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
