@@ -2208,10 +2208,10 @@ index 0000000..75d95d3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..86d2c71
+index 0000000..aa6cbf5
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,499 @@
+@@ -0,0 +1,501 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -2362,8 +2362,10 @@ index 0000000..86d2c71
 +    }
 +
 +    private enum UX {
-+        // Feature icons shrunk ~8% and rounded to whole points: 26→24, 22→20.
-+        static let primarySymbolPointSize: CGFloat = 24
++        // Feature icons shrunk ~8% and rounded to whole points, then the
++        // primary (blue) group matched to the secondary size so both rows read
++        // as the same reduced scale: primary 26→20, secondary 22→20.
++        static let primarySymbolPointSize: CGFloat = 20
 +        static let secondarySymbolPointSize: CGFloat = 20
 +        static let gridItemSpacing: CGFloat = 6
 +        static let gridContentInset: CGFloat = 8
