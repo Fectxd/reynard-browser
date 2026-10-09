@@ -272,15 +272,16 @@ index d2dd68c..df0921a 100644
          browserChrome.updateDownload(summary)
      }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-index b021d19..6e4e994 100644
+index b021d19..52a2f48 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-@@ -17,6 +17,17 @@ extension BrowserViewController {
+@@ -17,6 +17,18 @@ extension BrowserViewController {
          createNewTab(mode: .private)
      }
      
-+    /// Opens a second window (iPad Stage Manager / Split View). Both windows
-+    /// intentionally share the same tab set through `TabManagementStore.shared`.
++    /// Opens an additional window (iPad Stage Manager / Split View). The new
++    /// window starts at the homepage and uses its own ephemeral tab store, so it
++    /// never restores or overwrites the primary window's saved tab set.
 +    @objc func newWindowKeyCommand(_ sender: UIKeyCommand) {
 +        // Multiple windows are an iPad-only affordance.
 +        guard UIDevice.current.userInterfaceIdiom == .pad else {
@@ -293,7 +294,7 @@ index b021d19..6e4e994 100644
      @objc func focusAddressBarKeyCommand(_ sender: UIKeyCommand) {
          if tabOverview.isPresented || tabOverview.isTransitionRunning {
              setTabOverviewVisible(false, animated: false)
-@@ -53,10 +64,11 @@ extension BrowserViewController {
+@@ -53,10 +65,11 @@ extension BrowserViewController {
          
          Task { @MainActor in
              do {
@@ -353,7 +354,7 @@ index a649987..afe3db8 100644
                  self?.setTabOverviewVisible(true, animated: animated)
              }) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index b94eb19..4142402 100644
+index b94eb19..8353bbe 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
 @@ -14,7 +14,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
@@ -364,7 +365,28 @@ index b94eb19..4142402 100644
      }
      
      private struct KeyboardAnimation {
-@@ -49,6 +48,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -24,10 +23,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+     
+     // MARK: - State
+     
+-    let sessionManager = SessionManager()
++    /// The tab-list store backing this window. The primary window uses the
++    /// shared on-disk store; an additional (Stage Manager) window gets its own
++    /// ephemeral, in-memory store so it can never clobber the saved tab list.
++    let tabStore: TabManagementStore
++    /// True for an additional window: it starts at the homepage instead of
++    /// restoring the shared tab set.
++    private let startsWithHomepage: Bool
++    let sessionManager: SessionManager
+     lazy var tabManager = TabManagerImplementation(
+         delegate: self,
+-        sessionManager: sessionManager
++        sessionManager: sessionManager,
++        store: tabStore
+     )
+     private var lockedOrientations: UIInterfaceOrientationMask?
+     private var pendingOrientationRequest: (
+@@ -49,6 +56,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      let contentView = ContentView()
      lazy var browserChrome = BrowserChrome()
      var tabBar: TabBar { return browserChrome.tabBar }
@@ -380,7 +402,25 @@ index b94eb19..4142402 100644
      
      private(set) lazy var toolbarController = ToolbarController(
          browserChrome: browserChrome,
-@@ -145,7 +153,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -133,8 +149,16 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+         return preferredInterfaceOrientation(allowedBy: allowedOrientations) ?? .portrait
+     }
+     
+-    init(canHostSidebar: Bool = true) {
++    init(canHostSidebar: Bool = true, startsWithHomepage: Bool = false) {
+         self.allowsSidebarHosting = canHostSidebar
++        self.startsWithHomepage = startsWithHomepage
++        // An additional window gets an isolated, in-memory tab store so it
++        // neither restores nor overwrites the primary window's saved tabs.
++        let store = startsWithHomepage
++            ? TabManagementStore(isEphemeral: true)
++            : TabManagementStore.shared
++        self.tabStore = store
++        self.sessionManager = SessionManager(tabStore: store)
+         super.init(nibName: nil, bundle: nil)
+     }
+     
+@@ -145,7 +169,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      deinit {
          stopScreenOrientationHandling()
          if isShowingFullscreenMedia {
@@ -400,15 +440,29 @@ index b94eb19..4142402 100644
          }
          NotificationCenter.default.removeObserver(self)
      }
-@@ -172,6 +191,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -165,13 +200,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+         contextMenuCoordinator.configure()
+         downloadsCoordinator.startObservingStore()
+         downloadsCoordinator.syncToolbarButtonState()
+-        tabOverview.restoreMode(TabOverview.Mode(tabMode: TabManagementStore.shared.preferredRestoredMode()))
++        tabOverview.restoreMode(TabOverview.Mode(tabMode: tabStore.preferredRestoredMode()))
+         syncBrowserNavigationChrome(animated: false)
+         browserChrome.syncSidebarButton(splitViewController: splitViewController)
+         applyUpdateMenuButtonBadge()
          
-         tabManager.createInitialTab()
+-        tabManager.createInitialTab()
++        if startsWithHomepage {
++            // Additional window: a single fresh homepage tab, no restoration.
++            tabManager.createHomepageWindowInitialTab()
++        } else {
++            tabManager.createInitialTab()
++        }
          refreshAddressBar()
 +        refreshTabOverviewBadge()
          homepageOverlayCoordinator.updatePresentation(animated: false)
          
          Task { @MainActor [weak self] in
-@@ -229,10 +249,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -229,10 +270,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          )
          homepageOverlayCoordinator.updateVisibleContentInsets()
          invalidateNavigationThumbnailsIfNeeded()
@@ -421,7 +475,7 @@ index b94eb19..4142402 100644
          DispatchQueue.main.async { [weak self] in
              guard let self,
                    self.isViewLoaded,
-@@ -255,6 +277,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -255,6 +298,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          if let readerSettings = presentedViewController as? ReaderSettingsViewController {
              readerSettings.dismiss(animated: false)
          }
@@ -429,7 +483,7 @@ index b94eb19..4142402 100644
          performContentLifecycle {
              toolbarController.reset(animated: false)
              coordinator.animate { _ in
-@@ -303,8 +326,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -303,8 +347,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          
          NSLayoutConstraint.activate([
              contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -445,7 +499,7 @@ index b94eb19..4142402 100644
              contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
              browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
              browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-@@ -316,6 +344,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -316,6 +365,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              tabOverview.topAnchor.constraint(equalTo: view.topAnchor),
              tabOverview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
          ])
@@ -455,7 +509,7 @@ index b94eb19..4142402 100644
      }
      
      private func configureBrowserChromeActions() {
-@@ -448,10 +479,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -448,10 +500,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              )
          }
          browserChrome.onLibrary = { [weak self] in
@@ -468,7 +522,7 @@ index b94eb19..4142402 100644
          }
          browserChrome.onNewTab = { [weak self] in
              self?.createNewTab()
-@@ -459,6 +490,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -459,6 +511,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          browserChrome.onTabOverview = { [weak self] in
              self?.setTabOverviewVisible(true, animated: true)
          }
@@ -481,7 +535,7 @@ index b94eb19..4142402 100644
          browserChrome.onOverlayDismiss = { [weak self] in
              self?.toolbarController.reset()
              self?.dismissAddressBarEditingAndChromeOverlay()
-@@ -537,6 +574,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -537,6 +595,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          animated
          ? UIView.animate(withDuration: duration, animations: layoutBlock)
          : layoutBlock()
@@ -491,7 +545,7 @@ index b94eb19..4142402 100644
      }
      
      func dismissAddressBarEditingAndOverlays() {
-@@ -568,6 +608,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -568,6 +629,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          updateBrowserLayout(animated: animated, duration: duration)
      }
      
@@ -517,7 +571,7 @@ index b94eb19..4142402 100644
      func applyBrowserLayout(animated: Bool = false) {
          if isShowingFullscreenMedia {
              applyFullscreenLayout()
-@@ -601,12 +660,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -601,12 +681,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          let isSearchFocused = searchOverlayCoordinator.isFocused && !tabOverview.isPresented
          contentView.applyLayout(
              ContentView.LayoutState(mode: isSearchFocused ? .searchFocused : .standard),
@@ -535,7 +589,7 @@ index b94eb19..4142402 100644
      }
      
      private func applyCompactLayout() {
-@@ -621,11 +683,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -621,11 +704,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      private func applyPadLayout(animated: Bool) {
          contentView.applyLayout(
              ContentView.LayoutState(mode: .standard),
@@ -566,7 +620,7 @@ index b94eb19..4142402 100644
      
      private var visibleTabCount: Int {
          let tabs = tabManager.selectedTabMode == .private
-@@ -634,17 +714,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -634,17 +735,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          return tabs.count
      }
      
@@ -596,7 +650,7 @@ index b94eb19..4142402 100644
          return tabOverview.isPresented ? .layoutReserved : .visible
      }
      
-@@ -666,7 +752,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -666,7 +773,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              ? .fullscreenMedia
              : (tabOverview.isPresented ? .tabOverview : .browsing),
              search: searchState,
@@ -605,7 +659,7 @@ index b94eb19..4142402 100644
              interfaceIdiom: browserLayout.interfaceIdiom,
              orientation: browserLayout.orientation,
              isTwoThirdSplitScreenOrSmaller: isSidebarOverlayLayout,
-@@ -676,22 +762,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -676,22 +783,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      }
      
      private func resolveBrowserLayout() -> BrowserLayout {
@@ -656,7 +710,7 @@ index b94eb19..4142402 100644
      }
      
      private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
-@@ -747,34 +847,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -747,34 +868,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      }
      
      private func browserWindowWidth(fallback: CGFloat) -> CGFloat {
@@ -700,7 +754,7 @@ index b94eb19..4142402 100644
              tabOverviewToolbarPosition: .bottom,
              overlayHost: .embedded
          )
-@@ -794,10 +881,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -794,10 +902,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          )
      }
      
@@ -711,7 +765,7 @@ index b94eb19..4142402 100644
      // MARK: - Sidebar
      
      private func performContentLifecycle(_ action: () -> Void) {
-@@ -937,10 +1020,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -937,10 +1041,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          let keyboardFrame = view.convert(frameValue.cgRectValue, from: nil)
          let keyboardOverlap = max(0, view.bounds.maxY - keyboardFrame.minY)
          let keyboardInset = max(0, keyboardOverlap - view.safeAreaInsets.bottom)
@@ -5464,6 +5518,86 @@ index 0000000..d47ae19
 +        return string(from: statement, at: index)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Stores/TabManagementStore.swift b/browser/Reynard/Client/Stores/TabManagementStore.swift
+index 68792ff..ff4d3eb 100644
+--- a/browser/Reynard/Client/Stores/TabManagementStore.swift
++++ b/browser/Reynard/Client/Stores/TabManagementStore.swift
+@@ -70,6 +70,11 @@ final class TabManagementStore {
+     }
+     
+     private let fileManager: FileManager
++    /// An ephemeral store keeps its state in memory (plus a throw-away temp
++    /// directory for thumbnails) instead of the shared on-disk database. It is
++    /// used by additional (Stage Manager) windows so their persistence can never
++    /// clobber the primary window's saved tab list.
++    private let isEphemeral: Bool
+     private let storage: StorageURLs
+     private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.TabManagementStore.Queue", qos: .userInitiated)
+     private var database: OpaquePointer?
+@@ -79,16 +84,24 @@ final class TabManagementStore {
+     
+     // MARK: - Lifecycle
+     
+-    init(fileManager: FileManager = .default) {
++    init(fileManager: FileManager = .default, isEphemeral: Bool = false) {
+         self.fileManager = fileManager
++        self.isEphemeral = isEphemeral
+         
+-        guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+-            fatalError("Application Support directory is unavailable")
++        let directoryURL: URL
++        if isEphemeral {
++            // Throw-away directory: used only for this window's thumbnail cache.
++            directoryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
++                .appendingPathComponent("TabManagement-Ephemeral-\(UUID().uuidString)", isDirectory: true)
++        } else {
++            guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
++                fatalError("Application Support directory is unavailable")
++            }
++            
++            directoryURL = applicationSupportDirectoryURL
++                .appendingPathComponent("AppData", isDirectory: true)
++                .appendingPathComponent("TabManagement", isDirectory: true)
+         }
+-        
+-        let directoryURL = applicationSupportDirectoryURL
+-            .appendingPathComponent("AppData", isDirectory: true)
+-            .appendingPathComponent("TabManagement", isDirectory: true)
+         self.storage = StorageURLs(
+             directoryURL: directoryURL,
+             databaseURL: directoryURL.appendingPathComponent("TabManagement", isDirectory: false),
+@@ -387,7 +400,10 @@ final class TabManagementStore {
+         
+         var database: OpaquePointer?
+         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+-        guard sqlite3_open_v2(storage.databaseURL.path, &database, flags, nil) == SQLITE_OK else {
++        // An ephemeral store lives entirely in memory: nothing is written to the
++        // shared on-disk database, so it cannot disturb the primary window.
++        let databasePath = isEphemeral ? ":memory:" : storage.databaseURL.path
++        guard sqlite3_open_v2(databasePath, &database, flags, nil) == SQLITE_OK else {
+             if let database {
+                 sqlite3_close(database)
+             }
+diff --git a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
+index 939ead4..a2fc355 100644
+--- a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
++++ b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
+@@ -666,6 +666,15 @@ final class TabManagerImplementation: NSObject, TabManager {
+         regularTabs[index].state.showsStartupHomepage = true
+     }
+     
++    /// Initial tab for an ADDITIONAL (Stage Manager) window: exactly one fresh
++    /// tab showing the homepage, with no tab restoration and without writing
++    /// anything back to the shared persisted tab list (that window uses an
++    /// isolated ephemeral store).
++    func createHomepageWindowInitialTab() {
++        let index = addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
++        regularTabs[index].state.showsStartupHomepage = true
++    }
++    
+     @discardableResult
+     func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
+         let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
 diff --git a/browser/Reynard/Resources/Info.plist b/browser/Reynard/Resources/Info.plist
 index 7af267b..bd44990 100644
 --- a/browser/Reynard/Resources/Info.plist
@@ -5478,15 +5612,33 @@ index 7af267b..bd44990 100644
  		<dict>
  			<key>UIWindowSceneSessionRoleApplication</key>
 diff --git a/browser/Reynard/SceneDelegate.swift b/browser/Reynard/SceneDelegate.swift
-index f67ad47..cc4411f 100644
+index f67ad47..68d9863 100644
 --- a/browser/Reynard/SceneDelegate.swift
 +++ b/browser/Reynard/SceneDelegate.swift
-@@ -13,7 +13,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+@@ -10,10 +10,25 @@ import UIKit
+ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+     var window: UIWindow?
+     
++    /// Process-level bookkeeping: the first scene connected in this process is
++    /// the primary window and restores the shared tab set. Any subsequent scene
++    /// (⌘N, or an extra Stage Manager window) starts at the homepage and uses an
++    /// isolated ephemeral tab store, so it can never clobber the primary
++    /// window's saved tabs. The flag is intentionally never reset: a window
++    /// opened after the primary one was closed must still not overwrite the
++    /// saved tab list.
++    private static var hasConnectedScene = false
++    
      func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
          guard let windowScene = (scene as? UIWindowScene) else { return }
          
 -        let browserViewController = BrowserViewController()
-+        let browserViewController = BrowserViewController(canHostSidebar: false)
++        let isAdditionalWindow = SceneDelegate.hasConnectedScene
++        SceneDelegate.hasConnectedScene = true
++        
++        let browserViewController = BrowserViewController(
++            canHostSidebar: false,
++            startsWithHomepage: isAdditionalWindow
++        )
          browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
          
          let window = UIWindow(windowScene: windowScene)
