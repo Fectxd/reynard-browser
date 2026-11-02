@@ -10,10 +10,25 @@ import UIKit
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     
+    /// Process-level bookkeeping: the first scene connected in this process is
+    /// the primary window and restores the shared tab set. Any subsequent scene
+    /// (⌘N, or an extra Stage Manager window) starts at the homepage and uses an
+    /// isolated ephemeral tab store, so it can never clobber the primary
+    /// window's saved tabs. The flag is intentionally never reset: a window
+    /// opened after the primary one was closed must still not overwrite the
+    /// saved tab list.
+    private static var hasConnectedScene = false
+    
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
-        let browserViewController = BrowserViewController()
+        let isAdditionalWindow = SceneDelegate.hasConnectedScene
+        SceneDelegate.hasConnectedScene = true
+        
+        let browserViewController = BrowserViewController(
+            canHostSidebar: false,
+            startsWithHomepage: isAdditionalWindow
+        )
         browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
         
         let window = UIWindow(windowScene: windowScene)

@@ -54,15 +54,10 @@ extension BrowserViewController {
         initialSection: LibrarySection = .bookmarks,
         startsEditingBookmarks: Bool = false
     ) {
-        if browserLayout.interfaceIdiom == .pad,
-           browserLayout.chromeMode == .pad {
-            sidebarCoordinator.showSection(
-                initialSection,
-                startsEditingBookmarks: startsEditingBookmarks
-            )
-            return
-        }
-        
+        // The library always opens as a modal pageSheet overlay, in both
+        // portrait and landscape. The old pad split-view sidebar (the stuck
+        // "primary" menu) is removed: it squeezed the tab bar / address bar and
+        // could not be dismissed. A modal only overlays web content.
         let libraryController = LibraryViewController(
             initialSection: initialSection,
             isPrivateMode: tabManager.selectedTab?.isPrivate == true,
@@ -75,12 +70,6 @@ extension BrowserViewController {
     }
     
     func toggleLibrary(section: LibrarySection) {
-        if browserLayout.interfaceIdiom == .pad,
-           browserLayout.chromeMode == .pad {
-            (splitViewController as? SidebarViewController)?.toggleSection(section)
-            return
-        }
-        
         guard let navigationController = presentedViewController as? ContentModalNavigationController,
               let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
             presentLibrary(initialSection: section)

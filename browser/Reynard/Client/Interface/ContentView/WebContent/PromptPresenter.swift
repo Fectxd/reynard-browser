@@ -15,11 +15,19 @@ final class PromptPresenter: PromptPresenting {
     private var dateTimePickers: [String: DateTimePicker] = [:]
     private var filePickers: [String: FilePicker] = [:]
     
+    /// The window owning the session currently being prompted, so a remote prompt
+    /// coming from a background window's session is presented in that window
+    /// instead of over whichever window happens to be frontmost. `PromptPresenter`
+    /// is created per window (per `TabManagerImpl`), so this can only ever refer to
+    /// this window's own scene.
+    private weak var presentationWindow: UIWindow?
+    
     // MARK: - Lifecycle
     
     init() {}
     
     func present(_ request: PromptRequest, for session: GeckoSession) async -> PromptResponse? {
+        presentationWindow = session.engineView?.window
         switch request {
         case .alert(let request):
             await presentAlert(request: request)
@@ -32,7 +40,7 @@ final class PromptPresenter: PromptPresenting {
             return await presentText(request: request)
             
         case .auth(let request):
-            return await presentAuth(request: request)
+            return await presentAuth(request: request, session: session)
             
         case .folderUpload(let request):
             return await presentFolderUpload(request: request)
@@ -51,6 +59,9 @@ final class PromptPresenter: PromptPresenting {
             
         case .share(let request):
             return await presentShare(session: session, request: request)
+            
+        case .loginSave(let request):
+            return await presentLoginSave(request: request, session: session)
         }
     }
     
@@ -77,7 +88,7 @@ final class PromptPresenter: PromptPresenting {
     // MARK: - Basic Prompts
     
     private func presentAlert(request: AlertPromptRequest) async {
-        guard let presenter = UIApplication.shared.topViewController() else {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
             return
         }
         
@@ -96,7 +107,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentButton(request: ButtonPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController() else {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
             return nil
         }
         
@@ -137,7 +148,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentText(request: TextPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController() else {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
             return nil
         }
         
@@ -162,11 +173,7 @@ final class PromptPresenter: PromptPresenting {
         }
     }
     
-    private func presentAuth(request: AuthPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController() else {
-            return nil
-        }
-        
+    private func presentAuth(request: AuthPromptRequest, session: GeckoSession) async -> PromptResponse? {
         let host = URL(string: request.uri)?.host
         let title = host.map {
             String(format: NSLocalizedString("Sign in to %@", comment: "Authentication host"), $0)
@@ -176,21 +183,84 @@ final class PromptPresenter: PromptPresenting {
         : NSLocalizedString("Your login information will not be sent securely.", comment: "")
         let passwordOnly = request.mode == "password"
         
+        // Saved HTTP-auth credentials for this host. Private browsing neither
+        // reads nor writes them, so private-mode credentials are never stored.
+        let savedLogins = session.isPrivateMode
+        ? []
+        : LoginStore.shared.logins(forOrigin: request.uri, kind: .http)
+        
+        var preselected: LoginRecord?
+        if savedLogins.count == 1 {
+            preselected = savedLogins.first
+        } else if savedLogins.count > 1 {
+            // Multi-account origin (e.g. a router's administration page): let
+            // the user pick which account to sign in with before prefilling.
+            switch await presentAuthAccountPicker(
+                logins: savedLogins,
+                title: title.isEmpty ? NSLocalizedString("Sign In", comment: "") : title
+            ) {
+            case .account(let login):
+                preselected = login
+            case .other:
+                preselected = nil
+            case .cancelled:
+                return nil
+            }
+        }
+        
+        guard let credentials = await presentAuthCredentials(
+            title: title.isEmpty ? NSLocalizedString("Sign In", comment: "") : title,
+            message: message,
+            passwordOnly: passwordOnly,
+            username: passwordOnly ? request.username : (preselected?.username ?? request.username),
+            password: preselected?.password ?? request.password
+        ) else {
+            return nil
+        }
+        
+        if let preselected, preselected.username == credentials.username {
+            LoginStore.shared.markUsed(id: preselected.id)
+        }
+        
+        await offerToSaveHTTPLogin(
+            origin: request.uri,
+            username: credentials.username,
+            password: credentials.password,
+            session: session
+        )
+        
+        return .auth(username: credentials.username, password: credentials.password)
+    }
+    
+    /// The native user name / password dialog for HTTP authentication. Returns
+    /// `nil` when the user cancels; the dialog behaviour (and the focus
+    /// restoration done by `PromptCoordinator` once this returns) is unchanged.
+    private func presentAuthCredentials(
+        title: String,
+        message: String,
+        passwordOnly: Bool,
+        username: String,
+        password: String
+    ) async -> (username: String, password: String)? {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+            return nil
+        }
+        
         return await withCheckedContinuation { continuation in
-            var response: PromptResponse?
+            var result: (username: String, password: String)?
             let alert = PromptAlertController(
-                title: title.isEmpty ? NSLocalizedString("Sign In", comment: "") : title,
+                title: title,
                 message: message,
                 preferredStyle: .alert
             )
             alert.onDismissed = {
-                continuation.resume(returning: response)
+                continuation.resume(returning: result)
             }
             
             if !passwordOnly {
                 alert.addTextField { textField in
                     textField.placeholder = NSLocalizedString("User Name", comment: "")
-                    textField.text = request.username
+                    textField.text = username
                     textField.textContentType = .username
                     textField.autocapitalizationType = .none
                     textField.autocorrectionType = .no
@@ -199,23 +269,171 @@ final class PromptPresenter: PromptPresenting {
             
             alert.addTextField { textField in
                 textField.placeholder = NSLocalizedString("Password", comment: "")
-                textField.text = request.password
+                textField.text = password
                 textField.textContentType = .password
                 textField.isSecureTextEntry = true
             }
             
             alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
             alert.addAction(UIAlertAction(title: NSLocalizedString("Sign In", comment: ""), style: .default) { _ in
-                let username = passwordOnly ? request.username : alert.textFields?.first?.text ?? ""
-                let password = alert.textFields?.last?.text ?? ""
-                response = .auth(username: username, password: password)
+                let resolvedUsername = passwordOnly ? username : alert.textFields?.first?.text ?? ""
+                let resolvedPassword = alert.textFields?.last?.text ?? ""
+                result = (username: resolvedUsername, password: resolvedPassword)
             })
             presenter.present(alert, animated: true)
         }
     }
     
+    /// Account chooser shown when an origin has more than one saved login.
+    private func presentAuthAccountPicker(
+        logins: [LoginRecord],
+        title: String
+    ) async -> AuthAccountChoice {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+            return .cancelled
+        }
+        
+        return await withCheckedContinuation { continuation in
+            var choice: AuthAccountChoice = .cancelled
+            let alert = PromptAlertController(
+                title: title,
+                message: NSLocalizedString("Choose an account to sign in with.", comment: ""),
+                preferredStyle: .alert
+            )
+            alert.onDismissed = {
+                continuation.resume(returning: choice)
+            }
+            
+            for (index, login) in logins.enumerated() {
+                let accountTitle = login.username.isEmpty
+                ? NSLocalizedString("Saved Password", comment: "")
+                : login.username
+                alert.addAction(UIAlertAction(title: accountTitle, style: .default) { _ in
+                    choice = .account(logins[index])
+                })
+            }
+            
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Other…", comment: ""), style: .default) { _ in
+                choice = .other
+            })
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+            presenter.present(alert, animated: true)
+        }
+    }
+    
+    /// Offers to store freshly entered HTTP-auth credentials.
+    private func offerToSaveHTTPLogin(
+        origin: String,
+        username: String,
+        password: String,
+        session: GeckoSession
+    ) async {
+        guard shouldOfferToSaveLogin(origin: origin, username: username, password: password, session: session) else {
+            return
+        }
+        
+        guard await confirmSaveLogin(
+            username: username,
+            host: LoginStore.normalizedHost(forOrigin: origin)
+        ) else {
+            return
+        }
+        
+        LoginStore.shared.save(
+            origin: normalizedOrigin(from: origin),
+            kind: .http,
+            username: username,
+            password: password
+        )
+    }
+    
+    /// Normalises a request URI to `scheme://host[:port]` so stored origins stay
+    /// clean (matching is by host, Settings groups by host).
+    private func normalizedOrigin(from rawURI: String) -> String {
+        guard let url = URL(string: rawURI),
+              let origin = URLUtils.httpOriginString(for: url) else {
+            return rawURI
+        }
+        
+        return origin
+    }
+    
+    private func shouldOfferToSaveLogin(
+        origin: String,
+        username: String,
+        password: String,
+        session: GeckoSession
+    ) -> Bool {
+        guard !session.isPrivateMode else {
+            return false
+        }
+        guard !username.isEmpty || !password.isEmpty else {
+            return false
+        }
+        
+        let existing = LoginStore.shared.logins(forOrigin: origin, kind: .http)
+        if let match = existing.first(where: { $0.username == username }) {
+            // Only offer when the stored password actually changed.
+            return match.password != password
+        }
+        return true
+    }
+    
+    /// Yes/no confirmation used by both the HTTP-auth and web-form save flows.
+    private func confirmSaveLogin(username: String, host: String) async -> Bool {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+            return false
+        }
+        
+        let account = username.isEmpty ? host : "\(username) — \(host)"
+        return await withCheckedContinuation { continuation in
+            var accepted = false
+            let alert = PromptAlertController(
+                title: NSLocalizedString("Save Password?", comment: ""),
+                message: String(format: NSLocalizedString("Save the password for %@?", comment: "Login save host"), account),
+                preferredStyle: .alert
+            )
+            alert.onDismissed = {
+                continuation.resume(returning: accepted)
+            }
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Not Now", comment: ""), style: .cancel))
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Save", comment: ""), style: .default) { _ in
+                accepted = true
+            })
+            presenter.present(alert, animated: true)
+        }
+    }
+    
+    /// Handles Gecko's `Autocomplete:Save:Login` prompt emitted when a page
+    /// submits a login form. Private browsing declines (nothing is persisted).
+    private func presentLoginSave(
+        request: LoginSavePromptRequest,
+        session: GeckoSession
+    ) async -> PromptResponse? {
+        guard !session.isPrivateMode, let login = request.logins.first else {
+            return .loginSave(nil)
+        }
+        
+        let host = LoginStore.normalizedHost(forOrigin: login.origin)
+        guard await confirmSaveLogin(username: login.username, host: host) else {
+            return .loginSave(nil)
+        }
+        
+        LoginStore.shared.save(
+            origin: normalizedOrigin(from: login.origin),
+            formActionOrigin: login.formActionOrigin,
+            httpRealm: login.httpRealm,
+            kind: .form,
+            username: login.username,
+            password: login.password,
+            guid: login.guid.isEmpty ? nil : login.guid
+        )
+        
+        return .loginSave(login)
+    }
+    
     private func presentFolderUpload(request: FolderUploadPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController() else {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
             return nil
         }
         
@@ -341,7 +559,7 @@ final class PromptPresenter: PromptPresenting {
         session: GeckoSession,
         request: SharePromptRequest
     ) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController() as? BrowserViewController,
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) as? BrowserViewController,
               let sourceView = session.engineView else {
             return nil
         }
@@ -415,6 +633,13 @@ final class PromptPresenter: PromptPresenting {
             return ""
         }
     }
+}
+
+/// Result of the HTTP-auth account chooser.
+private enum AuthAccountChoice {
+    case account(LoginRecord)
+    case other
+    case cancelled
 }
 
 private final class WebShareActivityItemSource: NSObject, UIActivityItemSource {

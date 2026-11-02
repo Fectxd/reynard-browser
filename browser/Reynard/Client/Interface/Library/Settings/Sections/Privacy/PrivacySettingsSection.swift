@@ -10,6 +10,8 @@ import UIKit
 struct PrivacySettingsSection {
     enum Row: CaseIterable {
         case sitePermissions
+        case passwords
+        case clearBrowsingData
         case httpsOnlyMode
         case dnsOverHTTPS
         case trackingProtection
@@ -27,6 +29,10 @@ struct PrivacySettingsSection {
         switch Row.allCases[index] {
         case .sitePermissions:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Website Permissions", comment: ""))
+        case .passwords:
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Passwords", comment: ""))
+        case .clearBrowsingData:
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
         case .httpsOnlyMode:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("HTTPS-Only Mode", tableName: "SettingsLocalizable", comment: ""))
         case .dnsOverHTTPS:
@@ -44,6 +50,12 @@ struct PrivacySettingsSection {
         switch Row.allCases[index] {
         case .sitePermissions:
             let destination = SitePermissionsViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
+        case .passwords:
+            let destination = PasswordsViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
+        case .clearBrowsingData:
+            let destination = ClearBrowsingDataViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)
         case .httpsOnlyMode:
             let destination = HTTPSOnlyModePreferencesViewController()

@@ -135,6 +135,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
         if visible {
             toolbarController.lock(for: .tabOverview)
+            dismissEdgeLibraryPanel(animated: false)
             if browserChrome.performAfterTransition({ [weak self] in
                 self?.setTabOverviewVisible(true, animated: animated)
             }) {

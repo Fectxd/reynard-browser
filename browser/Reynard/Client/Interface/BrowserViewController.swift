@@ -24,10 +24,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     // MARK: - State
     
-    let sessionManager = SessionManager()
+    /// The tab-list store backing this window. The primary window uses the
+    /// shared on-disk store; an additional (Stage Manager) window gets its own
+    /// ephemeral, in-memory store so it can never clobber the saved tab list.
+    let tabStore: TabManagementStore
+    /// True for an additional window: it starts at the homepage instead of
+    /// restoring the shared tab set.
+    private let startsWithHomepage: Bool
+    let sessionManager: SessionManager
     lazy var tabManager = TabManagerImplementation(
         delegate: self,
-        sessionManager: sessionManager
+        sessionManager: sessionManager,
+        store: tabStore
     )
     private var lockedOrientations: UIInterfaceOrientationMask?
     private var pendingOrientationRequest: (
@@ -49,6 +57,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     let contentView = ContentView()
     lazy var browserChrome = BrowserChrome()
     var tabBar: TabBar { return browserChrome.tabBar }
+
+    /// Pins contentView's trailing edge to the container. Its constant is
+    /// adjusted (to the right side-panel width) while the Edge library side
+    /// panel is open on the wide layout, so the web content shifts left and a
+    /// fixed-width panel can sit side-by-side on the right.
+    private var contentTrailingConstraint: NSLayoutConstraint?
+
+    /// The live right side-by-side library panel (pad layout only).
+    var edgeLibraryPanel: EdgeLibrarySidePanelController?
     
     private(set) lazy var toolbarController = ToolbarController(
         browserChrome: browserChrome,
@@ -133,8 +150,16 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         return preferredInterfaceOrientation(allowedBy: allowedOrientations) ?? .portrait
     }
     
-    init(canHostSidebar: Bool = true) {
+    init(canHostSidebar: Bool = true, startsWithHomepage: Bool = false) {
         self.allowsSidebarHosting = canHostSidebar
+        self.startsWithHomepage = startsWithHomepage
+        // An additional window gets an isolated, in-memory tab store so it
+        // neither restores nor overwrites the primary window's saved tabs.
+        let store = startsWithHomepage
+            ? TabManagementStore(isEphemeral: true)
+            : TabManagementStore.shared
+        self.tabStore = store
+        self.sessionManager = SessionManager(tabStore: store)
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -144,6 +169,20 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     deinit {
         stopScreenOrientationHandling()
+        if isShowingFullscreenMedia {
+            // `isIdleTimerDisabled` is app-global while scenes are per-window:
+            // with a second window open, only clear it when no other window
+            // still needs it, otherwise closing one window would re-enable the
+            // idle timer for the window that is still showing fullscreen media.
+            let anotherWindowNeedsIdleTimerDisabled = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .compactMap { $0.rootViewController as? BrowserViewController }
+                .contains { $0 !== self && $0.isShowingFullscreenMedia }
+            if !anotherWindowNeedsIdleTimerDisabled {
+                UIApplication.shared.isIdleTimerDisabled = false
+            }
+        }
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -162,13 +201,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         contextMenuCoordinator.configure()
         downloadsCoordinator.startObservingStore()
         downloadsCoordinator.syncToolbarButtonState()
-        tabOverview.restoreMode(TabOverview.Mode(tabMode: TabManagementStore.shared.preferredRestoredMode()))
+        tabOverview.restoreMode(TabOverview.Mode(tabMode: tabStore.preferredRestoredMode()))
         syncBrowserNavigationChrome(animated: false)
         browserChrome.syncSidebarButton(splitViewController: splitViewController)
         applyUpdateMenuButtonBadge()
         
-        tabManager.createInitialTab()
+        if startsWithHomepage {
+            // Additional window: a single fresh homepage tab, no restoration.
+            tabManager.createHomepageWindowInitialTab()
+        } else {
+            tabManager.createInitialTab()
+        }
         refreshAddressBar()
+        refreshTabOverviewBadge()
         homepageOverlayCoordinator.updatePresentation(animated: false)
         
         Task { @MainActor [weak self] in
@@ -230,10 +275,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         )
         homepageOverlayCoordinator.updateVisibleContentInsets()
         invalidateNavigationThumbnailsIfNeeded()
+        revalidateBrowserLayoutIfNeeded()
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
+        dismissEdgeMenuOnLayoutChange()
         DispatchQueue.main.async { [weak self] in
             guard let self,
                   self.isViewLoaded,
@@ -256,6 +303,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         if let readerSettings = presentedViewController as? ReaderSettingsViewController {
             readerSettings.dismiss(animated: false)
         }
+        dismissEdgeMenuOnLayoutChange()
         performContentLifecycle {
             toolbarController.reset(animated: false)
             coordinator.animate { _ in
@@ -305,8 +353,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         
         NSLayoutConstraint.activate([
             contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            contentView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor).withPriority(.defaultHigh),
+            // Fallback pin: the tab strip now sits at the very top (safe area)
+            // with the address bar directly beneath it, so the content's top
+            // must always clear the address row (topToolbarBottomAnchor). Pinning
+            // this fallback to the safe area instead would park the content top
+            // at the tab-bar band whenever the per-mode layout top is not yet
+            // (re)applied. This matches every applyPad/Phone/CompactLayout call.
+            contentView.topAnchor.constraint(equalTo: browserChrome.topToolbarBottomAnchor).withPriority(.defaultHigh),
             contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
             browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -318,6 +371,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             tabOverview.topAnchor.constraint(equalTo: view.topAnchor),
             tabOverview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        let contentTrailingConstraint = contentView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        contentTrailingConstraint.isActive = true
+        self.contentTrailingConstraint = contentTrailingConstraint
     }
     
     private func configureBrowserChromeActions() {
@@ -453,16 +509,22 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             )
         }
         browserChrome.onLibrary = { [weak self] in
-            self?.presentLibrary()
+            self?.presentEdgeMenu()
         }
         browserChrome.onDownloads = { [weak self] in
-            self?.presentLibrary(initialSection: .downloads)
+            self?.presentEdgeLibraryPanel(section: .downloads)
         }
         browserChrome.onNewTab = { [weak self] in
             self?.createNewTab()
         }
         browserChrome.onTabOverview = { [weak self] in
             self?.setTabOverviewVisible(true, animated: true)
+        }
+        browserChrome.onFavorite = { [weak self] in
+            self?.presentBookmarkEditor(addToFavorites: true)
+        }
+        browserChrome.onMenu = { [weak self] in
+            self?.presentEdgeMenu()
         }
         browserChrome.onOverlayDismiss = { [weak self] in
             self?.toolbarController.reset()
@@ -543,6 +605,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         animated
         ? UIView.animate(withDuration: duration, animations: layoutBlock)
         : layoutBlock()
+        
+        // Keep the side-by-side library panel consistent with the new layout.
+        updateEdgeLibraryPanelForLayout()
     }
     
     func dismissAddressBarEditingAndOverlays() {
@@ -572,6 +637,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         }
         
         updateBrowserLayout(animated: animated, duration: duration)
+    }
+    
+    /// The layout is chosen by window width, so it must be re-evaluated when
+    /// the window actually resizes (e.g. iPad multitasking/Stage Manager,
+    /// resizable simulator windows, or the window being sized after the first
+    /// layout pass). This defers to the next run loop so it never re-enters the
+    /// current layout pass.
+    private func revalidateBrowserLayoutIfNeeded() {
+        guard view.window != nil else {
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  self.isViewLoaded,
+                  self.view.window != nil else {
+                return
+            }
+            self.updateBrowserLayoutIfNeeded(animated: false)
+        }
     }
     
     func applyBrowserLayout(animated: Bool = false) {
@@ -607,12 +691,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         let isSearchFocused = searchOverlayCoordinator.isFocused && !tabOverview.isPresented
         contentView.applyLayout(
             ContentView.LayoutState(mode: isSearchFocused ? .searchFocused : .standard),
-            topAnchor: view.safeAreaLayoutGuide.topAnchor,
+            topAnchor: browserChrome.topToolbarBottomAnchor,
             bottomAnchor: isSearchFocused
             ? view.safeAreaLayoutGuide.bottomAnchor
             : browserChrome.bottomToolbarTopAnchor
         )
-        tabBar.setVisibility(.hidden, animated: false)
+        // The narrow (phone) layout shows the same top tab strip as the wide
+        // (pad) layout: it sits above the address bar and needs to keep its
+        // height when the overview is presented, so reuse the shared target.
+        tabBar.setVisibility(targetTabBarVisibility, animated: false)
     }
     
     private func applyCompactLayout() {
@@ -627,10 +714,28 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     private func applyPadLayout(animated: Bool) {
         contentView.applyLayout(
             ContentView.LayoutState(mode: .standard),
-            topAnchor: browserChrome.tabBarBottomAnchor,
+            topAnchor: browserChrome.topToolbarBottomAnchor,
             bottomAnchor: view.bottomAnchor
         )
         tabBar.setVisibility(targetTabBarVisibility, animated: animated)
+    }
+
+    // MARK: - Edge Library Side Panel (wide layout)
+
+    /// The width (points) the right side-by-side library panel occupies on the
+    /// wide layout. The web content's trailing edge is inset by this amount
+    /// while the panel is open.
+    var edgeLibraryPanelWidth: CGFloat {
+        return EdgeLibrarySidePanelController.panelWidth
+    }
+
+    /// Sets how far the web content's trailing edge is pulled in from the
+    /// container's right edge (0 when the side panel is closed). Positive
+    /// values leave room on the right for the side-by-side library panel. Only
+    /// mutates the constraint constant; callers drive the layout pass so the
+    /// change can be animated or not as appropriate.
+    func setEdgeLibraryContentTrailingInset(_ inset: CGFloat) {
+        contentTrailingConstraint?.constant = -max(0, inset)
     }
     
     private var visibleTabCount: Int {
@@ -640,17 +745,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         return tabs.count
     }
     
+    /// Whether the top tab strip should be shown. The strip is part of the top
+    /// chrome only in the wide (pad) layout — the narrow phone layout has no
+    /// strip (its bottom toolbar carries the tab-overview button). When wide,
+    /// the strip stays visible even with a single tab; when the tab overview is
+    /// presented the strip only reserves its layout height.
     var targetTabBarVisibility: TabBar.Visibility {
-        guard browserLayout.chromeMode == .pad else {
+        switch browserLayout.chromeMode {
+        case .pad:
+            break
+        case .phone, .compact:
             return .hidden
         }
-        
-        let showsTabBar = browserLayout.interfaceIdiom == .pad
-        ? visibleTabCount > 1
-        : visibleTabCount > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
-        guard showsTabBar else {
+
+        guard visibleTabCount > 0 else {
             return .hidden
         }
+
         return tabOverview.isPresented ? .layoutReserved : .visible
     }
     
@@ -672,7 +783,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             ? .fullscreenMedia
             : (tabOverview.isPresented ? .tabOverview : .browsing),
             search: searchState,
-            topInset: browserTopInset(),
+            topInset: 0,
             interfaceIdiom: browserLayout.interfaceIdiom,
             orientation: browserLayout.orientation,
             isTwoThirdSplitScreenOrSmaller: isSidebarOverlayLayout,
@@ -682,22 +793,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     }
     
     private func resolveBrowserLayout() -> BrowserLayout {
-        let interfaceIdiom = traitCollection.userInterfaceIdiom
         let orientation = currentViewportOrientation()
-        
-        if interfaceIdiom == .pad {
-            return isCompactPadLayout
-            ? resolveCompactLayout(interfaceIdiom: .pad, orientation: orientation)
-            : resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
+        // The layout is decided purely by window width (in points), not by the
+        // device idiom. Windows at or above compactWidthThreshold use the wide
+        // pad top-toolbar layout (tab bar above address bar); anything narrower
+        // uses the phone layout with the address bar on top and the five-button
+        // bottom toolbar. 600pt keeps iPad portrait (768pt) and most split /
+        // resizable iPad windows on the wide layout while iPhones in portrait
+        // stay narrow (trade-off: iPhone landscape, >= 600pt wide, becomes wide).
+        let width = browserWindowWidth(fallback: view.bounds.width)
+        let isWideLayout = width >= compactWidthThreshold
+
+        if isWideLayout {
+            return resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
         }
-        
-        guard orientation == .portrait else {
-            return resolvePadLayout(interfaceIdiom: .phone, orientation: .landscape)
-        }
-        
-        return Prefs.AppearanceSettings.addressBarPosition == .top
-        ? resolveCompactLayout(interfaceIdiom: .phone, orientation: .portrait)
-        : resolvePhoneLayout()
+
+        // Narrow: phone layout with the address bar pinned to the top toolbar
+        // and the five-button navigation row in the bottom toolbar.
+        return resolvePhoneLayout(orientation: orientation)
+    }
+
+    /// The window width threshold (in points) that separates the narrow
+    /// (phone / bottom-toolbar) layout from the wide (pad / top-toolbar) one.
+    /// Lowered from 1024 so the wide layout survives much smaller windows:
+    /// iPad portrait (>= 768pt) and common split / resizable iPad widths now
+    /// render wide, and the pad layout is kept while the window shrinks far
+    /// below the old full-screen-only 1024pt cap. 600pt is still above the
+    /// widest iPhone portrait logical width (~430pt), so portrait iPhones
+    /// remain on the narrow layout.
+    private var compactWidthThreshold: CGFloat {
+        return 600
     }
     
     private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
@@ -753,34 +878,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     }
     
     private func browserWindowWidth(fallback: CGFloat) -> CGFloat {
-        guard let rootView = view.window?.rootViewController?.view,
-              rootView.bounds.width > 0 else {
-            return fallback
+        if let windowWidth = view.window?.bounds.width, windowWidth > 0 {
+            return windowWidth
         }
-        
-        return rootView.bounds.width
+        if view.bounds.width > 0 {
+            return view.bounds.width
+        }
+        return fallback
     }
     
-    private func resolvePhoneLayout() -> BrowserLayout {
+    private func resolvePhoneLayout(orientation: BrowserLayout.ViewportOrientation) -> BrowserLayout {
         return BrowserLayout(
             interfaceIdiom: .phone,
-            orientation: .portrait,
-            chromeMode: .phone,
-            chromePosition: .bottom,
-            tabOverviewToolbarPosition: .bottom,
-            overlayHost: .embedded
-        )
-    }
-    
-    private func resolveCompactLayout(
-        interfaceIdiom: UIUserInterfaceIdiom,
-        orientation: BrowserLayout.ViewportOrientation
-    ) -> BrowserLayout {
-        return BrowserLayout(
-            interfaceIdiom: interfaceIdiom,
             orientation: orientation,
-            chromeMode: .compact,
-            chromePosition: interfaceIdiom == .phone ? .top : .bottom,
+            chromeMode: .phone,
+            chromePosition: .top,
             tabOverviewToolbarPosition: .bottom,
             overlayHost: .embedded
         )
@@ -798,10 +910,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             tabOverviewToolbarPosition: isHalfSplitScreenOrSmaller ? .bottom : .top,
             overlayHost: .detached
         )
-    }
-    
-    private func browserTopInset() -> CGFloat {
-        return sidebarCoordinator.topInset(fallback: UX.fallbackTopInset)
     }
     
     // MARK: - Sidebar

@@ -313,40 +313,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     }
     
     private func updateScrollability() {
-        let tabCount = tabBar?.dataSource?.tabs.count ?? 0
-        let horizontalInsets = adjustedContentInset.left + adjustedContentInset.right
-        let baseWidth = bounds.width > 1 ? bounds.width : tabBar?.bounds.width ?? 0
-        let availableWidth = max(0, baseWidth - horizontalInsets)
-        let selectedIndex = tabBar?.dataSource?.selectedTabID.flatMap { selectedTabID in
-            tabBar?.dataSource?.tabs.firstIndex { $0.id == selectedTabID }
-        }
-        let pendingIndex = tabBar?.pendingExpandedTabIndex
-        
-        let shouldScroll: Bool = {
-            guard tabCount > 1 else {
-                return false
-            }
-            
-            let equalWidth = floor(availableWidth / CGFloat(tabCount))
-            guard equalWidth < TabBarCell.expandedMinimumWidth else {
-                return false
-            }
-            
-            let hasPendingExpandedTab = pendingIndex.map {
-                $0 != selectedIndex && (0..<tabCount).contains($0)
-            } ?? false
-            let expandedCount = hasPendingExpandedTab ? 2 : 1
-            let otherCount = tabCount - expandedCount
-            guard otherCount > 0 else {
-                return false
-            }
-            
-            let remainingWidth = availableWidth - (TabBarCell.expandedMinimumWidth * CGFloat(expandedCount))
-            let otherWidth = floor(remainingWidth / CGFloat(otherCount))
-            return otherWidth <= TabBarCell.collapsedMinimumWidth
-        }()
-        
-        isScrollEnabled = shouldScroll
+        // Tabs keep a fixed length and shrink to fill when they overflow,
+        // so the strip never scrolls horizontally (Edge behaviour).
+        isScrollEnabled = false
     }
     
     private func refreshVisibleTabs() {
@@ -395,6 +364,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+        // The active tab's shadow sits outside the cell bounds, so the
+        // collection must not clip its own content.
+        clipsToBounds = false
         showsHorizontalScrollIndicator = false
         contentInset = .zero
         contentInsetAdjustmentBehavior = .never

@@ -98,6 +98,14 @@ func parsePromptRequest(_ data: [String: Any]) -> PromptRequest? {
             url: data["uri"] as? String
         ))
         
+    case "Autocomplete:Save:Login":
+        let logins = (data["logins"] as? [[String: Any]] ?? [])
+            .compactMap { LoginSavePromptRequest.Login($0) }
+        guard !logins.isEmpty else {
+            return nil
+        }
+        return .loginSave(LoginSavePromptRequest(id: promptID, logins: logins))
+        
     default:
         return nil
     }

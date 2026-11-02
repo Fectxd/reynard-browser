@@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
     var onLibrary: (() -> Void)?
     var onDownloads: (() -> Void)?
     var onTabOverview: (() -> Void)?
+    var onNewTab: (() -> Void)?
     
     private let contentView: UIView = {
         let view = UIView()
@@ -45,15 +46,10 @@ final class BottomToolbar: UIView {
         return view
     }()
     
-    private let backgroundView: UIVisualEffectView = {
-        let effect: UIVisualEffect
-        if #available(iOS 26.0, *) {
-            effect = UIGlassEffect.nonAdaptive(style: .regular)
-        } else {
-            effect = UIBlurEffect(style: .systemChromeMaterial)
-        }
-        let view = UIVisualEffectView(effect: effect)
+    private let backgroundView: UIView = {
+        let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .systemBackground
         return view
     }()
     
@@ -61,9 +57,6 @@ final class BottomToolbar: UIView {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
-        if #available(iOS 26.0, *) {
-            view.isHidden = true
-        }
         return view
     }()
     
@@ -77,14 +70,24 @@ final class BottomToolbar: UIView {
     
     private lazy var backButton = ToolbarButton(buttonType: .back, target: self, action: #selector(backTapped))
     private lazy var forwardButton = ToolbarButton(buttonType: .forward, target: self, action: #selector(forwardTapped))
-    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
+    private lazy var newTabButton = ToolbarButton(buttonType: .newTab, target: self, action: #selector(newTabTapped))
+    private lazy var tabOverviewButton = ToolbarButton(
+        buttonType: .tabOverview,
+        target: self,
+        action: #selector(tabOverviewTapped),
+        // This toolbar only hosts buttons in the short phone/narrow row, so
+        // the count badge uses the compact style that stays fully inside it.
+        tabCountBadgeStyle: .compact
+    )
     private lazy var libraryButton = ToolbarButton(buttonType: .library, target: self, action: #selector(libraryTapped))
+    // Share & Downloads live in the Edge overflow menu. Keep hidden buttons so
+    // the share popover anchor and download badge updates still have a view.
+    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
     private lazy var downloadButton = ToolbarButton(buttonType: .download, target: self, action: #selector(downloadsTapped))
-    private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
     private let buttonMenus = ToolbarButtonMenus()
     
     private lazy var buttons: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, libraryButton, downloadButton, tabOverviewButton])
+        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, newTabButton, tabOverviewButton, libraryButton])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.distribution = .fillEqually
@@ -170,14 +173,22 @@ final class BottomToolbar: UIView {
     }
     
     func sharePopoverSourceView() -> UIView {
-        return shareButton
+        // Share lives in the overflow menu; anchor the popover to the menu
+        // button (visible) rather than the hidden share button.
+        return libraryButton
     }
     
     func apply(state: LayoutState, hidesButtons: Bool) {
         let contentHeight: CGFloat
         switch state {
-        case .hidden, .standard:
+        case .hidden:
             contentHeight = UX.bottomToolbarStandardContentHeight
+        case .standard:
+            // When the address bar lives on the top toolbar (phone layout), the
+            // bottom toolbar only needs to host the five-button navigation row.
+            contentHeight = addressBar == nil
+            ? UX.bottomToolbarCompactContentHeight
+            : UX.bottomToolbarStandardContentHeight
         case .collapsed, .compact:
             contentHeight = UX.bottomToolbarCompactContentHeight
         }
@@ -259,6 +270,10 @@ final class BottomToolbar: UIView {
             for: .normal
         )
     }
+
+    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
+        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
+    }
     
     // MARK: - Action Wiring
     
@@ -268,6 +283,7 @@ final class BottomToolbar: UIView {
     @objc private func libraryTapped() { onLibrary?() }
     @objc private func downloadsTapped() { onDownloads?() }
     @objc private func tabOverviewTapped() { onTabOverview?() }
+    @objc private func newTabTapped() { onNewTab?() }
     
     // MARK: - View Setup
     
@@ -326,6 +342,8 @@ final class BottomToolbar: UIView {
     
     private func configureInitialState() {
         shareButton.isEnabled = false
+        // Share & Downloads live in the overflow menu; keep them hidden.
+        shareButton.isHidden = true
         downloadButton.isHidden = true
     }
     

@@ -10,6 +10,7 @@ TARGET="aarch64-apple-ios"
 USE_SCCACHE=false
 AUTO_CLOBBER=false
 DISABLE_JEMALLOC=false
+DISABLE_LTO=false
 
 for arg in "$@"; do
 	case "$arg" in
@@ -21,6 +22,9 @@ for arg in "$@"; do
 			;;
 		--disable-jemalloc)
 			DISABLE_JEMALLOC=true
+			;;
+		--disable-lto)
+			DISABLE_LTO=true
 			;;
 	esac
 done
@@ -48,7 +52,13 @@ fi
 	echo "ac_add_options --enable-optimize"
 	echo "ac_add_options --enable-release"
 	echo "ac_add_options --enable-rust-simd"
-	echo "ac_add_options --enable-lto"
+	if [ "$DISABLE_LTO" = true ]; then
+		# Full LTO on the 3-core GitHub-hosted runners makes the final link
+		# alone exceed Actions' hard 6h job cap, so CI builds can opt out.
+		echo "ac_add_options --disable-lto"
+	else
+		echo "ac_add_options --enable-lto"
+	fi
 	echo "ac_add_options --disable-debug"
 	echo "ac_add_options --disable-tests"
 	echo "ac_add_options --enable-bootstrap"

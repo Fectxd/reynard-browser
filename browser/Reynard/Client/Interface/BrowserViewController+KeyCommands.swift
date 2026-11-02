@@ -46,6 +46,18 @@ extension BrowserViewController {
         createNewTab(mode: .private)
     }
     
+    /// Opens an additional window (iPad Stage Manager / Split View). The new
+    /// window starts at the homepage and uses its own ephemeral tab store, so it
+    /// never restores or overwrites the primary window's saved tab set.
+    @objc func newWindowKeyCommand(_ sender: UIKeyCommand) {
+        // Multiple windows are an iPad-only affordance.
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            return
+        }
+        
+        UIApplication.shared.requestSceneSessionActivation(nil, userActivity: nil, options: nil)
+    }
+    
     @objc func focusAddressBarKeyCommand(_ sender: UIKeyCommand) {
         if tabOverview.isPresented || tabOverview.isTransitionRunning {
             setTabOverviewVisible(false, animated: false)
@@ -82,10 +94,11 @@ extension BrowserViewController {
         
         Task { @MainActor in
             do {
-                let pdfFileURL = try await PagePrintPreparationAlert.prepare {
+                // Present the print flow in this window's scene.
+                let pdfFileURL = try await PagePrintPreparationAlert.prepare(in: view.window) {
                     try await tab.session.printToPDF()
                 }
-                try await PagePrintPresenter.present(pdfFileURL: pdfFileURL, jobName: tab.title)
+                try await PagePrintPresenter.present(pdfFileURL: pdfFileURL, jobName: tab.title, in: view.window)
             } catch {
                 return
             }

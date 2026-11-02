@@ -77,6 +77,40 @@ extension UIApplication {
         return topViewController(from: rootViewController)
     }
     
+    /// The top-most view controller of the scene that owns `view`, so a prompt
+    /// originating from one window is never presented over another window.
+    /// Falls back to the globally frontmost window when `view` is not in a
+    /// window (yet).
+    func topViewController(containing view: UIView?) -> UIViewController? {
+        guard let window = view?.window else {
+            return topViewController()
+        }
+        
+        return topViewController(for: window)
+    }
+    
+    /// The top-most view controller of `window`. Falls back to the globally
+    /// frontmost window when `window` is nil.
+    func topViewController(for window: UIWindow?) -> UIViewController? {
+        guard let rootViewController = window?.rootViewController else {
+            return topViewController()
+        }
+        
+        return topViewController(from: rootViewController)
+    }
+    
+    /// The top-most view controller of `windowScene` (its key window, or the
+    /// first window when none is key). Falls back to the globally frontmost
+    /// window when `windowScene` is nil.
+    func topViewController(in windowScene: UIWindowScene?) -> UIViewController? {
+        guard let windowScene else {
+            return topViewController()
+        }
+        
+        let window = windowScene.windows.first(where: \.isKeyWindow) ?? windowScene.windows.first
+        return topViewController(for: window)
+    }
+    
     func topViewController(from rootViewController: UIViewController) -> UIViewController {
         var controller = rootViewController
         while let presentedController = controller.presentedViewController {

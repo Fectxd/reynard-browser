@@ -69,7 +69,9 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
     }
     
     func presentAddonAlert(_ coordinator: AddonCoordinator, title: String?, message: String) {
-        AlertPresenter.show(title: title, message: message)
+        // Present in this window: add-on events are per-scene, so the alert must
+        // not land on another window that happens to be frontmost.
+        AlertPresenter.show(title: title, message: message, in: view.window)
     }
     
     func dismissAddonModal(_ coordinator: AddonCoordinator, completion: (() -> Void)?) -> Bool {

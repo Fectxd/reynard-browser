@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 
 extension FilePicker {
     func presentDocumentPicker() {
-        guard let presenter = UIApplication.shared.topViewController() else {
+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
             finish(with: nil)
             return
         }

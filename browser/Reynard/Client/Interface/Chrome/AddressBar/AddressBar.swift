@@ -30,19 +30,19 @@ protocol AddressBarDelegate: AnyObject {
 
 final class AddressBar: UIView {
     private enum UX {
-        static let addressBarBackgroundCornerRadius: CGFloat = 22
+        static let addressBarBackgroundCornerRadius: CGFloat = 8
         static let addressBarContentHorizontalInset: CGFloat = 12
         static let addressBarButtonToTextSpacing: CGFloat = 8
         static let addressBarDismissButtonSpacing: CGFloat = 9
         static let addressBarButtonSize: CGFloat = 18
-        static let addressBarHeight: CGFloat = 44
+        static let addressBarHeight: CGFloat = 34
         static let addressBarLoadingProgressHeight: CGFloat = 2
         static let addressBarAutocompleteTrailingInset: CGFloat = 30
-        static let addressBarTextFontSize: CGFloat = 17
+        static let addressBarTextFontSize: CGFloat = 16
         static let addressBarDismissButtonAnimationDuration: TimeInterval = 0.2
         static let addressBarAudioButtonAnimationDuration: TimeInterval = 0.18
         static let addressBarBackgroundDarkModeShadowAlpha: CGFloat = 0.3
-        static let addressBarBackgroundShadowOpacity: Float = 0.18
+        static let addressBarBackgroundShadowOpacity: Float = 0
         static let addressBarBackgroundShadowRadius: CGFloat = 14
         static let addressBarBackgroundShadowOffset = CGSize(width: 0, height: 2)
         static let borderWidth: CGFloat = 0.5
@@ -162,9 +162,7 @@ final class AddressBar: UIView {
     private let addressBarContent: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = UIColor { traitCollection in
-            traitCollection.userInterfaceStyle == .dark ? .tertiarySystemBackground : .systemBackground
-        }
+        view.backgroundColor = EdgeChromePalette.field
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.addressBarBackgroundCornerRadius
         view.clipsToBounds = true
@@ -632,10 +630,7 @@ final class AddressBar: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         clipsToBounds = false
-        addressBarBackground.layer.shadowColor = UIColor.black.cgColor
-        addressBarBackground.layer.shadowOpacity = UX.addressBarBackgroundShadowOpacity
-        addressBarBackground.layer.shadowRadius = UX.addressBarBackgroundShadowRadius
-        addressBarBackground.layer.shadowOffset = UX.addressBarBackgroundShadowOffset
+        addressBarBackground.layer.shadowOpacity = 0
         addressBarBackground.layer.masksToBounds = false
     }
     
@@ -765,7 +760,6 @@ final class AddressBar: UIView {
     private func applyState() {
         applyRenderModel(resolveRenderModel())
         applyLoadingState()
-        addressBarBackground.layer.shadowOpacity = UX.addressBarBackgroundShadowOpacity
         setNeedsLayout()
     }
     

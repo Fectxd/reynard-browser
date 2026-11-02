@@ -10,6 +10,7 @@ import Foundation
 final class SearchCompletion {
     enum Provider: String, CaseIterable {
         case google
+        case baidu
         case yahoo
         case bing
         case duckduckgo
@@ -52,6 +53,7 @@ extension SearchCompletion.Provider {
     var name: String {
         switch self {
         case .google: return "Google"
+        case .baidu: return "百度"
         case .yahoo: return "Yahoo"
         case .bing: return "Bing"
         case .duckduckgo: return "DuckDuckGo"
@@ -71,6 +73,13 @@ private extension SearchCompletion.Provider {
             queryItems = [
                 URLQueryItem(name: "client", value: "firefox"),
                 URLQueryItem(name: "q", value: query),
+            ]
+        case .baidu:
+            // Baidu's modern suggestion endpoint is /sugrec (the old /sug is 404).
+            endpoint = "https://www.baidu.com/sugrec"
+            queryItems = [
+                URLQueryItem(name: "prod", value: "pc"),
+                URLQueryItem(name: "wd", value: query),
             ]
         case .yahoo:
             endpoint = "https://search.yahoo.com/sugg/chrome"
@@ -126,6 +135,19 @@ private extension SearchCompletion {
     }
     
     static func decodePayload(data: Data, response: URLResponse) -> [Any]? {
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            // Baidu /sugrec: { "q": ..., "g": [{ "q": "suggestion", ... }, ...] }.
+            if let groups = object["g"] as? [[String: Any]] {
+                let suggestions = groups.compactMap { $0["q"] as? String }
+                return ["", suggestions]
+            }
+            // Other dict forms with an "s" array of plain strings.
+            if let suggestions = object["s"] as? [String] {
+                return ["", suggestions]
+            }
+            return nil
+        }
+
         if let payload = try? JSONSerialization.jsonObject(with: data) as? [Any] {
             return payload
         }
@@ -135,6 +157,11 @@ private extension SearchCompletion {
               let text = String(data: data, encoding: encoding),
               let utf8Data = text.data(using: .utf8) else {
             return nil
+        }
+        
+        if let object = try? JSONSerialization.jsonObject(with: utf8Data) as? [String: Any],
+           let suggestions = object["s"] as? [String] {
+            return ["", suggestions]
         }
         
         return try? JSONSerialization.jsonObject(with: utf8Data) as? [Any]

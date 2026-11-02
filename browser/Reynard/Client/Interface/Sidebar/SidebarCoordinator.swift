@@ -49,7 +49,13 @@ final class SidebarCoordinator {
     }
     
     var showChromeSidebarButton: Bool {
-        return (host?.sidebarSplitViewController as? SidebarViewController)?.showChromeSidebarButton ?? true
+        // The split-view library sidebar is removed, so its entry (chrome)
+        // button is never shown.
+        guard hostsSidebar,
+              let sidebarViewController = host?.sidebarSplitViewController as? SidebarViewController else {
+            return false
+        }
+        return sidebarViewController.showChromeSidebarButton
     }
     
     var hostsSidebar: Bool {

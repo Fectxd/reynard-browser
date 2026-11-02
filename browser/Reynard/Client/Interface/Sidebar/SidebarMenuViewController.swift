@@ -173,12 +173,17 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
             if showChromeSidebarButton {
                 navigationItem.leftBarButtonItem = nil
                 navigationItem.leftBarButtonItems = nil
+                navigationItem.rightBarButtonItem = nil
             } else {
+                // Menu panel now lives on the RIGHT; put its collapse (back)
+                // button on the trailing side.
                 configureSidebarButton(sidebarButton)
                 navigationItem.leftBarButtonItem = nil
-                navigationItem.leftBarButtonItems = standaloneSidebarButtonItems(for: sidebarButton)
+                navigationItem.leftBarButtonItems = nil
+                let item = UIBarButtonItem(customView: sidebarButton)
+                item.tag = childSidebarButtonTag
+                navigationItem.rightBarButtonItems = [item]
             }
-            navigationItem.rightBarButtonItem = nil
             return
         }
         

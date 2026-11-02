@@ -464,6 +464,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         browserViewController.loadViewIfNeeded()
         browserViewController.exitFullscreenIfNeeded()
         browserViewController.tabManager.browse(to: item.url.absoluteString)
+        browserViewController.edgeLibraryPanelDidOpenWebPage()
         
         if navigationController?.presentingViewController is BrowserViewController {
             navigationController?.dismiss(animated: true)

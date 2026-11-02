@@ -76,6 +76,15 @@ final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
     
     @MainActor
     func permissionDelegate(decideContentPermission permission: ContentPermission, session: GeckoSession) async -> ContentPermission.Value {
+        // The web Clipboard API (navigator.clipboard.readText/read/write) asks the
+        // embedder for a "clipboard" content permission. iOS has no GeckoView
+        // doorhanger to answer a `.prompt` with, so the request would fail
+        // silently and a web page could never read the clipboard (only the
+        // native ⌘V path worked). Allow clipboard read AND write here, and let
+        // iOS's own "Allow Paste?" prompt gate the actual pasteboard access.
+        if permission.rawPermission.lowercased().contains("clipboard") {
+            return .allow
+        }
         guard let sitePermission = SitePermission(contentPermission: permission),
               let host = URLUtils.normalizedHost(fromRawURI: permission.uri) else {
             return .prompt

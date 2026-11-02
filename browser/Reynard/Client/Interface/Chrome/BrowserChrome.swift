@@ -65,6 +65,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     var onDownloads: (() -> Void)?
     var onNewTab: (() -> Void)?
     var onTabOverview: (() -> Void)?
+    var onFavorite: (() -> Void)?
+    var onMenu: (() -> Void)?
     var onOverlayDismiss: (() -> Void)?
     var onPageZoomOut: (() -> Void)?
     var onPageZoomIn: (() -> Void)?
@@ -100,6 +102,18 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
         view.isHidden = true
+        return view
+    }()
+
+    /// Solid theme surface for the status-bar band ABOVE the tab strip. The tab
+    /// bar is pinned to the safe-area top, so without this the web page would
+    /// show through the very top of the chrome. It shares the tab-strip colour
+    /// so the band with the window's "..." control reads as one bar with the
+    /// tabs, as in the Edge reference.
+    private let topSafeAreaBackgroundView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = EdgeChromePalette.chrome
         return view
     }()
     
@@ -197,6 +211,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         return state.mode == .phone
         ? bottomToolbar.sharePopoverSourceView()
         : topToolbar.sharePopoverSourceView()
+    }
+
+    /// Anchor rect used to present the Edge overflow menu ("≡") from the
+    /// library button, on whichever toolbar is currently visible.
+    func menuButtonAnchorRect() -> CGRect {
+        guard let state else {
+            return CGRect(x: bounds.width - 40, y: 0, width: 40, height: 40)
+        }
+        let anchorView: UIView
+        switch state.mode {
+        case .phone:
+            anchorView = bottomToolbar
+        case .compact, .pad:
+            anchorView = topToolbar
+        }
+        return CGRect(
+            x: anchorView.bounds.width - 52,
+            y: anchorView.bounds.height - 12,
+            width: 48,
+            height: 48
+        )
     }
     
     var addressBarButton: AddressBarButton {
@@ -636,6 +671,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         topToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
         bottomToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
     }
+
+    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
+        topToolbar.setTabOverviewBadge(count: count, isPrivate: isPrivate)
+        bottomToolbar.setTabOverviewBadge(count: count, isPrivate: isPrivate)
+    }
     
     func syncSidebarButton(splitViewController: UISplitViewController?) {
         topToolbar.syncSidebarButton(splitViewController: splitViewController)
@@ -662,6 +702,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         topToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
         topToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
         topToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
+        topToolbar.onFavorite = { [weak self] in self?.onFavorite?() }
+        topToolbar.onMenu = { [weak self] in self?.onMenu?() }
         
         bottomToolbar.onBack = { [weak self] in self?.onBack?() }
         bottomToolbar.onForward = { [weak self] in self?.onForward?() }
@@ -669,6 +711,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         bottomToolbar.onLibrary = { [weak self] in self?.onLibrary?() }
         bottomToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
         bottomToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
+        bottomToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
+        
+        // The "+" new-tab button on the tab strip row inserts a new tab.
+        tabBar.onNewTab = { [weak self] in self?.onNewTab?() }
         
         actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
         actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
@@ -703,6 +749,38 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         return topToolbar.convert(topToolbar.bounds, to: view)
     }
     
+    func topChromeTransitionView() -> UIView? {
+        let frame = topChromeTransitionFrame(in: self)
+        guard frame.width > 0, frame.height > 0 else {
+            return nil
+        }
+        let container = UIView(frame: frame)
+        container.clipsToBounds = true
+        container.backgroundColor = .clear
+        if let topSafeAreaSnapshot = topSafeAreaBackgroundView.snapshotView(afterScreenUpdates: false) {
+            topSafeAreaSnapshot.frame = topSafeAreaBackgroundView.convert(topSafeAreaBackgroundView.bounds, to: container)
+            container.addSubview(topSafeAreaSnapshot)
+        }
+        if let tabBarSnapshot = tabBar.snapshotView(afterScreenUpdates: false) {
+            tabBarSnapshot.frame = tabBar.convert(tabBar.bounds, to: container)
+            container.addSubview(tabBarSnapshot)
+        }
+        if let topToolbarSnapshot = topToolbar.snapshotView(afterScreenUpdates: false) {
+            topToolbarSnapshot.frame = topToolbar.convert(topToolbar.bounds, to: container)
+            container.addSubview(topToolbarSnapshot)
+        }
+        return container
+    }
+    
+    func topChromeTransitionFrame(in view: UIView) -> CGRect {
+        let minY = min(topSafeAreaBackgroundView.frame.minY, min(tabBar.frame.minY, topToolbar.frame.minY))
+        let maxY = max(topSafeAreaBackgroundView.frame.maxY, max(tabBar.frame.maxY, topToolbar.frame.maxY))
+        return convert(
+            CGRect(x: 0, y: minY, width: bounds.width, height: maxY - minY),
+            to: view
+        )
+    }
+    
     func setToolbarTransition(
         topOffset: CGFloat,
         bottomOffset: CGFloat,
@@ -713,7 +791,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         animatesContent: Bool
     ) {
         topToolbar.transform = CGAffineTransform(translationX: 0, y: topOffset)
-        topToolbar.setBackgroundCollapseOffset(tabBarCollapseOffset)
         bottomToolbar.transform = CGAffineTransform(translationX: 0, y: bottomOffset)
         actionBar.transform = actionBarKeyboardBottomConstraint == nil
         ? CGAffineTransform(translationX: 0, y: bottomOffset)
@@ -816,6 +893,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     }
     
     private func configureHierarchy() {
+        addSubview(topSafeAreaBackgroundView)
         addSubview(topToolbar)
         addSubview(tabBar)
         addSubview(bottomToolbar)
@@ -830,19 +908,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         overlayWidthConstraint = overlayContentView.widthAnchor.constraint(equalToConstant: 0)
         overlayHeightConstraint = overlayContentView.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            topToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            topToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            topToolbar.topAnchor.constraint(equalTo: topAnchor),
-            
+            // The tab bar sits ABOVE the address bar (top toolbar): the top
+            // chrome runs tab bar -> address bar -> content in every mode. In a
+            // hidden tab bar (height 0) this collapses to address bar -> content.
+            topSafeAreaBackgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            topSafeAreaBackgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            topSafeAreaBackgroundView.topAnchor.constraint(equalTo: topAnchor),
+            topSafeAreaBackgroundView.bottomAnchor.constraint(equalTo: tabBar.topAnchor),
+
             tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             tabBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            tabBar.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
+            tabBar.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor),
+            
+            topToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            topToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            topToolbar.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             
             bottomToolbar.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottomToolbar.trailingAnchor.constraint(equalTo: trailingAnchor),
             bottomToolbar.bottomAnchor.constraint(equalTo: bottomAnchor),
             
-            overlayDismissView.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            overlayDismissView.topAnchor.constraint(equalTo: topToolbar.bottomAnchor),
             overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
             overlayDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
             overlayDismissView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
@@ -858,7 +944,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
             actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
-        topToolbar.extendBackground(to: tabBar.bottomAnchor)
+        topToolbar.extendBackground(to: topToolbar.bottomAnchor)
         bottomToolbar.configureTopAnchor(to: safeAreaLayoutGuide.bottomAnchor)
     }
     
@@ -884,10 +970,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     private func attachAddressBar(for mode: BrowserChromeMode) {
         topToolbar.detachAddressBar()
         bottomToolbar.detachAddressBar()
+        // The address bar always lives on the top toolbar so that the phone
+        // (narrow) layout can pin the address bar to the top while the bottom
+        // toolbar keeps the five-button navigation row.
         switch mode {
-        case .phone:
-            bottomToolbar.attachAddressBar(addressBar)
-        case .compact, .pad:
+        case .phone, .compact, .pad:
             topToolbar.attachAddressBar(addressBar)
         }
     }
@@ -944,7 +1031,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     
     private func resolvedTopState(for state: State) -> TopToolbar.LayoutState {
         switch state.mode {
-        case .phone: return .hidden
+        case .phone: return .compact
         case .compact: return .compact
         case .pad: return .standard
         }

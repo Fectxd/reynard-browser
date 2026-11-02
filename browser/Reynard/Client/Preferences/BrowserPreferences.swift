@@ -38,9 +38,9 @@ final class BrowserPreferences {
         
         UserDefaults.standard.register(defaults: [
             // Search
-            key("SearchSettings", "searchEngine"): SearchEngine.google.rawValue,
+            key("SearchSettings", "searchEngine"): SearchEngine.baidu.rawValue,
             key("SearchSettings", "customSearchTemplate"): "",
-            key("SearchSettings", "searchSuggestionProvider"): SearchCompletion.Provider.google.rawValue,
+            key("SearchSettings", "searchSuggestionProvider"): SearchCompletion.Provider.baidu.rawValue,
             key("SearchSettings", "showSearchSuggestions"): true,
             key("SearchSettings", "showSearchSuggestionsInPrivateBrowsing"): true,
             key("SearchSettings", "searchBrowsingHistory"): true,
@@ -204,8 +204,8 @@ final class BrowserPreferences {
     struct SearchSettings {
         static var searchEngine: SearchEngine {
             get {
-                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchEngine") ?? SearchEngine.google.rawValue
-                return SearchEngine(rawValue: rawValue) ?? .google
+                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchEngine") ?? SearchEngine.baidu.rawValue
+                return SearchEngine(rawValue: rawValue) ?? .baidu
             }
             set {
                 prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchEngine")
@@ -223,8 +223,8 @@ final class BrowserPreferences {
         
         static var searchSuggestionProvider: SearchCompletion.Provider {
             get {
-                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchSuggestionProvider") ?? SearchCompletion.Provider.google.rawValue
-                return SearchCompletion.Provider(rawValue: rawValue) ?? .google
+                let rawValue = prefs.string(forSetting: "SearchSettings", key: "searchSuggestionProvider") ?? SearchCompletion.Provider.baidu.rawValue
+                return SearchCompletion.Provider(rawValue: rawValue) ?? .baidu
             }
             set {
                 prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchSuggestionProvider")
