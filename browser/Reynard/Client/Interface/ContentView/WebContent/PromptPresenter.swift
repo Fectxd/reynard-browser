@@ -414,13 +414,23 @@ final class PromptPresenter: PromptPresenting {
             return .loginSave(nil)
         }
         
+        let origin = normalizedOrigin(from: login.origin)
+        // Submitting the credentials that are already stored (the normal case
+        // when signing in to a site we have saved before) must not ask again:
+        // only a new account or a changed password is worth a prompt.
+        let storedLogins = LoginStore.shared.logins(forOrigin: origin, kind: .form)
+        if let existing = storedLogins.first(where: { $0.username == login.username }),
+           existing.password == login.password {
+            return .loginSave(login)
+        }
+        
         let host = LoginStore.normalizedHost(forOrigin: login.origin)
         guard await confirmSaveLogin(username: login.username, host: host) else {
             return .loginSave(nil)
         }
         
         LoginStore.shared.save(
-            origin: normalizedOrigin(from: login.origin),
+            origin: origin,
             formActionOrigin: login.formActionOrigin,
             httpRealm: login.httpRealm,
             kind: .form,

@@ -1776,7 +1776,7 @@ index 8a34fe9..836d805 100644
          }
          
 diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
-index 67c5145..4f2ea52 100644
+index 67c5145..2be87df 100644
 --- a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
 +++ b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
 @@ -15,11 +15,19 @@ final class PromptPresenter: PromptPresenting {
@@ -1947,7 +1947,7 @@ index 67c5145..4f2ea52 100644
                      textField.textContentType = .username
                      textField.autocapitalizationType = .none
                      textField.autocorrectionType = .no
-@@ -199,23 +269,171 @@ final class PromptPresenter: PromptPresenting {
+@@ -199,23 +269,181 @@ final class PromptPresenter: PromptPresenting {
              
              alert.addTextField { textField in
                  textField.placeholder = NSLocalizedString("Password", comment: "")
@@ -1965,11 +1965,11 @@ index 67c5145..4f2ea52 100644
 +                let resolvedUsername = passwordOnly ? username : alert.textFields?.first?.text ?? ""
 +                let resolvedPassword = alert.textFields?.last?.text ?? ""
 +                result = (username: resolvedUsername, password: resolvedPassword)
-+            })
-+            presenter.present(alert, animated: true)
-+        }
-+    }
-+    
+             })
+             presenter.present(alert, animated: true)
+         }
+     }
+     
 +    /// Account chooser shown when an origin has more than one saved login.
 +    private func presentAuthAccountPicker(
 +        logins: [LoginRecord],
@@ -2001,12 +2001,12 @@ index 67c5145..4f2ea52 100644
 +            
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Other…", comment: ""), style: .default) { _ in
 +                choice = .other
-             })
++            })
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
-             presenter.present(alert, animated: true)
-         }
-     }
-     
++            presenter.present(alert, animated: true)
++        }
++    }
++    
 +    /// Offers to store freshly entered HTTP-auth credentials.
 +    private func offerToSaveHTTPLogin(
 +        origin: String,
@@ -2100,13 +2100,23 @@ index 67c5145..4f2ea52 100644
 +            return .loginSave(nil)
 +        }
 +        
++        let origin = normalizedOrigin(from: login.origin)
++        // Submitting the credentials that are already stored (the normal case
++        // when signing in to a site we have saved before) must not ask again:
++        // only a new account or a changed password is worth a prompt.
++        let storedLogins = LoginStore.shared.logins(forOrigin: origin, kind: .form)
++        if let existing = storedLogins.first(where: { $0.username == login.username }),
++           existing.password == login.password {
++            return .loginSave(login)
++        }
++        
 +        let host = LoginStore.normalizedHost(forOrigin: login.origin)
 +        guard await confirmSaveLogin(username: login.username, host: host) else {
 +            return .loginSave(nil)
 +        }
 +        
 +        LoginStore.shared.save(
-+            origin: normalizedOrigin(from: login.origin),
++            origin: origin,
 +            formActionOrigin: login.formActionOrigin,
 +            httpRealm: login.httpRealm,
 +            kind: .form,
@@ -2124,7 +2134,7 @@ index 67c5145..4f2ea52 100644
              return nil
          }
          
-@@ -341,7 +559,7 @@ final class PromptPresenter: PromptPresenting {
+@@ -341,7 +569,7 @@ final class PromptPresenter: PromptPresenting {
          session: GeckoSession,
          request: SharePromptRequest
      ) async -> PromptResponse? {
@@ -2133,7 +2143,7 @@ index 67c5145..4f2ea52 100644
                let sourceView = session.engineView else {
              return nil
          }
-@@ -417,6 +635,13 @@ final class PromptPresenter: PromptPresenting {
+@@ -417,6 +645,13 @@ final class PromptPresenter: PromptPresenting {
      }
  }
  
