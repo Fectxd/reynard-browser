@@ -15,10 +15,6 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
     
     static let separatorKind = "TabBarSeparator"
     weak var tabBar: TabBar?
-    
-    /// Reports whether the strip can still be scrolled towards each edge, so
-    /// the tab bar can show or hide its soft edge hints.
-    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
     private var insertedIndexPaths = Set<IndexPath>()
     
     func prepareForInsertion(at indexPaths: [IndexPath]) {
@@ -144,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     }
     
     private weak var tabBar: TabBar?
+    
+    /// Reports whether the strip can still be scrolled towards each edge, so
+    /// the tab bar can show or hide its soft edge hints.
+    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
     private let layout: TabBarCollectionLayout
     private var lastLayoutWidth: CGFloat = 0
     private var isUpdatingTabs = false
@@ -344,7 +344,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         scrollStateDidChange(canScrollLeft, canScrollRight)
     }
     
-    override func scrollViewDidScroll(_ scrollView: UIScrollView) {
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
         notifyScrollState()
     }
     

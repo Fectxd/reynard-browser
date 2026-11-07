@@ -5720,20 +5720,20 @@ index aa1450a..7d4dd9b 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..f81a941 100644
+index 6da82ce..53858e9 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-@@ -15,6 +15,10 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+@@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+     }
      
-     static let separatorKind = "TabBarSeparator"
-     weak var tabBar: TabBar?
+     private weak var tabBar: TabBar?
 +    
 +    /// Reports whether the strip can still be scrolled towards each edge, so
 +    /// the tab bar can show or hide its soft edge hints.
 +    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
-     private var insertedIndexPaths = Set<IndexPath>()
-     
-     func prepareForInsertion(at indexPaths: [IndexPath]) {
+     private let layout: TabBarCollectionLayout
+     private var lastLayoutWidth: CGFloat = 0
+     private var isUpdatingTabs = false
 @@ -246,29 +250,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
@@ -5850,7 +5850,7 @@ index 6da82ce..f81a941 100644
 +        scrollStateDidChange(canScrollLeft, canScrollRight)
 +    }
 +    
-+    override func scrollViewDidScroll(_ scrollView: UIScrollView) {
++    func scrollViewDidScroll(_ scrollView: UIScrollView) {
 +        notifyScrollState()
      }
      
