@@ -215,10 +215,20 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         return view
     }()
     
+    /// Set by the presenter: only a genuinely narrow window (iPhone sheet) gets
+    /// the paged layout. The iPad popover is narrow in traits but must keep
+    /// showing every item at once.
+    var prefersCompactLayout = false
+    
     /// Narrow panels page the overflow horizontally instead of growing taller.
     private var isCompactLayout: Bool {
-        return traitCollection.horizontalSizeClass == .compact
+        return prefersCompactLayout
     }
+    
+    /// Horizontal padding around the grid. It lives on the collection view
+    /// rather than in the section insets so the paged section and the fixed
+    /// row compute their columns from exactly the same width.
+    private static let panelHorizontalInset: CGFloat = 8
 
     /// The Edge menu always uses the fixed 4-column icon+label grid in both
     /// orientations/layouts (the vertical list variant was removed). This
@@ -244,8 +254,14 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         view.addSubview(collectionView)
         NSLayoutConstraint.activate([
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.leadingAnchor.constraint(
+                equalTo: view.leadingAnchor,
+                constant: Self.panelHorizontalInset
+            ),
+            collectionView.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor,
+                constant: -Self.panelHorizontalInset
+            ),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         collectionView.register(EdgeMenuCell.self, forCellWithReuseIdentifier: cellReuseIdentifier)
@@ -285,7 +301,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         let visibleSecondaryRows = 2
         let pageHeight = CGFloat(visibleSecondaryRows) * UX.gridGroupHeight
             + CGFloat(visibleSecondaryRows - 1) * UX.gridItemSpacing
-        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 4 + 1
+        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 2 + 1
     }
     
     private var preferredHeight: CGFloat {
@@ -336,9 +352,9 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         let primarySection = NSCollectionLayoutSection(group: primaryGroup)
         primarySection.contentInsets = NSDirectionalEdgeInsets(
             top: inset,
-            leading: inset,
+            leading: 0,
             bottom: inset,
-            trailing: inset
+            trailing: 0
         )
         
         func makeRowGroup() -> NSCollectionLayoutGroup {
@@ -369,9 +385,9 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         secondarySection.orthogonalScrollingBehavior = .groupPaging
         secondarySection.contentInsets = NSDirectionalEdgeInsets(
             top: inset,
-            leading: inset,
+            leading: 0,
             bottom: inset,
-            trailing: inset
+            trailing: 0
         )
         secondarySection.boundarySupplementaryItems = [
             NSCollectionLayoutBoundarySupplementaryItem(
@@ -475,8 +491,12 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         layout collectionViewLayout: UICollectionViewLayout,
         insetForSectionAt section: Int
     ) -> UIEdgeInsets {
-        let horizontalInset: CGFloat = isWideLayout ? UX.gridContentInset : 0
-        return UIEdgeInsets(top: UX.gridContentInset, left: horizontalInset, bottom: UX.gridContentInset, right: horizontalInset)
+        return UIEdgeInsets(
+            top: UX.gridContentInset,
+            left: 0,
+            bottom: UX.gridContentInset,
+            right: 0
+        )
     }
 
     func collectionView(
@@ -500,7 +520,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         layout collectionViewLayout: UICollectionViewLayout,
         sizeForItemAt indexPath: IndexPath
     ) -> CGSize {
-        let availableWidth = collectionView.bounds.width - (isWideLayout ? (UX.gridContentInset * 2) : 0)
+        let availableWidth = collectionView.bounds.width
         if isWideLayout {
             // A fixed 4-column grid (4 x N) in wide / landscape layout, like a
             // compact app drawer.

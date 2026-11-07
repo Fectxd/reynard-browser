@@ -293,6 +293,9 @@ final class TabBarCell: UICollectionViewCell {
     // MARK: - Drawing
     
     private func applyChipColor() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         let color = isSelectedTab ? EdgeChromePalette.surface : EdgeChromePalette.inactiveTab
         tabShapeLayer.fillColor = color.resolvedColor(with: traitCollection).cgColor
     }
@@ -306,6 +309,9 @@ final class TabBarCell: UICollectionViewCell {
     }
     
     private func updateTabShape() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         let bounds = tabContentView.bounds
         guard bounds.width > 1, bounds.height > 1 else {
             return
@@ -324,6 +330,9 @@ final class TabBarCell: UICollectionViewCell {
     }
     
     private func updateTitleFade() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
         let bounds = titleLabel.bounds
         guard bounds.width > 0, bounds.height > 0 else {
             return
@@ -356,7 +365,7 @@ final class TabBarCell: UICollectionViewCell {
         path.move(to: CGPoint(x: minimumX - flare, y: maximumY))
         path.addQuadCurve(
             to: CGPoint(x: minimumX, y: maximumY - flare),
-            controlPoint: CGPoint(x: minimumX - flare, y: maximumY - flare)
+            controlPoint: CGPoint(x: minimumX, y: maximumY)
         )
         path.addLine(to: CGPoint(x: minimumX, y: minimumY + radius))
         path.addQuadCurve(
@@ -371,7 +380,7 @@ final class TabBarCell: UICollectionViewCell {
         path.addLine(to: CGPoint(x: maximumX, y: maximumY - flare))
         path.addQuadCurve(
             to: CGPoint(x: maximumX + flare, y: maximumY),
-            controlPoint: CGPoint(x: maximumX + flare, y: maximumY - flare)
+            controlPoint: CGPoint(x: maximumX, y: maximumY)
         )
         path.close()
         return path

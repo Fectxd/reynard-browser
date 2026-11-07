@@ -45,6 +45,10 @@ extension BrowserViewController {
             return isDesktop ? "reynard.smartphone" : "reynard.desktopcomputer"
         }
 
+        // Only the phone sheet pages its overflow; the iPad popover shows every
+        // item even though a popover is narrow in size classes.
+        menu.prefersCompactLayout = browserLayout.interfaceIdiom != .pad
+        
         if browserLayout.interfaceIdiom == .pad {
             menu.modalPresentationStyle = .popover
             if let popover = menu.popoverPresentationController {

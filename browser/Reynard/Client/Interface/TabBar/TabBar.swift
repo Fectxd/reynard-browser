@@ -491,7 +491,11 @@ private final class ScrollFadeView: UIView {
     }
     
     func applyColor(_ color: UIColor) {
-        // Opaque at the outer edge, transparent towards the tabs.
+        // Opaque at the outer edge, transparent towards the tabs. Colours are
+        // swapped without animation so appearance changes never fade the hint.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         gradientLayer.colors = [color.cgColor, color.withAlphaComponent(0).cgColor]
+        CATransaction.commit()
     }
 }

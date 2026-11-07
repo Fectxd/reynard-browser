@@ -2343,10 +2343,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..9899038
+index 0000000..f5e3bd3
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,325 @@
+@@ -0,0 +1,329 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -2394,6 +2394,10 @@ index 0000000..9899038
 +            return isDesktop ? "reynard.smartphone" : "reynard.desktopcomputer"
 +        }
 +
++        // Only the phone sheet pages its overflow; the iPad popover shows every
++        // item even though a popover is narrow in size classes.
++        menu.prefersCompactLayout = browserLayout.interfaceIdiom != .pad
++        
 +        if browserLayout.interfaceIdiom == .pad {
 +            menu.modalPresentationStyle = .popover
 +            if let popover = menu.popoverPresentationController {
@@ -3334,10 +3338,10 @@ index 0000000..75d95d3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..14a6b53
+index 0000000..e01937f
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,645 @@
+@@ -0,0 +1,665 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -3555,10 +3559,20 @@ index 0000000..14a6b53
 +        return view
 +    }()
 +    
++    /// Set by the presenter: only a genuinely narrow window (iPhone sheet) gets
++    /// the paged layout. The iPad popover is narrow in traits but must keep
++    /// showing every item at once.
++    var prefersCompactLayout = false
++    
 +    /// Narrow panels page the overflow horizontally instead of growing taller.
 +    private var isCompactLayout: Bool {
-+        return traitCollection.horizontalSizeClass == .compact
++        return prefersCompactLayout
 +    }
++    
++    /// Horizontal padding around the grid. It lives on the collection view
++    /// rather than in the section insets so the paged section and the fixed
++    /// row compute their columns from exactly the same width.
++    private static let panelHorizontalInset: CGFloat = 8
 +
 +    /// The Edge menu always uses the fixed 4-column icon+label grid in both
 +    /// orientations/layouts (the vertical list variant was removed). This
@@ -3584,8 +3598,14 @@ index 0000000..14a6b53
 +        view.addSubview(collectionView)
 +        NSLayoutConstraint.activate([
 +            collectionView.topAnchor.constraint(equalTo: view.topAnchor),
-+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
++            collectionView.leadingAnchor.constraint(
++                equalTo: view.leadingAnchor,
++                constant: Self.panelHorizontalInset
++            ),
++            collectionView.trailingAnchor.constraint(
++                equalTo: view.trailingAnchor,
++                constant: -Self.panelHorizontalInset
++            ),
 +            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 +        ])
 +        collectionView.register(EdgeMenuCell.self, forCellWithReuseIdentifier: cellReuseIdentifier)
@@ -3625,7 +3645,7 @@ index 0000000..14a6b53
 +        let visibleSecondaryRows = 2
 +        let pageHeight = CGFloat(visibleSecondaryRows) * UX.gridGroupHeight
 +            + CGFloat(visibleSecondaryRows - 1) * UX.gridItemSpacing
-+        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 4 + 1
++        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 2 + 1
 +    }
 +    
 +    private var preferredHeight: CGFloat {
@@ -3676,9 +3696,9 @@ index 0000000..14a6b53
 +        let primarySection = NSCollectionLayoutSection(group: primaryGroup)
 +        primarySection.contentInsets = NSDirectionalEdgeInsets(
 +            top: inset,
-+            leading: inset,
++            leading: 0,
 +            bottom: inset,
-+            trailing: inset
++            trailing: 0
 +        )
 +        
 +        func makeRowGroup() -> NSCollectionLayoutGroup {
@@ -3709,9 +3729,9 @@ index 0000000..14a6b53
 +        secondarySection.orthogonalScrollingBehavior = .groupPaging
 +        secondarySection.contentInsets = NSDirectionalEdgeInsets(
 +            top: inset,
-+            leading: inset,
++            leading: 0,
 +            bottom: inset,
-+            trailing: inset
++            trailing: 0
 +        )
 +        secondarySection.boundarySupplementaryItems = [
 +            NSCollectionLayoutBoundarySupplementaryItem(
@@ -3815,8 +3835,12 @@ index 0000000..14a6b53
 +        layout collectionViewLayout: UICollectionViewLayout,
 +        insetForSectionAt section: Int
 +    ) -> UIEdgeInsets {
-+        let horizontalInset: CGFloat = isWideLayout ? UX.gridContentInset : 0
-+        return UIEdgeInsets(top: UX.gridContentInset, left: horizontalInset, bottom: UX.gridContentInset, right: horizontalInset)
++        return UIEdgeInsets(
++            top: UX.gridContentInset,
++            left: 0,
++            bottom: UX.gridContentInset,
++            right: 0
++        )
 +    }
 +
 +    func collectionView(
@@ -3840,7 +3864,7 @@ index 0000000..14a6b53
 +        layout collectionViewLayout: UICollectionViewLayout,
 +        sizeForItemAt indexPath: IndexPath
 +    ) -> CGSize {
-+        let availableWidth = collectionView.bounds.width - (isWideLayout ? (UX.gridContentInset * 2) : 0)
++        let availableWidth = collectionView.bounds.width
 +        if isWideLayout {
 +            // A fixed 4-column grid (4 x N) in wide / landscape layout, like a
 +            // compact app drawer.
@@ -5081,7 +5105,7 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..9324522 100644
+index 7f65843..39e9de0 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 @@ -20,7 +20,23 @@ protocol TabBarDataSource: AnyObject {
@@ -5345,7 +5369,7 @@ index 7f65843..9324522 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +427,71 @@ final class TabBar: UIView {
+@@ -313,11 +427,75 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -5413,12 +5437,16 @@ index 7f65843..9324522 100644
 +    }
 +    
 +    func applyColor(_ color: UIColor) {
-+        // Opaque at the outer edge, transparent towards the tabs.
++        // Opaque at the outer edge, transparent towards the tabs. Colours are
++        // swapped without animation so appearance changes never fade the hint.
++        CATransaction.begin()
++        CATransaction.setDisableActions(true)
 +        gradientLayer.colors = [color.cgColor, color.withAlphaComponent(0).cgColor]
++        CATransaction.commit()
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..7d4dd9b 100644
+index aa1450a..0c35a5b 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 @@ -10,7 +10,10 @@ import UIKit
@@ -5625,13 +5653,16 @@ index aa1450a..7d4dd9b 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +290,93 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +290,102 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
 +    // MARK: - Drawing
 +    
 +    private func applyChipColor() {
++        CATransaction.begin()
++        CATransaction.setDisableActions(true)
++        defer { CATransaction.commit() }
 +        let color = isSelectedTab ? EdgeChromePalette.surface : EdgeChromePalette.inactiveTab
 +        tabShapeLayer.fillColor = color.resolvedColor(with: traitCollection).cgColor
 +    }
@@ -5645,6 +5676,9 @@ index aa1450a..7d4dd9b 100644
 +    }
 +    
 +    private func updateTabShape() {
++        CATransaction.begin()
++        CATransaction.setDisableActions(true)
++        defer { CATransaction.commit() }
 +        let bounds = tabContentView.bounds
 +        guard bounds.width > 1, bounds.height > 1 else {
 +            return
@@ -5663,6 +5697,9 @@ index aa1450a..7d4dd9b 100644
 +    }
 +    
 +    private func updateTitleFade() {
++        CATransaction.begin()
++        CATransaction.setDisableActions(true)
++        defer { CATransaction.commit() }
 +        let bounds = titleLabel.bounds
 +        guard bounds.width > 0, bounds.height > 0 else {
 +            return
@@ -5695,7 +5732,7 @@ index aa1450a..7d4dd9b 100644
 +        path.move(to: CGPoint(x: minimumX - flare, y: maximumY))
 +        path.addQuadCurve(
 +            to: CGPoint(x: minimumX, y: maximumY - flare),
-+            controlPoint: CGPoint(x: minimumX - flare, y: maximumY - flare)
++            controlPoint: CGPoint(x: minimumX, y: maximumY)
 +        )
 +        path.addLine(to: CGPoint(x: minimumX, y: minimumY + radius))
 +        path.addQuadCurve(
@@ -5710,7 +5747,7 @@ index aa1450a..7d4dd9b 100644
 +        path.addLine(to: CGPoint(x: maximumX, y: maximumY - flare))
 +        path.addQuadCurve(
 +            to: CGPoint(x: maximumX + flare, y: maximumY),
-+            controlPoint: CGPoint(x: maximumX + flare, y: maximumY - flare)
++            controlPoint: CGPoint(x: maximumX, y: maximumY)
 +        )
 +        path.close()
 +        return path
