@@ -10,8 +10,17 @@ import UIKit
 protocol DownloadsCoordinatorDelegate: AnyObject {
     var downloadsShouldRefreshLayoutForStoreChange: Bool { get }
     
+    /// The window this coordinator's alerts belong to, so a confirmation for an
+    /// asynchronous download is presented in the right scene when several
+    /// windows are open. Defaults to `nil` (globally frontmost window).
+    var downloadsPresentingWindow: UIWindow? { get }
+    
     func downloadsCoordinator(_ coordinator: DownloadsCoordinator, didUpdate summary: DownloadStoreSummary)
     func downloadsCoordinatorDidRequestLayoutRefresh(_ coordinator: DownloadsCoordinator)
+}
+
+extension DownloadsCoordinatorDelegate {
+    var downloadsPresentingWindow: UIWindow? { nil }
 }
 
 final class DownloadsCoordinator {
@@ -119,7 +128,8 @@ final class DownloadsCoordinator {
                     Haptics.success()
                     self?.resolveConfirmation(shouldStartDownload: true)
                 },
-            ]
+            ],
+            in: delegate?.downloadsPresentingWindow
         )
     }
     

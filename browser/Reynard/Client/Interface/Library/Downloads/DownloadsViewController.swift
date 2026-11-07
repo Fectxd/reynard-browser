@@ -147,11 +147,23 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
             self?.reloadDownloads()
         }
         appActiveObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
+            forName: UIScene.didActivateNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            self?.reloadDownloads()
+        ) { [weak self] notification in
+            guard let self else {
+                return
+            }
+            // Only reload for this window's own scene; otherwise a background
+            // window's downloads list would refresh whenever the other window
+            // becomes active. Falls back to reloading while the view has no
+            // window yet.
+            if let scene = notification.object as? UIScene,
+               let ownScene = self.viewIfLoaded?.window?.windowScene,
+               scene !== ownScene {
+                return
+            }
+            self.reloadDownloads()
         }
     }
     

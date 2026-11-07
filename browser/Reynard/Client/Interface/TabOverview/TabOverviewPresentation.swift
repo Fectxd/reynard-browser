@@ -475,7 +475,7 @@ final class TabOverviewPresentation {
         tabOverview.setMode(overviewMode, animated: false)
         let selectedIndex = dataSource.selectedIndex
         context.containerView.layoutIfNeeded()
-        let topChromeView = context.browserChrome.topToolbarTransitionView()
+        let topChromeView = context.browserChrome.topChromeTransitionView()
         context.prepareTabOverviewPresentation()
         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode) { [weak self] _ in
             guard let self, self.presentationToken == token else {
@@ -484,7 +484,7 @@ final class TabOverviewPresentation {
             }
             
             if let topChromeView {
-                topChromeView.frame = self.context.browserChrome.topToolbarTransitionFrame(in: self.context.containerView)
+                topChromeView.frame = self.context.browserChrome.topChromeTransitionFrame(in: self.context.containerView)
                 self.context.containerView.addSubview(topChromeView)
             }
             self.animatePadPresentation(selectedIndex: selectedIndex, topChromeView: topChromeView)
@@ -541,7 +541,7 @@ final class TabOverviewPresentation {
         tabOverview.alpha = 1
         selectedCollection.transform = standardCollectionTransform.scaledBy(x: UX.transitionCollectionInitialScale, y: UX.transitionCollectionInitialScale)
         
-        topChromeView?.frame = context.browserChrome.topToolbarTransitionFrame(in: context.containerView)
+        topChromeView?.frame = context.browserChrome.topChromeTransitionFrame(in: context.containerView)
         transitionView.frame = finalContentFrame
         transitionView.transform = webpagePreviewTransitionTransform(
             contentFrame: finalContentFrame,

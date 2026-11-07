@@ -157,11 +157,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     }
     
     func openSettingsFromHomepage() {
-        if browserLayout.interfaceIdiom == .pad,
-           browserLayout.chromeMode == .pad {
-            sidebarCoordinator.showSection(.settings)
-            return
-        }
         presentLibrary(initialSection: .settings)
     }
     

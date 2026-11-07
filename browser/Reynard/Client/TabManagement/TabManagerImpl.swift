@@ -669,6 +669,15 @@ final class TabManagerImplementation: NSObject, TabManager {
         regularTabs[index].state.showsStartupHomepage = true
     }
     
+    /// Initial tab for an ADDITIONAL (Stage Manager) window: exactly one fresh
+    /// tab showing the homepage, with no tab restoration and without writing
+    /// anything back to the shared persisted tab list (that window uses an
+    /// isolated ephemeral store).
+    func createHomepageWindowInitialTab() {
+        let index = addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
+        regularTabs[index].state.showsStartupHomepage = true
+    }
+    
     @discardableResult
     func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
         let tab = makeTab(windowId: windowId, isPrivate: isPrivate)

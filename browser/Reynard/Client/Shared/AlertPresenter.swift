@@ -24,13 +24,18 @@ enum AlertPresenter {
         }
     }
     
+    /// - Parameter window: the window the alert belongs to. Pass the owning
+    ///   window (e.g. `view.window`) so the alert is presented in that scene
+    ///   rather than over whichever window happens to be frontmost. `nil` keeps
+    ///   the previous behaviour (globally frontmost window).
     static func show(
         title: String?,
         message: String?,
-        buttons: [Button] = [Button(title: NSLocalizedString("OK", comment: ""))]
+        buttons: [Button] = [Button(title: NSLocalizedString("OK", comment: ""))],
+        in window: UIWindow? = nil
     ) {
         DispatchQueue.main.async {
-            guard let presenter = UIApplication.shared.topViewController() else {
+            guard let presenter = UIApplication.shared.topViewController(for: window) else {
                 return
             }
             

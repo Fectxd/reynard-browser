@@ -34,6 +34,7 @@ extension BrowserViewController: TabManagerDelegate {
         updateBrowserLayout(animated: animateTabBarVisibility)
         homepageOverlayCoordinator.updatePresentation(animated: false)
         tabBar.updateLayout()
+        refreshTabOverviewBadge()
     }
     
     func tabManagerDidTerminateSelectedTab(_ tabManager: TabManager) {
@@ -96,6 +97,7 @@ extension BrowserViewController: TabManagerDelegate {
         }
         
         requestHomepageAddressBarFocus()
+        refreshTabOverviewBadge()
     }
     
     func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
@@ -441,5 +443,13 @@ extension BrowserViewController {
             url: url,
             isPreparedForNavigation: isPreparedForNavigation
         )
+    }
+
+    /// Updates the tab-overview button's count badge to reflect the current
+    /// browsing mode (regular vs private tabs are counted separately).
+    func refreshTabOverviewBadge() {
+        let isPrivate = tabManager.selectedTabMode == .private
+        let count = isPrivate ? tabManager.privateTabs.count : tabManager.regularTabs.count
+        browserChrome.setTabOverviewBadge(count: count, isPrivate: isPrivate)
     }
 }

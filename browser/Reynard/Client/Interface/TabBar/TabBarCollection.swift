@@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     }
     
     private weak var tabBar: TabBar?
+    
+    /// Reports whether the strip can still be scrolled towards each edge, so
+    /// the tab bar can show or hide its soft edge hints.
+    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
     private let layout: TabBarCollectionLayout
     private var lastLayoutWidth: CGFloat = 0
     private var isUpdatingTabs = false
@@ -246,29 +250,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         layout.prepareForInsertion(at: insertedIndexPaths)
         updateLayout()
         isUpdatingTabs = true
-        performBatchUpdates({
-            if !deletedIndexPaths.isEmpty {
-                deleteItems(at: deletedIndexPaths)
-            }
-            if !insertedIndexPaths.isEmpty {
-                insertItems(at: insertedIndexPaths)
-            }
-        }, completion: { [weak self] _ in
-            guard let self else {
-                return
-            }
+        // Opening or closing a tab must not repaint the whole strip: no insert
+        // or delete animation, and no animated scroll afterwards.
+        UIView.performWithoutAnimation {
+            performBatchUpdates({
+                if !deletedIndexPaths.isEmpty {
+                    deleteItems(at: deletedIndexPaths)
+                }
+                if !insertedIndexPaths.isEmpty {
+                    insertItems(at: insertedIndexPaths)
+                }
+            }, completion: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                
+                self.finishTabUpdate()
+            })
             
-            self.finishTabUpdate()
-        })
-        
-        if shouldRevealRightmostTab {
-            updateScrollability()
-            layoutIfNeeded()
-            scrollToItem(
-                at: IndexPath(item: tabCount - 1, section: 0),
-                at: .right,
-                animated: true
-            )
+            if shouldRevealRightmostTab {
+                updateScrollability()
+                layoutIfNeeded()
+                scrollToItem(
+                    at: IndexPath(item: tabCount - 1, section: 0),
+                    at: .right,
+                    animated: false
+                )
+            }
         }
     }
     
@@ -313,40 +321,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     }
     
     private func updateScrollability() {
-        let tabCount = tabBar?.dataSource?.tabs.count ?? 0
-        let horizontalInsets = adjustedContentInset.left + adjustedContentInset.right
-        let baseWidth = bounds.width > 1 ? bounds.width : tabBar?.bounds.width ?? 0
-        let availableWidth = max(0, baseWidth - horizontalInsets)
-        let selectedIndex = tabBar?.dataSource?.selectedTabID.flatMap { selectedTabID in
-            tabBar?.dataSource?.tabs.firstIndex { $0.id == selectedTabID }
+        // Tabs stop shrinking at their minimum width and the strip starts
+        // scrolling instead, so the trailing "+" never rides with the content.
+        let contentWidth = collectionViewLayout.collectionViewContentSize.width
+        let canScroll = contentWidth > bounds.width + 0.5
+        isScrollEnabled = canScroll
+        if !canScroll && contentOffset.x != 0 {
+            contentOffset = CGPoint(x: 0, y: contentOffset.y)
         }
-        let pendingIndex = tabBar?.pendingExpandedTabIndex
+        notifyScrollState()
+    }
+    
+    private func notifyScrollState() {
+        guard let scrollStateDidChange else {
+            return
+        }
         
-        let shouldScroll: Bool = {
-            guard tabCount > 1 else {
-                return false
-            }
-            
-            let equalWidth = floor(availableWidth / CGFloat(tabCount))
-            guard equalWidth < TabBarCell.expandedMinimumWidth else {
-                return false
-            }
-            
-            let hasPendingExpandedTab = pendingIndex.map {
-                $0 != selectedIndex && (0..<tabCount).contains($0)
-            } ?? false
-            let expandedCount = hasPendingExpandedTab ? 2 : 1
-            let otherCount = tabCount - expandedCount
-            guard otherCount > 0 else {
-                return false
-            }
-            
-            let remainingWidth = availableWidth - (TabBarCell.expandedMinimumWidth * CGFloat(expandedCount))
-            let otherWidth = floor(remainingWidth / CGFloat(otherCount))
-            return otherWidth <= TabBarCell.collapsedMinimumWidth
-        }()
-        
-        isScrollEnabled = shouldScroll
+        let contentWidth = collectionViewLayout.collectionViewContentSize.width
+        let canScroll = contentWidth > bounds.width + 0.5
+        let canScrollLeft = canScroll && contentOffset.x > 0.5
+        let canScrollRight = canScroll && contentOffset.x + bounds.width < contentWidth - 0.5
+        scrollStateDidChange(canScrollLeft, canScrollRight)
+    }
+    
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        notifyScrollState()
     }
     
     private func refreshVisibleTabs() {
@@ -395,6 +394,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+        // Tabs must not paint over the "+" while the strip scrolls, so the
+        // collection clips; the edge hints cover the flare that gets cut.
+        clipsToBounds = true
         showsHorizontalScrollIndicator = false
         contentInset = .zero
         contentInsetAdjustmentBehavior = .never

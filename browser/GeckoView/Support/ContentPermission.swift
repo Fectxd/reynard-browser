@@ -39,7 +39,7 @@ public struct ContentPermission {
     public let rawValue: Int32
     public let contextId: String?
     let principal: String
-    let rawPermission: String
+    public let rawPermission: String
     
     static func fromDictionary(_ payload: [String: Any?]) -> ContentPermission {
         let rawValue = PayloadValue.int32(payload["value"] ?? nil) ?? ContentPermission.Value.prompt.rawValue

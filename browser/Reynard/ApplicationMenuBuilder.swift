@@ -19,6 +19,13 @@ enum ApplicationMenuBuilder {
                 input: "t",
                 modifierFlags: .command
             ),
+
+            UIKeyCommand(
+                title: NSLocalizedString("New Window", comment: ""),
+                action: #selector(BrowserViewController.newWindowKeyCommand(_:)),
+                input: "n",
+                modifierFlags: .command
+            ),
             UIKeyCommand(
                 title: NSLocalizedString("New Private Tab", comment: ""),
                 action: #selector(BrowserViewController.newPrivateTabKeyCommand(_:)),

@@ -70,6 +70,11 @@ final class TabManagementStore {
     }
     
     private let fileManager: FileManager
+    /// An ephemeral store keeps its state in memory (plus a throw-away temp
+    /// directory for thumbnails) instead of the shared on-disk database. It is
+    /// used by additional (Stage Manager) windows so their persistence can never
+    /// clobber the primary window's saved tab list.
+    private let isEphemeral: Bool
     private let storage: StorageURLs
     private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.TabManagementStore.Queue", qos: .userInitiated)
     private var database: OpaquePointer?
@@ -79,16 +84,24 @@ final class TabManagementStore {
     
     // MARK: - Lifecycle
     
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default, isEphemeral: Bool = false) {
         self.fileManager = fileManager
+        self.isEphemeral = isEphemeral
         
-        guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            fatalError("Application Support directory is unavailable")
+        let directoryURL: URL
+        if isEphemeral {
+            // Throw-away directory: used only for this window's thumbnail cache.
+            directoryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent("TabManagement-Ephemeral-\(UUID().uuidString)", isDirectory: true)
+        } else {
+            guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+                fatalError("Application Support directory is unavailable")
+            }
+            
+            directoryURL = applicationSupportDirectoryURL
+                .appendingPathComponent("AppData", isDirectory: true)
+                .appendingPathComponent("TabManagement", isDirectory: true)
         }
-        
-        let directoryURL = applicationSupportDirectoryURL
-            .appendingPathComponent("AppData", isDirectory: true)
-            .appendingPathComponent("TabManagement", isDirectory: true)
         self.storage = StorageURLs(
             directoryURL: directoryURL,
             databaseURL: directoryURL.appendingPathComponent("TabManagement", isDirectory: false),
@@ -387,7 +400,10 @@ final class TabManagementStore {
         
         var database: OpaquePointer?
         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
-        guard sqlite3_open_v2(storage.databaseURL.path, &database, flags, nil) == SQLITE_OK else {
+        // An ephemeral store lives entirely in memory: nothing is written to the
+        // shared on-disk database, so it cannot disturb the primary window.
+        let databasePath = isEphemeral ? ":memory:" : storage.databaseURL.path
+        guard sqlite3_open_v2(databasePath, &database, flags, nil) == SQLITE_OK else {
             if let database {
                 sqlite3_close(database)
             }

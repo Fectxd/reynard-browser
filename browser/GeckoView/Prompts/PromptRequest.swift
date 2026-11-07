@@ -33,6 +33,7 @@ public enum PromptRequest {
     case file(FilePickerPromptRequest)
     case choice(SelectPromptRequest)
     case share(SharePromptRequest)
+    case loginSave(LoginSavePromptRequest)
     
     public var id: String {
         switch self {
@@ -57,6 +58,8 @@ public enum PromptRequest {
         case .choice(let request):
             return request.id
         case .share(let request):
+            return request.id
+        case .loginSave(let request):
             return request.id
         }
     }

@@ -98,9 +98,11 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         if #available(iOS 14.0, *) {
             updateSplitBehavior()
             if visible {
-                show(.primary)
+                // The menu (library sections) lives in the trailing/secondary
+                // column so it slides in from the RIGHT in landscape.
+                show(.secondary)
             } else {
-                hide(.primary)
+                hide(.secondary)
             }
         } else {
             preferredDisplayMode = visible ? .allVisible : .primaryHidden
@@ -144,7 +146,10 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     }
     
     func refreshVisibility() {
-        sidebarVisible = displayMode != .secondaryOnly
+        // In the Edge layout the menu is the trailing/secondary column, so the
+        // sidebar is considered visible whenever the secondary (menu) column is
+        // present. There is no "primary only" UISplitViewController.DisplayMode,
+        // so we keep the tracked state instead of deriving it from displayMode.
         updateBrowserLayoutIfNeeded()
     }
     
@@ -174,11 +179,13 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     // MARK: - UISplitViewControllerDelegate
     
     func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
-        sidebarVisible = displayMode != .secondaryOnly
-        updateBrowserLayoutIfNeeded()
+        // The menu is the trailing/secondary column. Keep the tracked state as
+        // the source of truth (there is no "primary only" DisplayMode); this
+        // delegate just dismisses a focused field when the menu is not shown.
         if !sidebarVisible {
             menuNavigationController.view.endEditing(true)
         }
+        updateBrowserLayoutIfNeeded()
     }
     
     // MARK: - Notifications
@@ -222,7 +229,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         delegate = self
         presentsWithGesture = false
         if #available(iOS 14.0, *) {
-            preferredDisplayMode = .secondaryOnly
+            preferredDisplayMode = .allVisible
             preferredSplitBehavior = .tile
             preferredPrimaryColumnWidth = UX.preferredPrimaryWidth
             minimumPrimaryColumnWidth = UX.minimumPrimaryWidth
@@ -241,18 +248,48 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     }
     
     private func observeApplicationActivation() {
+        // Scene-scoped rather than app-global: with a second window open, the
+        // UIApplication activation notifications would fire for every sidebar at
+        // once (and a background window's sidebar would react to the app becoming
+        // active because of the other window). Scene notifications are per-window.
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(applicationDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
+            selector: #selector(sceneDidActivate(_:)),
+            name: UIScene.didActivateNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(applicationWillResignActive),
-            name: UIApplication.willResignActiveNotification,
+            selector: #selector(sceneWillDeactivate(_:)),
+            name: UIScene.willDeactivateNotification,
             object: nil
         )
+    }
+    
+    @objc private func sceneDidActivate(_ notification: Notification) {
+        guard isNotificationFromOwnScene(notification) else {
+            return
+        }
+        applicationDidBecomeActive()
+    }
+    
+    @objc private func sceneWillDeactivate(_ notification: Notification) {
+        guard isNotificationFromOwnScene(notification) else {
+            return
+        }
+        applicationWillResignActive()
+    }
+    
+    /// True when `notification` originated from this sidebar's own window scene.
+    /// Falls back to `true` while the sidebar has no window yet, preserving the
+    /// previous behaviour during early lifecycle.
+    private func isNotificationFromOwnScene(_ notification: Notification) -> Bool {
+        guard let scene = notification.object as? UIScene,
+              let ownScene = viewIfLoaded?.window?.windowScene else {
+            return true
+        }
+        
+        return scene === ownScene
     }
     
     private func observeTextInput() {

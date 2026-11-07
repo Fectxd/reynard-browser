@@ -52,4 +52,14 @@ public struct PromptResponse {
     public static func share(_ result: SharePromptResult) -> PromptResponse {
         return PromptResponse(geckoMessage: ["response": result.rawValue])
     }
+    
+    /// Answer to `Autocomplete:Save:Login`. Pass the login to keep, or `nil` to
+    /// decline; Gecko only stores a login it receives back in `selection`.
+    public static func loginSave(_ login: LoginSavePromptRequest.Login?) -> PromptResponse {
+        guard let login else {
+            return PromptResponse(geckoMessage: ["selection": NSNull()])
+        }
+        
+        return PromptResponse(geckoMessage: ["selection": login.payload])
+    }
 }

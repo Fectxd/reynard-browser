@@ -9,6 +9,7 @@ import Foundation
 
 enum SearchEngine: String, CaseIterable {
     case google
+    case baidu
     case yahoo
     case bing
     case brave
@@ -21,6 +22,8 @@ enum SearchEngine: String, CaseIterable {
         switch self {
         case .google:
             return "Google"
+        case .baidu:
+            return "百度"
         case .yahoo:
             return "Yahoo"
         case .bing:
@@ -57,6 +60,8 @@ enum SearchEngine: String, CaseIterable {
         switch self {
         case .google:
             return "https://www.google.com/search?q=%s"
+        case .baidu:
+            return "https://www.baidu.com/s?wd=%s"
         case .yahoo:
             return "https://search.yahoo.com/search?p=%s"
         case .bing:

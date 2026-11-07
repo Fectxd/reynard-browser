@@ -20,7 +20,18 @@ protocol TabBarDataSource: AnyObject {
 final class TabBar: UIView {
     private enum UX {
         static let tabBarHeight: CGFloat = 36
-        static let tabBarBottomPadding: CGFloat = 2
+        // No bottom padding: the active tab sits flush on the address-bar row.
+        static let tabBarBottomPadding: CGFloat = 0
+        // Trailing "+" (new tab) button that follows the last tab. The tab
+        // cells give up this much room so the button never covers a cell.
+        static let newTabButtonSideLength: CGFloat = 30
+        static let newTabButtonTrailingInset: CGFloat = 6
+        static let newTabButtonGap: CGFloat = 4
+        // Small gap before the first tab; it also gives the active tab's
+        // bottom flare somewhere to curve into.
+        static let tabCollectionLeadingInset: CGFloat = 8
+        // Soft edge hint shown while the strip can still be scrolled.
+        static let scrollFadeWidth: CGFloat = 22
     }
     
     enum Visibility: Equatable {
@@ -41,6 +52,9 @@ final class TabBar: UIView {
     }
     
     weak var dataSource: TabBarDataSource?
+
+    /// Invoked when the trailing "+" new-tab button is tapped.
+    var onNewTab: (() -> Void)?
     
     private(set) var visibility: Visibility = .hidden
     private(set) var reorderState: ReorderState = .idle
@@ -60,8 +74,22 @@ final class TabBar: UIView {
     
     private let tabCollection = TabBarCollection()
     private lazy var presentation = TabBarPresentation(tabBar: self)
+
+    private lazy var newTabButton: ToolbarButton = {
+        let button = ToolbarButton(
+            buttonType: .newTab,
+            target: self,
+            action: #selector(newTabTapped)
+        )
+        button.isHidden = true
+        return button
+    }()
+    
+    private let leadingScrollFade = ScrollFadeView(mirrored: false)
+    private let trailingScrollFade = ScrollFadeView(mirrored: true)
     
     private var heightConstraint: NSLayoutConstraint!
+    private var tabCollectionWidthConstraint: NSLayoutConstraint!
     
     // MARK: - Lifecycle
     
@@ -75,6 +103,11 @@ final class TabBar: UIView {
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateTabCollectionWidth()
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -104,42 +137,33 @@ final class TabBar: UIView {
     
     func cellLayout(at index: Int) -> CellLayout {
         let tabs = dataSource?.tabs ?? []
-        let horizontalInset = tabCollection.adjustedContentInset.left + tabCollection.adjustedContentInset.right
-        let containerWidth = tabCollection.bounds.width > 1 ? tabCollection.bounds.width : bounds.width
-        let availableWidth = max(0, containerWidth - horizontalInset)
         let layoutTabCount = max(1, tabs.count)
-        let equalTabWidth = floor(availableWidth / CGFloat(layoutTabCount))
+        let fixedTabWidth = TabBarCell.expandedMinimumWidth
         
-        if equalTabWidth >= TabBarCell.expandedMinimumWidth {
-            return CellLayout(width: equalTabWidth, mode: .expanded)
+        // Tabs keep a fixed length until they no longer fit, then shrink
+        // proportionally -- but never below the width ten tabs would get. Past
+        // that point the strip scrolls instead of squeezing the title out.
+        let fitWidth = floor(tabAreaWidth / CGFloat(layoutTabCount))
+        let tabWidth = max(minimumTabWidth, min(fixedTabWidth, fitWidth))
+        if tabWidth <= TabBarCell.collapsedMinimumWidth {
+            return CellLayout(width: max(0, tabWidth), mode: .faviconOnly)
         }
-        
-        let usesExpandedLayout = isExpandedTab(at: index, in: tabs)
-        let expandedTabCount = max(1, tabs.indices.reduce(0) { count, tabIndex in
-            count + (isExpandedTab(at: tabIndex, in: tabs) ? 1 : 0)
-        })
-        let unselectedTabCount = max(0, layoutTabCount - expandedTabCount)
-        
-        let unselectedTabWidth: CGFloat
-        let usesFaviconOnlyLayout: Bool
-        if unselectedTabCount == 0 {
-            unselectedTabWidth = availableWidth
-            usesFaviconOnlyLayout = false
-        } else {
-            let availableUnselectedWidth = availableWidth - (TabBarCell.expandedMinimumWidth * CGFloat(expandedTabCount))
-            unselectedTabWidth = floor(availableUnselectedWidth / CGFloat(unselectedTabCount))
-            usesFaviconOnlyLayout = unselectedTabWidth <= TabBarCell.collapsedMinimumWidth
+        return CellLayout(width: max(0, tabWidth), mode: .expanded)
+    }
+    
+    /// Narrowest width a tab may shrink to; past it the strip scrolls.
+    private var minimumTabWidth: CGFloat {
+        return TabBarCell.minimumTabWidth
+    }
+    
+    /// True once the tabs no longer fit at their minimum width; the collection
+    /// then scrolls and the "+" stays pinned to the right edge.
+    private var isScrollable: Bool {
+        let tabCount = CGFloat(dataSource?.tabs.count ?? 0)
+        guard tabCount > 0 else {
+            return false
         }
-        
-        if usesExpandedLayout {
-            return CellLayout(width: TabBarCell.expandedMinimumWidth, mode: .expanded)
-        }
-        
-        if usesFaviconOnlyLayout {
-            return CellLayout(width: TabBarCell.collapsedMinimumWidth, mode: .faviconOnly)
-        }
-        
-        return CellLayout(width: max(0, unselectedTabWidth), mode: .expanded)
+        return tabCount * minimumTabWidth > tabAreaWidth + 0.5
     }
     
     // MARK: - Updates
@@ -156,6 +180,7 @@ final class TabBar: UIView {
             tabCollection.reloadTabs()
         }
         displayedTabIDs = tabs.map { $0.id }
+        updateTabCollectionWidth()
     }
     
     func reloadTab(at index: Int) {
@@ -250,29 +275,102 @@ final class TabBar: UIView {
     
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
-        backgroundColor = .clear
+        // Flat strip surface matching the Edge reference (also used for the
+        // status-bar band above, so the two read as one bar).
+        backgroundColor = EdgeChromePalette.chrome
         clipsToBounds = true
         isHidden = true
     }
     
     private func configureHierarchy() {
         addSubview(tabCollection)
+        addSubview(leadingScrollFade)
+        addSubview(trailingScrollFade)
+        addSubview(newTabButton)
     }
     
     private func configureConstraints() {
         heightConstraint = heightAnchor.constraint(equalToConstant: 0)
+        tabCollectionWidthConstraint = tabCollection.widthAnchor.constraint(equalToConstant: 0)
         let tabCollectionHeightConstraint = tabCollection.heightAnchor.constraint(equalToConstant: UX.tabBarHeight)
         NSLayoutConstraint.activate([
-            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor),
-            tabCollection.trailingAnchor.constraint(equalTo: trailingAnchor),
+            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.tabCollectionLeadingInset),
             tabCollection.topAnchor.constraint(equalTo: topAnchor),
             tabCollectionHeightConstraint,
+            tabCollectionWidthConstraint,
+            
+            // The hints start at the strip edge (so nothing is left undimmed)
+            // and the trailing one runs under the "+", which keeps it legible
+            // while tabs scroll beneath it.
+            leadingScrollFade.leadingAnchor.constraint(equalTo: leadingAnchor),
+            leadingScrollFade.trailingAnchor.constraint(
+                equalTo: tabCollection.leadingAnchor,
+                constant: UX.scrollFadeWidth
+            ),
+            leadingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
+            leadingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
+            
+            trailingScrollFade.leadingAnchor.constraint(
+                equalTo: tabCollection.trailingAnchor,
+                constant: -UX.scrollFadeWidth
+            ),
+            trailingScrollFade.trailingAnchor.constraint(equalTo: trailingAnchor),
+            trailingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
+            trailingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
+            
+            // The "+" sits immediately after the last tab rather than being
+            // pinned to the far edge, and only ever uses the reserved room.
+            newTabButton.leadingAnchor.constraint(equalTo: tabCollection.trailingAnchor, constant: UX.newTabButtonGap),
+            newTabButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            newTabButton.widthAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
+            newTabButton.heightAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
+            
             heightConstraint,
         ])
     }
     
+    // MARK: - Strip Metrics
+    
+    /// Width available to tabs once the "+" button and its insets are removed.
+    private var tabAreaWidth: CGFloat {
+        let reserved = UX.tabCollectionLeadingInset
+            + UX.newTabButtonGap
+            + UX.newTabButtonSideLength
+            + UX.newTabButtonTrailingInset
+        return max(0, bounds.width - reserved)
+    }
+    
+    /// The collection grows with the tab count (fixed-length tabs) and stops at
+    /// the strip width, where the cells start shrinking instead.
+    private func updateTabCollectionWidth() {
+        guard let widthConstraint = tabCollectionWidthConstraint else {
+            return
+        }
+        
+        let tabCount = dataSource?.tabs.count ?? 0
+        // In scroll mode the strip takes the whole available width so the "+"
+        // parks on the right edge instead of trailing the content.
+        let total = isScrollable
+        ? tabAreaWidth
+        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabAreaWidth)
+        if abs(widthConstraint.constant - total) > 0.5 {
+            widthConstraint.constant = total
+        }
+    }
+    
     private func configureTabCollection() {
         tabCollection.attach(to: self)
+        tabCollection.scrollStateDidChange = { [weak self] canScrollLeft, canScrollRight in
+            self?.updateScrollFades(canScrollLeft: canScrollLeft, canScrollRight: canScrollRight)
+        }
+    }
+    
+    private func updateScrollFades(canScrollLeft: Bool, canScrollRight: Bool) {
+        let color = EdgeChromePalette.chrome.resolvedColor(with: traitCollection)
+        leadingScrollFade.applyColor(color)
+        trailingScrollFade.applyColor(color)
+        leadingScrollFade.isHidden = !canScrollLeft
+        trailingScrollFade.isHidden = !canScrollRight
     }
     
     // MARK: - Layout State
@@ -313,11 +411,74 @@ final class TabBar: UIView {
         return reorderedTabs[index]
     }
     
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
+            return
+        }
+        
+        updateScrollFades(
+            canScrollLeft: !leadingScrollFade.isHidden,
+            canScrollRight: !trailingScrollFade.isHidden
+        )
+    }
+    
     // MARK: - Presentation Coordination
     
     func applyVisibility(_ visibility: Visibility) {
         self.visibility = visibility
         let isHidden = visibility == .hidden
         heightConstraint.constant = isHidden ? 0 : standardHeight
+        // The "+" rides on the strip and is only interactive while the strip
+        // is actually visible (layoutReserved keeps the space but hides it).
+        newTabButton.isHidden = visibility != .visible
+        if visibility != .visible {
+            updateScrollFades(canScrollLeft: false, canScrollRight: false)
+        }
+        updateTabCollectionWidth()
+    }
+    
+    // MARK: - Actions
+    
+    @objc private func newTabTapped() {
+        onNewTab?()
+    }
+}
+
+/// Soft edge hint that tells the user the tab strip can be scrolled further.
+private final class ScrollFadeView: UIView {
+    private let mirrored: Bool
+    
+    init(mirrored: Bool) {
+        self.mirrored = mirrored
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        isUserInteractionEnabled = false
+        isHidden = true
+        gradientLayer.startPoint = CGPoint(x: mirrored ? 1 : 0, y: 0.5)
+        gradientLayer.endPoint = CGPoint(x: mirrored ? 0 : 1, y: 0.5)
+        gradientLayer.locations = [0, 1]
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override class var layerClass: AnyClass {
+        CAGradientLayer.self
+    }
+    
+    private var gradientLayer: CAGradientLayer {
+        // swiftlint:disable:next force_cast
+        layer as! CAGradientLayer
+    }
+    
+    func applyColor(_ color: UIColor) {
+        // Opaque at the outer edge, transparent towards the tabs. Colours are
+        // swapped without animation so appearance changes never fade the hint.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        gradientLayer.colors = [color.cgColor, color.withAlphaComponent(0).cgColor]
+        CATransaction.commit()
     }
 }
