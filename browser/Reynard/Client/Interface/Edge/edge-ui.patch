@@ -5105,10 +5105,10 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..39e9de0 100644
+index 7f65843..e661f60 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-@@ -20,7 +20,23 @@ protocol TabBarDataSource: AnyObject {
+@@ -20,7 +20,18 @@ protocol TabBarDataSource: AnyObject {
  final class TabBar: UIView {
      private enum UX {
          static let tabBarHeight: CGFloat = 36
@@ -5120,11 +5120,6 @@ index 7f65843..39e9de0 100644
 +        static let newTabButtonSideLength: CGFloat = 30
 +        static let newTabButtonTrailingInset: CGFloat = 6
 +        static let newTabButtonGap: CGFloat = 4
-+        // Thin rule between the last tab and the "+" button, matching the
-+        // separators the layout draws between tabs.
-+        static let newTabSeparatorWidth: CGFloat = 1
-+        static let newTabSeparatorHeight: CGFloat = 18
-+        static let newTabSeparatorGap: CGFloat = 6
 +        // Small gap before the first tab; it also gives the active tab's
 +        // bottom flare somewhere to curve into.
 +        static let tabCollectionLeadingInset: CGFloat = 8
@@ -5133,7 +5128,7 @@ index 7f65843..39e9de0 100644
      }
      
      enum Visibility: Equatable {
-@@ -41,6 +57,9 @@ final class TabBar: UIView {
+@@ -41,6 +52,9 @@ final class TabBar: UIView {
      }
      
      weak var dataSource: TabBarDataSource?
@@ -5143,7 +5138,7 @@ index 7f65843..39e9de0 100644
      
      private(set) var visibility: Visibility = .hidden
      private(set) var reorderState: ReorderState = .idle
-@@ -60,8 +79,31 @@ final class TabBar: UIView {
+@@ -60,8 +74,22 @@ final class TabBar: UIView {
      
      private let tabCollection = TabBarCollection()
      private lazy var presentation = TabBarPresentation(tabBar: self)
@@ -5160,22 +5155,13 @@ index 7f65843..39e9de0 100644
 +    
 +    private let leadingScrollFade = ScrollFadeView(mirrored: false)
 +    private let trailingScrollFade = ScrollFadeView(mirrored: true)
-+    
-+    private lazy var newTabSeparator: UIView = {
-+        let view = UIView()
-+        view.translatesAutoresizingMaskIntoConstraints = false
-+        view.backgroundColor = .separator
-+        view.isUserInteractionEnabled = false
-+        view.isHidden = true
-+        return view
-+    }()
      
      private var heightConstraint: NSLayoutConstraint!
 +    private var tabCollectionWidthConstraint: NSLayoutConstraint!
      
      // MARK: - Lifecycle
      
-@@ -77,6 +119,11 @@ final class TabBar: UIView {
+@@ -77,6 +105,11 @@ final class TabBar: UIView {
          fatalError("init(coder:) has not been implemented")
      }
      
@@ -5187,7 +5173,7 @@ index 7f65843..39e9de0 100644
      override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
          let hitView = super.hitTest(point, with: event)
          return hitView === self && tabCollection.transform.ty < 0 ? nil : hitView
-@@ -104,42 +151,35 @@ final class TabBar: UIView {
+@@ -104,42 +137,33 @@ final class TabBar: UIView {
      
      func cellLayout(at index: Int) -> CellLayout {
          let tabs = dataSource?.tabs ?? []
@@ -5235,11 +5221,9 @@ index 7f65843..39e9de0 100644
 +        return CellLayout(width: max(0, tabWidth), mode: .expanded)
 +    }
 +    
-+    /// Narrowest width a tab may shrink to: what the strip would hand to a tab
-+    /// if there were ten of them. Ten tabs is the last count that still fits.
++    /// Narrowest width a tab may shrink to; past it the strip scrolls.
 +    private var minimumTabWidth: CGFloat {
-+        let tenTabWidth = floor(tabAreaWidth / 10)
-+        return max(TabBarCell.collapsedMinimumWidth, min(TabBarCell.expandedMinimumWidth, tenTabWidth))
++        return TabBarCell.minimumTabWidth
 +    }
 +    
 +    /// True once the tabs no longer fit at their minimum width; the collection
@@ -5255,7 +5239,7 @@ index 7f65843..39e9de0 100644
      }
      
      // MARK: - Updates
-@@ -156,6 +196,7 @@ final class TabBar: UIView {
+@@ -156,6 +180,7 @@ final class TabBar: UIView {
              tabCollection.reloadTabs()
          }
          displayedTabIDs = tabs.map { $0.id }
@@ -5263,7 +5247,7 @@ index 7f65843..39e9de0 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +291,102 @@ final class TabBar: UIView {
+@@ -250,29 +275,102 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -5279,7 +5263,6 @@ index 7f65843..39e9de0 100644
          addSubview(tabCollection)
 +        addSubview(leadingScrollFade)
 +        addSubview(trailingScrollFade)
-+        addSubview(newTabSeparator)
 +        addSubview(newTabButton)
      }
      
@@ -5295,26 +5278,28 @@ index 7f65843..39e9de0 100644
              tabCollectionHeightConstraint,
 +            tabCollectionWidthConstraint,
 +            
-+            leadingScrollFade.leadingAnchor.constraint(equalTo: tabCollection.leadingAnchor),
++            // The hints start at the strip edge (so nothing is left undimmed)
++            // and the trailing one runs under the "+", which keeps it legible
++            // while tabs scroll beneath it.
++            leadingScrollFade.leadingAnchor.constraint(equalTo: leadingAnchor),
++            leadingScrollFade.trailingAnchor.constraint(
++                equalTo: tabCollection.leadingAnchor,
++                constant: UX.scrollFadeWidth
++            ),
 +            leadingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
 +            leadingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
-+            leadingScrollFade.widthAnchor.constraint(equalToConstant: UX.scrollFadeWidth),
 +            
-+            trailingScrollFade.trailingAnchor.constraint(equalTo: tabCollection.trailingAnchor),
++            trailingScrollFade.leadingAnchor.constraint(
++                equalTo: tabCollection.trailingAnchor,
++                constant: -UX.scrollFadeWidth
++            ),
++            trailingScrollFade.trailingAnchor.constraint(equalTo: trailingAnchor),
 +            trailingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
 +            trailingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
-+            trailingScrollFade.widthAnchor.constraint(equalToConstant: UX.scrollFadeWidth),
 +            
-+            // A thin rule separates the last tab from the "+" button, exactly
-+            // like the rules the layout draws between adjacent tabs.
-+            newTabSeparator.leadingAnchor.constraint(equalTo: tabCollection.trailingAnchor, constant: UX.newTabSeparatorGap),
-+            newTabSeparator.centerYAnchor.constraint(equalTo: centerYAnchor),
-+            newTabSeparator.widthAnchor.constraint(equalToConstant: UX.newTabSeparatorWidth),
-+            newTabSeparator.heightAnchor.constraint(equalToConstant: UX.newTabSeparatorHeight),
-+            
-+            // The "+" sits immediately after that rule rather than being
++            // The "+" sits immediately after the last tab rather than being
 +            // pinned to the far edge, and only ever uses the reserved room.
-+            newTabButton.leadingAnchor.constraint(equalTo: newTabSeparator.trailingAnchor, constant: UX.newTabSeparatorGap),
++            newTabButton.leadingAnchor.constraint(equalTo: tabCollection.trailingAnchor, constant: UX.newTabButtonGap),
 +            newTabButton.centerYAnchor.constraint(equalTo: centerYAnchor),
 +            newTabButton.widthAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
 +            newTabButton.heightAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
@@ -5328,8 +5313,7 @@ index 7f65843..39e9de0 100644
 +    /// Width available to tabs once the "+" button and its insets are removed.
 +    private var tabAreaWidth: CGFloat {
 +        let reserved = UX.tabCollectionLeadingInset
-+            + UX.newTabSeparatorGap * 2
-+            + UX.newTabSeparatorWidth
++            + UX.newTabButtonGap
 +            + UX.newTabButtonSideLength
 +            + UX.newTabButtonTrailingInset
 +        return max(0, bounds.width - reserved)
@@ -5369,7 +5353,7 @@ index 7f65843..39e9de0 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +427,75 @@ final class TabBar: UIView {
+@@ -313,11 +411,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -5394,7 +5378,6 @@ index 7f65843..39e9de0 100644
 +        // The "+" rides on the strip and is only interactive while the strip
 +        // is actually visible (layoutReserved keeps the space but hides it).
 +        newTabButton.isHidden = visibility != .visible
-+        newTabSeparator.isHidden = visibility != .visible
 +        if visibility != .visible {
 +            updateScrollFades(canScrollLeft: false, canScrollRight: false)
 +        }
@@ -5446,10 +5429,10 @@ index 7f65843..39e9de0 100644
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..0c35a5b 100644
+index aa1450a..f4dd544 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-@@ -10,7 +10,10 @@ import UIKit
+@@ -10,7 +10,12 @@ import UIKit
  final class TabBarCell: UICollectionViewCell {
      private enum UX {
          static let expandedTabMinimumWidth: CGFloat = 220
@@ -5458,10 +5441,12 @@ index aa1450a..0c35a5b 100644
 +        /// is always shown and simply fades out towards the trailing edge, so
 +        /// the label survives as long as there is room for a couple of glyphs.
 +        static let collapsedTabMinimumWidth: CGFloat = 82
++        /// Narrowest a tab may shrink to before the strip starts scrolling.
++        static let minimumTabWidth: CGFloat = 96
          static let tabTitleFontSize: CGFloat = 14
          static let tabTitleSpacing: CGFloat = 6
          static let tabFaviconSideLength: CGFloat = 16
-@@ -18,12 +21,18 @@ final class TabBarCell: UICollectionViewCell {
+@@ -18,12 +23,18 @@ final class TabBarCell: UICollectionViewCell {
          static let tabCloseButtonSideLength: CGFloat = 22
          static let tabCloseButtonTrailingInset: CGFloat = 6
          static let tabCloseButtonSymbolPointSize: CGFloat = 14
@@ -5486,7 +5471,7 @@ index aa1450a..0c35a5b 100644
          static let borderWidth: CGFloat = 0.5
      }
      
-@@ -33,7 +42,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -33,7 +44,6 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      static let reuseIdentifier = "TabBarCell"
@@ -5494,7 +5479,18 @@ index aa1450a..0c35a5b 100644
      
      static var expandedMinimumWidth: CGFloat {
          return UX.expandedTabMinimumWidth
-@@ -52,14 +60,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -43,6 +53,10 @@ final class TabBarCell: UICollectionViewCell {
+         return UX.collapsedTabMinimumWidth
+     }
+     
++    static var minimumTabWidth: CGFloat {
++        return UX.minimumTabWidth
++    }
++    
+     static var contentCornerRadius: CGFloat {
+         return UX.contentCornerRadius
+     }
+@@ -52,14 +66,9 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      private static let fallbackFavicon = UIImage(named: "reynard.globe")
@@ -5510,7 +5506,7 @@ index aa1450a..0c35a5b 100644
      
      private let tabContentView: UIView = {
          let view = UIView()
-@@ -67,6 +70,14 @@ final class TabBarCell: UICollectionViewCell {
+@@ -67,6 +76,14 @@ final class TabBarCell: UICollectionViewCell {
          return view
      }()
      
@@ -5525,7 +5521,7 @@ index aa1450a..0c35a5b 100644
      private let faviconView: UIImageView = {
          let imageView = UIImageView()
          imageView.translatesAutoresizingMaskIntoConstraints = false
-@@ -83,7 +94,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -83,7 +100,9 @@ final class TabBarCell: UICollectionViewCell {
          label.font = UIFont.systemFont(ofSize: UX.tabTitleFontSize, weight: .semibold)
          label.textColor = .secondaryLabel
          label.numberOfLines = 1
@@ -5536,7 +5532,7 @@ index aa1450a..0c35a5b 100644
          return label
      }()
      
-@@ -93,7 +106,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -93,7 +112,7 @@ final class TabBarCell: UICollectionViewCell {
              button.isPointerInteractionEnabled = true
          }
          button.translatesAutoresizingMaskIntoConstraints = false
@@ -5545,7 +5541,7 @@ index aa1450a..0c35a5b 100644
          button.setPreferredSymbolConfiguration(
              UIImage.SymbolConfiguration(pointSize: UX.tabCloseButtonSymbolPointSize, weight: .regular),
              forImageIn: .normal
-@@ -142,6 +155,12 @@ final class TabBarCell: UICollectionViewCell {
+@@ -142,6 +161,12 @@ final class TabBarCell: UICollectionViewCell {
          tabContentView.layer.borderWidth = 0
      }
      
@@ -5558,7 +5554,7 @@ index aa1450a..0c35a5b 100644
      override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
          super.traitCollectionDidChange(previousTraitCollection)
          guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-@@ -149,6 +168,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -149,6 +174,7 @@ final class TabBarCell: UICollectionViewCell {
          }
          
          updateBorderColor()
@@ -5566,7 +5562,7 @@ index aa1450a..0c35a5b 100644
      }
      
      // MARK: - Configuration
-@@ -160,17 +180,21 @@ final class TabBarCell: UICollectionViewCell {
+@@ -160,17 +186,21 @@ final class TabBarCell: UICollectionViewCell {
          cellWidth: CGFloat
      ) {
          tabID = tab.id
@@ -5594,7 +5590,7 @@ index aa1450a..0c35a5b 100644
          let isCollapsed = layoutMode == .faviconOnly || isTooNarrowForTitle
          
          titleLabel.isHidden = isCollapsed
-@@ -180,7 +204,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -180,7 +210,10 @@ final class TabBarCell: UICollectionViewCell {
          expandedTrailingConstraint.isActive = !isCollapsed
          collapsedTrailingConstraint.isActive = isCollapsed
          expandedTitleWidthConstraint.isActive = !isCollapsed
@@ -5606,7 +5602,7 @@ index aa1450a..0c35a5b 100644
      }
      
      func containsCloseButton(at point: CGPoint) -> Bool {
-@@ -196,10 +223,24 @@ final class TabBarCell: UICollectionViewCell {
+@@ -196,10 +229,24 @@ final class TabBarCell: UICollectionViewCell {
      
      private func configureAppearance() {
          contentView.backgroundColor = .clear
@@ -5634,7 +5630,7 @@ index aa1450a..0c35a5b 100644
      }
      
      private func configureHierarchy() {
-@@ -223,8 +264,8 @@ final class TabBarCell: UICollectionViewCell {
+@@ -223,8 +270,8 @@ final class TabBarCell: UICollectionViewCell {
      private func configureConstraints() {
          expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
          collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
@@ -5645,7 +5641,7 @@ index aa1450a..0c35a5b 100644
          expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
          
          NSLayoutConstraint.activate([
-@@ -233,7 +274,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -233,7 +280,6 @@ final class TabBarCell: UICollectionViewCell {
              tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
              tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
              
@@ -5653,7 +5649,7 @@ index aa1450a..0c35a5b 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +290,102 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +296,102 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
@@ -5757,7 +5753,7 @@ index aa1450a..0c35a5b 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..53858e9 100644
+index 6da82ce..11c33df 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
@@ -5896,9 +5892,9 @@ index 6da82ce..53858e9 100644
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
-+        // The active tab's shadow sits outside the cell bounds, so the
-+        // collection must not clip its own content.
-+        clipsToBounds = false
++        // Tabs must not paint over the "+" while the strip scrolls, so the
++        // collection clips; the edge hints cover the flare that gets cut.
++        clipsToBounds = true
          showsHorizontalScrollIndicator = false
          contentInset = .zero
          contentInsetAdjustmentBehavior = .never

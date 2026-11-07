@@ -27,11 +27,6 @@ final class TabBar: UIView {
         static let newTabButtonSideLength: CGFloat = 30
         static let newTabButtonTrailingInset: CGFloat = 6
         static let newTabButtonGap: CGFloat = 4
-        // Thin rule between the last tab and the "+" button, matching the
-        // separators the layout draws between tabs.
-        static let newTabSeparatorWidth: CGFloat = 1
-        static let newTabSeparatorHeight: CGFloat = 18
-        static let newTabSeparatorGap: CGFloat = 6
         // Small gap before the first tab; it also gives the active tab's
         // bottom flare somewhere to curve into.
         static let tabCollectionLeadingInset: CGFloat = 8
@@ -92,15 +87,6 @@ final class TabBar: UIView {
     
     private let leadingScrollFade = ScrollFadeView(mirrored: false)
     private let trailingScrollFade = ScrollFadeView(mirrored: true)
-    
-    private lazy var newTabSeparator: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .separator
-        view.isUserInteractionEnabled = false
-        view.isHidden = true
-        return view
-    }()
     
     private var heightConstraint: NSLayoutConstraint!
     private var tabCollectionWidthConstraint: NSLayoutConstraint!
@@ -165,11 +151,9 @@ final class TabBar: UIView {
         return CellLayout(width: max(0, tabWidth), mode: .expanded)
     }
     
-    /// Narrowest width a tab may shrink to: what the strip would hand to a tab
-    /// if there were ten of them. Ten tabs is the last count that still fits.
+    /// Narrowest width a tab may shrink to; past it the strip scrolls.
     private var minimumTabWidth: CGFloat {
-        let tenTabWidth = floor(tabAreaWidth / 10)
-        return max(TabBarCell.collapsedMinimumWidth, min(TabBarCell.expandedMinimumWidth, tenTabWidth))
+        return TabBarCell.minimumTabWidth
     }
     
     /// True once the tabs no longer fit at their minimum width; the collection
@@ -302,7 +286,6 @@ final class TabBar: UIView {
         addSubview(tabCollection)
         addSubview(leadingScrollFade)
         addSubview(trailingScrollFade)
-        addSubview(newTabSeparator)
         addSubview(newTabButton)
     }
     
@@ -316,26 +299,28 @@ final class TabBar: UIView {
             tabCollectionHeightConstraint,
             tabCollectionWidthConstraint,
             
-            leadingScrollFade.leadingAnchor.constraint(equalTo: tabCollection.leadingAnchor),
+            // The hints start at the strip edge (so nothing is left undimmed)
+            // and the trailing one runs under the "+", which keeps it legible
+            // while tabs scroll beneath it.
+            leadingScrollFade.leadingAnchor.constraint(equalTo: leadingAnchor),
+            leadingScrollFade.trailingAnchor.constraint(
+                equalTo: tabCollection.leadingAnchor,
+                constant: UX.scrollFadeWidth
+            ),
             leadingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
             leadingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
-            leadingScrollFade.widthAnchor.constraint(equalToConstant: UX.scrollFadeWidth),
             
-            trailingScrollFade.trailingAnchor.constraint(equalTo: tabCollection.trailingAnchor),
+            trailingScrollFade.leadingAnchor.constraint(
+                equalTo: tabCollection.trailingAnchor,
+                constant: -UX.scrollFadeWidth
+            ),
+            trailingScrollFade.trailingAnchor.constraint(equalTo: trailingAnchor),
             trailingScrollFade.topAnchor.constraint(equalTo: tabCollection.topAnchor),
             trailingScrollFade.bottomAnchor.constraint(equalTo: tabCollection.bottomAnchor),
-            trailingScrollFade.widthAnchor.constraint(equalToConstant: UX.scrollFadeWidth),
             
-            // A thin rule separates the last tab from the "+" button, exactly
-            // like the rules the layout draws between adjacent tabs.
-            newTabSeparator.leadingAnchor.constraint(equalTo: tabCollection.trailingAnchor, constant: UX.newTabSeparatorGap),
-            newTabSeparator.centerYAnchor.constraint(equalTo: centerYAnchor),
-            newTabSeparator.widthAnchor.constraint(equalToConstant: UX.newTabSeparatorWidth),
-            newTabSeparator.heightAnchor.constraint(equalToConstant: UX.newTabSeparatorHeight),
-            
-            // The "+" sits immediately after that rule rather than being
+            // The "+" sits immediately after the last tab rather than being
             // pinned to the far edge, and only ever uses the reserved room.
-            newTabButton.leadingAnchor.constraint(equalTo: newTabSeparator.trailingAnchor, constant: UX.newTabSeparatorGap),
+            newTabButton.leadingAnchor.constraint(equalTo: tabCollection.trailingAnchor, constant: UX.newTabButtonGap),
             newTabButton.centerYAnchor.constraint(equalTo: centerYAnchor),
             newTabButton.widthAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
             newTabButton.heightAnchor.constraint(equalToConstant: UX.newTabButtonSideLength),
@@ -349,8 +334,7 @@ final class TabBar: UIView {
     /// Width available to tabs once the "+" button and its insets are removed.
     private var tabAreaWidth: CGFloat {
         let reserved = UX.tabCollectionLeadingInset
-            + UX.newTabSeparatorGap * 2
-            + UX.newTabSeparatorWidth
+            + UX.newTabButtonGap
             + UX.newTabButtonSideLength
             + UX.newTabButtonTrailingInset
         return max(0, bounds.width - reserved)
@@ -448,7 +432,6 @@ final class TabBar: UIView {
         // The "+" rides on the strip and is only interactive while the strip
         // is actually visible (layoutReserved keeps the space but hides it).
         newTabButton.isHidden = visibility != .visible
-        newTabSeparator.isHidden = visibility != .visible
         if visibility != .visible {
             updateScrollFades(canScrollLeft: false, canScrollRight: false)
         }

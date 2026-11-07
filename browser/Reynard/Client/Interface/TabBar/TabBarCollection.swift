@@ -394,9 +394,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
-        // The active tab's shadow sits outside the cell bounds, so the
-        // collection must not clip its own content.
-        clipsToBounds = false
+        // Tabs must not paint over the "+" while the strip scrolls, so the
+        // collection clips; the edge hints cover the flare that gets cut.
+        clipsToBounds = true
         showsHorizontalScrollIndicator = false
         contentInset = .zero
         contentInsetAdjustmentBehavior = .never

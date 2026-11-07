@@ -14,6 +14,8 @@ final class TabBarCell: UICollectionViewCell {
         /// is always shown and simply fades out towards the trailing edge, so
         /// the label survives as long as there is room for a couple of glyphs.
         static let collapsedTabMinimumWidth: CGFloat = 82
+        /// Narrowest a tab may shrink to before the strip starts scrolling.
+        static let minimumTabWidth: CGFloat = 96
         static let tabTitleFontSize: CGFloat = 14
         static let tabTitleSpacing: CGFloat = 6
         static let tabFaviconSideLength: CGFloat = 16
@@ -49,6 +51,10 @@ final class TabBarCell: UICollectionViewCell {
     
     static var collapsedMinimumWidth: CGFloat {
         return UX.collapsedTabMinimumWidth
+    }
+    
+    static var minimumTabWidth: CGFloat {
+        return UX.minimumTabWidth
     }
     
     static var contentCornerRadius: CGFloat {
