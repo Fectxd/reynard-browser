@@ -423,6 +423,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         )
     }
     
+    private var pendingPressLocation: CGPoint?
+    private var pendingPressIndexPath: IndexPath?
+    private var isReordering = false
+    
     private func configureGestures() {
         let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
         longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
@@ -436,13 +440,97 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         let location = gestureRecognizer.location(in: self)
         switch gestureRecognizer.state {
         case .began:
-            beginReordering(at: location)
+            // Defer the drag until the finger actually moves, so a plain
+            // long press can open the tab menu instead.
+            pendingPressLocation = location
+            pendingPressIndexPath = indexPathForItem(at: location)
+            isReordering = false
         case .changed:
+            if !isReordering {
+                guard let start = pendingPressLocation else {
+                    return
+                }
+                let distance = hypot(location.x - start.x, location.y - start.y)
+                guard distance > 6 else {
+                    return
+                }
+                isReordering = true
+                beginReordering(at: location)
+            }
             updateReordering(at: location)
         case .ended:
-            finishReordering(cancelled: false)
+            if isReordering {
+                finishReordering(cancelled: false)
+            } else if let indexPath = pendingPressIndexPath {
+                presentTabMenu(forItemAt: indexPath)
+            }
+            clearPendingPress()
         default:
-            finishReordering(cancelled: true)
+            if isReordering {
+                finishReordering(cancelled: true)
+            }
+            clearPendingPress()
+        }
+    }
+    
+    private func clearPendingPress() {
+        pendingPressLocation = nil
+        pendingPressIndexPath = nil
+        isReordering = false
+    }
+    
+    // MARK: - Tab Menu
+    
+    private func presentTabMenu(forItemAt indexPath: IndexPath) {
+        guard let tabBar,
+              let dataSource = tabBar.dataSource,
+              dataSource.tabs.indices.contains(indexPath.item),
+              let presenter = UIApplication.shared.topViewController(for: window) else {
+            return
+        }
+        
+        let index = indexPath.item
+        let mode = dataSource.selectedMode
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        
+        if index > 0 {
+            sheet.addAction(UIAlertAction(title: "关闭左侧标签页", style: .destructive) { [weak self] _ in
+                self?.closeTabs(before: index, mode: mode)
+            })
+        }
+        if dataSource.tabs.count > 1 {
+            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
+                self?.closeOtherTabs(keeping: index, mode: mode)
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
+            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
+        })
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+        
+        if let popover = sheet.popoverPresentationController,
+           let cell = cellForItem(at: indexPath) {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        presenter.present(sheet, animated: true)
+    }
+    
+    private func closeTabs(before index: Int, mode: TabMode) {
+        guard index > 0 else {
+            return
+        }
+        for position in stride(from: index - 1, through: 0, by: -1) {
+            tabBar?.dataSource?.closeTab(at: position, mode: mode)
+        }
+    }
+    
+    private func closeOtherTabs(keeping index: Int, mode: TabMode) {
+        guard let count = tabBar?.dataSource?.tabs.count, count > 1 else {
+            return
+        }
+        for position in stride(from: count - 1, through: 0, by: -1) where position != index {
+            tabBar?.dataSource?.closeTab(at: position, mode: mode)
         }
     }
     

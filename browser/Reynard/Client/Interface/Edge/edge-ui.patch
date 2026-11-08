@@ -435,10 +435,30 @@ index e350195..6b19ab4 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-index 0de845c..bce2f08 100644
+index 0de845c..deec893 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-@@ -135,6 +135,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+@@ -40,6 +40,19 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+         tabManager.selectTab(at: index, mode: mode)
+     }
+     
++    /// Opens a copy of the tab (same URL) right after it and selects the copy.
++    func duplicateTab(at index: Int, mode: TabMode) {
++        guard tabs.indices.contains(index) else {
++            return
++        }
++        let sourceURL = tabs[index].url
++        toolbarController.reset()
++        _ = tabManager.addTab(selecting: true, at: index + 1, isPrivate: mode == .private)
++        if let sourceURL {
++            tabManager.selectedTab?.session.load(sourceURL)
++        }
++    }
++    
+     func closeTab(at index: Int, mode: TabMode) {
+         toolbarController.reset()
+         let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
+@@ -135,6 +148,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
      func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
          if visible {
              toolbarController.lock(for: .tabOverview)
@@ -5536,10 +5556,17 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..1758324 100644
+index 7f65843..891d637 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-@@ -20,7 +20,18 @@ protocol TabBarDataSource: AnyObject {
+@@ -14,13 +14,25 @@ protocol TabBarDataSource: AnyObject {
+     
+     func selectTab(at index: Int, mode: TabMode)
+     func closeTab(at index: Int, mode: TabMode)
++    func duplicateTab(at index: Int, mode: TabMode)
+     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode)
+ }
+ 
  final class TabBar: UIView {
      private enum UX {
          static let tabBarHeight: CGFloat = 36
@@ -5559,7 +5586,7 @@ index 7f65843..1758324 100644
      }
      
      enum Visibility: Equatable {
-@@ -41,6 +52,9 @@ final class TabBar: UIView {
+@@ -41,6 +53,9 @@ final class TabBar: UIView {
      }
      
      weak var dataSource: TabBarDataSource?
@@ -5569,7 +5596,7 @@ index 7f65843..1758324 100644
      
      private(set) var visibility: Visibility = .hidden
      private(set) var reorderState: ReorderState = .idle
-@@ -60,8 +74,23 @@ final class TabBar: UIView {
+@@ -60,8 +75,23 @@ final class TabBar: UIView {
      
      private let tabCollection = TabBarCollection()
      private lazy var presentation = TabBarPresentation(tabBar: self)
@@ -5594,7 +5621,7 @@ index 7f65843..1758324 100644
      
      // MARK: - Lifecycle
      
-@@ -77,6 +106,19 @@ final class TabBar: UIView {
+@@ -77,6 +107,19 @@ final class TabBar: UIView {
          fatalError("init(coder:) has not been implemented")
      }
      
@@ -5614,7 +5641,7 @@ index 7f65843..1758324 100644
      override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
          let hitView = super.hitTest(point, with: event)
          return hitView === self && tabCollection.transform.ty < 0 ? nil : hitView
-@@ -104,42 +146,33 @@ final class TabBar: UIView {
+@@ -104,42 +147,33 @@ final class TabBar: UIView {
      
      func cellLayout(at index: Int) -> CellLayout {
          let tabs = dataSource?.tabs ?? []
@@ -5680,7 +5707,7 @@ index 7f65843..1758324 100644
      }
      
      // MARK: - Updates
-@@ -156,6 +189,7 @@ final class TabBar: UIView {
+@@ -156,6 +190,7 @@ final class TabBar: UIView {
              tabCollection.reloadTabs()
          }
          displayedTabIDs = tabs.map { $0.id }
@@ -5688,7 +5715,7 @@ index 7f65843..1758324 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +284,102 @@ final class TabBar: UIView {
+@@ -250,29 +285,102 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -5794,7 +5821,7 @@ index 7f65843..1758324 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +420,74 @@ final class TabBar: UIView {
+@@ -313,11 +421,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -6194,7 +6221,7 @@ index aa1450a..f4dd544 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..c528c72 100644
+index 6da82ce..b99494e 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
@@ -6349,6 +6376,118 @@ index 6da82ce..c528c72 100644
          showsHorizontalScrollIndicator = false
          contentInset = .zero
          contentInsetAdjustmentBehavior = .never
+@@ -418,6 +423,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         )
+     }
+     
++    private var pendingPressLocation: CGPoint?
++    private var pendingPressIndexPath: IndexPath?
++    private var isReordering = false
++    
+     private func configureGestures() {
+         let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
+         longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
+@@ -431,13 +440,97 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         let location = gestureRecognizer.location(in: self)
+         switch gestureRecognizer.state {
+         case .began:
+-            beginReordering(at: location)
++            // Defer the drag until the finger actually moves, so a plain
++            // long press can open the tab menu instead.
++            pendingPressLocation = location
++            pendingPressIndexPath = indexPathForItem(at: location)
++            isReordering = false
+         case .changed:
++            if !isReordering {
++                guard let start = pendingPressLocation else {
++                    return
++                }
++                let distance = hypot(location.x - start.x, location.y - start.y)
++                guard distance > 6 else {
++                    return
++                }
++                isReordering = true
++                beginReordering(at: location)
++            }
+             updateReordering(at: location)
+         case .ended:
+-            finishReordering(cancelled: false)
++            if isReordering {
++                finishReordering(cancelled: false)
++            } else if let indexPath = pendingPressIndexPath {
++                presentTabMenu(forItemAt: indexPath)
++            }
++            clearPendingPress()
+         default:
+-            finishReordering(cancelled: true)
++            if isReordering {
++                finishReordering(cancelled: true)
++            }
++            clearPendingPress()
++        }
++    }
++    
++    private func clearPendingPress() {
++        pendingPressLocation = nil
++        pendingPressIndexPath = nil
++        isReordering = false
++    }
++    
++    // MARK: - Tab Menu
++    
++    private func presentTabMenu(forItemAt indexPath: IndexPath) {
++        guard let tabBar,
++              let dataSource = tabBar.dataSource,
++              dataSource.tabs.indices.contains(indexPath.item),
++              let presenter = UIApplication.shared.topViewController(for: window) else {
++            return
++        }
++        
++        let index = indexPath.item
++        let mode = dataSource.selectedMode
++        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
++        
++        if index > 0 {
++            sheet.addAction(UIAlertAction(title: "关闭左侧标签页", style: .destructive) { [weak self] _ in
++                self?.closeTabs(before: index, mode: mode)
++            })
++        }
++        if dataSource.tabs.count > 1 {
++            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
++                self?.closeOtherTabs(keeping: index, mode: mode)
++            })
++        }
++        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
++            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
++        })
++        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
++        
++        if let popover = sheet.popoverPresentationController,
++           let cell = cellForItem(at: indexPath) {
++            popover.sourceView = cell
++            popover.sourceRect = cell.bounds
++        }
++        presenter.present(sheet, animated: true)
++    }
++    
++    private func closeTabs(before index: Int, mode: TabMode) {
++        guard index > 0 else {
++            return
++        }
++        for position in stride(from: index - 1, through: 0, by: -1) {
++            tabBar?.dataSource?.closeTab(at: position, mode: mode)
++        }
++    }
++    
++    private func closeOtherTabs(keeping index: Int, mode: TabMode) {
++        guard let count = tabBar?.dataSource?.tabs.count, count > 1 else {
++            return
++        }
++        for position in stride(from: count - 1, through: 0, by: -1) where position != index {
++            tabBar?.dataSource?.closeTab(at: position, mode: mode)
+         }
+     }
+     
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 index 586eb5a..859bd5b 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift

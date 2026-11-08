@@ -40,6 +40,19 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         tabManager.selectTab(at: index, mode: mode)
     }
     
+    /// Opens a copy of the tab (same URL) right after it and selects the copy.
+    func duplicateTab(at index: Int, mode: TabMode) {
+        guard tabs.indices.contains(index) else {
+            return
+        }
+        let sourceURL = tabs[index].url
+        toolbarController.reset()
+        _ = tabManager.addTab(selecting: true, at: index + 1, isPrivate: mode == .private)
+        if let sourceURL {
+            tabManager.selectedTab?.session.load(sourceURL)
+        }
+    }
+    
     func closeTab(at index: Int, mode: TabMode) {
         toolbarController.reset()
         let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
