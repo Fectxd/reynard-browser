@@ -435,10 +435,18 @@ index e350195..6b19ab4 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-index 0de845c..deec893 100644
+index 0de845c..8193ffb 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-@@ -40,6 +40,19 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+@@ -5,6 +5,7 @@
+ //  Created by Minh Ton on 16/6/26.
+ //
+ 
++import GeckoView
+ import UIKit
+ 
+ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOverviewDelegate, TabOverviewPresentationContext {
+@@ -40,6 +41,19 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
          tabManager.selectTab(at: index, mode: mode)
      }
      
@@ -458,7 +466,7 @@ index 0de845c..deec893 100644
      func closeTab(at index: Int, mode: TabMode) {
          toolbarController.reset()
          let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
-@@ -135,6 +148,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+@@ -135,6 +149,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
      func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
          if visible {
              toolbarController.lock(for: .tabOverview)
