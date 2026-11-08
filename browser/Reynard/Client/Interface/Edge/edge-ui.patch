@@ -5556,7 +5556,7 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..891d637 100644
+index 7f65843..9b92e9e 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 @@ -14,13 +14,25 @@ protocol TabBarDataSource: AnyObject {
@@ -5650,18 +5650,25 @@ index 7f65843..891d637 100644
 -        let availableWidth = max(0, containerWidth - horizontalInset)
          let layoutTabCount = max(1, tabs.count)
 -        let equalTabWidth = floor(availableWidth / CGFloat(layoutTabCount))
--        
++        let fixedTabWidth = TabBarCell.expandedMinimumWidth
+         
 -        if equalTabWidth >= TabBarCell.expandedMinimumWidth {
 -            return CellLayout(width: equalTabWidth, mode: .expanded)
--        }
++        // Tabs keep a fixed length until they no longer fit, then shrink
++        // proportionally -- but never below the width ten tabs would get. Past
++        // that point the strip scrolls instead of squeezing the title out.
++        let fitWidth = floor(tabContentWidth / CGFloat(layoutTabCount))
++        let tabWidth = max(minimumTabWidth, min(fixedTabWidth, fitWidth))
++        if tabWidth <= TabBarCell.collapsedMinimumWidth {
++            return CellLayout(width: max(0, tabWidth), mode: .faviconOnly)
+         }
 -        
 -        let usesExpandedLayout = isExpandedTab(at: index, in: tabs)
 -        let expandedTabCount = max(1, tabs.indices.reduce(0) { count, tabIndex in
 -            count + (isExpandedTab(at: tabIndex, in: tabs) ? 1 : 0)
 -        })
 -        let unselectedTabCount = max(0, layoutTabCount - expandedTabCount)
-+        let fixedTabWidth = TabBarCell.expandedMinimumWidth
-         
+-        
 -        let unselectedTabWidth: CGFloat
 -        let usesFaviconOnlyLayout: Bool
 -        if unselectedTabCount == 0 {
@@ -5671,14 +5678,7 @@ index 7f65843..891d637 100644
 -            let availableUnselectedWidth = availableWidth - (TabBarCell.expandedMinimumWidth * CGFloat(expandedTabCount))
 -            unselectedTabWidth = floor(availableUnselectedWidth / CGFloat(unselectedTabCount))
 -            usesFaviconOnlyLayout = unselectedTabWidth <= TabBarCell.collapsedMinimumWidth
-+        // Tabs keep a fixed length until they no longer fit, then shrink
-+        // proportionally -- but never below the width ten tabs would get. Past
-+        // that point the strip scrolls instead of squeezing the title out.
-+        let fitWidth = floor(tabAreaWidth / CGFloat(layoutTabCount))
-+        let tabWidth = max(minimumTabWidth, min(fixedTabWidth, fitWidth))
-+        if tabWidth <= TabBarCell.collapsedMinimumWidth {
-+            return CellLayout(width: max(0, tabWidth), mode: .faviconOnly)
-         }
+-        }
 -        
 -        if usesExpandedLayout {
 -            return CellLayout(width: TabBarCell.expandedMinimumWidth, mode: .expanded)
@@ -5703,7 +5703,7 @@ index 7f65843..891d637 100644
          }
 -        
 -        return CellLayout(width: max(0, unselectedTabWidth), mode: .expanded)
-+        return tabCount * minimumTabWidth > tabAreaWidth + 0.5
++        return tabCount * minimumTabWidth > tabContentWidth + 0.5
      }
      
      // MARK: - Updates
@@ -5715,7 +5715,7 @@ index 7f65843..891d637 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +285,102 @@ final class TabBar: UIView {
+@@ -250,29 +285,109 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -5739,9 +5739,8 @@ index 7f65843..891d637 100644
 +        tabCollectionWidthConstraint = tabCollection.widthAnchor.constraint(equalToConstant: 0)
          let tabCollectionHeightConstraint = tabCollection.heightAnchor.constraint(equalToConstant: UX.tabBarHeight)
          NSLayoutConstraint.activate([
--            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor),
+             tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor),
 -            tabCollection.trailingAnchor.constraint(equalTo: trailingAnchor),
-+            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.tabCollectionLeadingInset),
              tabCollection.topAnchor.constraint(equalTo: topAnchor),
              tabCollectionHeightConstraint,
 +            tabCollectionWidthConstraint,
@@ -5778,6 +5777,12 @@ index 7f65843..891d637 100644
      
 +    // MARK: - Strip Metrics
 +    
++    /// Width of the content area inside the collection, i.e. after the padding
++    /// that leaves room for the outer bottom fillets.
++    private var tabContentWidth: CGFloat {
++        return max(0, tabAreaWidth - TabBarCell.flareWidth)
++    }
++    
 +    /// Width available to tabs once the "+" button and its insets are removed.
 +    private var tabAreaWidth: CGFloat {
 +        let reserved = UX.tabCollectionLeadingInset
@@ -5798,8 +5803,9 @@ index 7f65843..891d637 100644
 +        // In scroll mode the strip takes the whole available width so the "+"
 +        // parks on the right edge instead of trailing the content.
 +        let total = isScrollable
-+        ? tabAreaWidth
-+        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabAreaWidth)
++        ? tabAreaWidth + TabBarCell.flareWidth
++        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabContentWidth)
++            + TabBarCell.flareWidth * 2
 +        if abs(widthConstraint.constant - total) > 0.5 {
 +            widthConstraint.constant = total
 +        }
@@ -5821,7 +5827,7 @@ index 7f65843..891d637 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +421,74 @@ final class TabBar: UIView {
+@@ -313,11 +428,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -5897,7 +5903,7 @@ index 7f65843..891d637 100644
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..f4dd544 100644
+index aa1450a..848a472 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 @@ -10,7 +10,12 @@ import UIKit
@@ -5947,7 +5953,7 @@ index aa1450a..f4dd544 100644
      
      static var expandedMinimumWidth: CGFloat {
          return UX.expandedTabMinimumWidth
-@@ -43,6 +53,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -43,6 +53,15 @@ final class TabBarCell: UICollectionViewCell {
          return UX.collapsedTabMinimumWidth
      }
      
@@ -5955,10 +5961,15 @@ index aa1450a..f4dd544 100644
 +        return UX.minimumTabWidth
 +    }
 +    
++    /// How far the bottom fillet reaches outside the cell on each side.
++    static var flareWidth: CGFloat {
++        return UX.tabFlareWidth
++    }
++    
      static var contentCornerRadius: CGFloat {
          return UX.contentCornerRadius
      }
-@@ -52,14 +66,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -52,14 +71,9 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      private static let fallbackFavicon = UIImage(named: "reynard.globe")
@@ -5974,7 +5985,7 @@ index aa1450a..f4dd544 100644
      
      private let tabContentView: UIView = {
          let view = UIView()
-@@ -67,6 +76,14 @@ final class TabBarCell: UICollectionViewCell {
+@@ -67,6 +81,14 @@ final class TabBarCell: UICollectionViewCell {
          return view
      }()
      
@@ -5989,7 +6000,7 @@ index aa1450a..f4dd544 100644
      private let faviconView: UIImageView = {
          let imageView = UIImageView()
          imageView.translatesAutoresizingMaskIntoConstraints = false
-@@ -83,7 +100,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -83,7 +105,9 @@ final class TabBarCell: UICollectionViewCell {
          label.font = UIFont.systemFont(ofSize: UX.tabTitleFontSize, weight: .semibold)
          label.textColor = .secondaryLabel
          label.numberOfLines = 1
@@ -6000,7 +6011,7 @@ index aa1450a..f4dd544 100644
          return label
      }()
      
-@@ -93,7 +112,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -93,7 +117,7 @@ final class TabBarCell: UICollectionViewCell {
              button.isPointerInteractionEnabled = true
          }
          button.translatesAutoresizingMaskIntoConstraints = false
@@ -6009,7 +6020,7 @@ index aa1450a..f4dd544 100644
          button.setPreferredSymbolConfiguration(
              UIImage.SymbolConfiguration(pointSize: UX.tabCloseButtonSymbolPointSize, weight: .regular),
              forImageIn: .normal
-@@ -142,6 +161,12 @@ final class TabBarCell: UICollectionViewCell {
+@@ -142,6 +166,12 @@ final class TabBarCell: UICollectionViewCell {
          tabContentView.layer.borderWidth = 0
      }
      
@@ -6022,7 +6033,7 @@ index aa1450a..f4dd544 100644
      override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
          super.traitCollectionDidChange(previousTraitCollection)
          guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-@@ -149,6 +174,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -149,6 +179,7 @@ final class TabBarCell: UICollectionViewCell {
          }
          
          updateBorderColor()
@@ -6030,7 +6041,7 @@ index aa1450a..f4dd544 100644
      }
      
      // MARK: - Configuration
-@@ -160,17 +186,21 @@ final class TabBarCell: UICollectionViewCell {
+@@ -160,17 +191,21 @@ final class TabBarCell: UICollectionViewCell {
          cellWidth: CGFloat
      ) {
          tabID = tab.id
@@ -6058,7 +6069,7 @@ index aa1450a..f4dd544 100644
          let isCollapsed = layoutMode == .faviconOnly || isTooNarrowForTitle
          
          titleLabel.isHidden = isCollapsed
-@@ -180,7 +210,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -180,7 +215,10 @@ final class TabBarCell: UICollectionViewCell {
          expandedTrailingConstraint.isActive = !isCollapsed
          collapsedTrailingConstraint.isActive = isCollapsed
          expandedTitleWidthConstraint.isActive = !isCollapsed
@@ -6070,7 +6081,7 @@ index aa1450a..f4dd544 100644
      }
      
      func containsCloseButton(at point: CGPoint) -> Bool {
-@@ -196,10 +229,24 @@ final class TabBarCell: UICollectionViewCell {
+@@ -196,10 +234,24 @@ final class TabBarCell: UICollectionViewCell {
      
      private func configureAppearance() {
          contentView.backgroundColor = .clear
@@ -6098,18 +6109,20 @@ index aa1450a..f4dd544 100644
      }
      
      private func configureHierarchy() {
-@@ -223,8 +270,8 @@ final class TabBarCell: UICollectionViewCell {
+@@ -223,9 +275,9 @@ final class TabBarCell: UICollectionViewCell {
      private func configureConstraints() {
          expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
          collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
 -        expandedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: tabContentView.leadingAnchor, constant: UX.expandedTabContentLeadingInset)
 -        collapsedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: tabContentView.leadingAnchor, constant: UX.collapsedTabContentHorizontalInset)
+-        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
 +        expandedLeadingConstraint = titleStack.leadingAnchor.constraint(equalTo: tabContentView.leadingAnchor, constant: UX.expandedTabContentLeadingInset)
 +        collapsedLeadingConstraint = titleStack.leadingAnchor.constraint(equalTo: tabContentView.leadingAnchor, constant: UX.collapsedTabContentHorizontalInset)
-         expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
++        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
          
          NSLayoutConstraint.activate([
-@@ -233,7 +280,6 @@ final class TabBarCell: UICollectionViewCell {
+             tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
+@@ -233,7 +285,6 @@ final class TabBarCell: UICollectionViewCell {
              tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
              tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
              
@@ -6117,7 +6130,7 @@ index aa1450a..f4dd544 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +296,102 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +301,101 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
@@ -6170,12 +6183,11 @@ index aa1450a..f4dd544 100644
 +        }
 +        
 +        titleFadeLayer.frame = bounds
-+        // The mask only exists to soften a cut, so a title that already fits
-+        // must stay fully opaque -- otherwise short labels lose their tail.
-+        let textWidth = ceil(titleLabel.intrinsicContentSize.width)
-+        let isClipped = textWidth > bounds.width + 0.5
-+        let fade = isClipped ? min(UX.tabTitleFadeWidth, bounds.width) : 0
-+        let solid = Double((bounds.width - fade) / bounds.width)
++        // The label always spans up to the close button, so a fixed-length
++        // fade parked at its trailing edge is always in the same place; a long
++        // title simply runs into it.
++        let fade = min(UX.tabTitleFadeWidth, bounds.width)
++        let solid = Double(max(0, bounds.width - fade) / bounds.width)
 +        titleFadeLayer.locations = [0, NSNumber(value: solid), 1]
 +    }
 +    
@@ -6221,7 +6233,7 @@ index aa1450a..f4dd544 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..b99494e 100644
+index 6da82ce..f642bd8 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
@@ -6366,7 +6378,7 @@ index 6da82ce..b99494e 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -395,6 +397,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -395,8 +397,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
@@ -6374,9 +6386,20 @@ index 6da82ce..b99494e 100644
 +        // collection clips; the edge hints cover the flare that gets cut.
 +        clipsToBounds = true
          showsHorizontalScrollIndicator = false
-         contentInset = .zero
+-        contentInset = .zero
++        // Side padding equal to the fillet reach: the strip clips (so tabs can
++        // never paint over the "+"), and this keeps the first/last fillet
++        // inside those bounds instead of cutting them off.
++        contentInset = UIEdgeInsets(
++            top: 0,
++            left: TabBarCell.flareWidth,
++            bottom: 0,
++            right: TabBarCell.flareWidth
++        )
          contentInsetAdjustmentBehavior = .never
-@@ -418,6 +423,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+     }
+     
+@@ -418,6 +431,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          )
      }
      
@@ -6387,7 +6410,7 @@ index 6da82ce..b99494e 100644
      private func configureGestures() {
          let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
          longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -431,13 +440,97 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -431,13 +448,97 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          let location = gestureRecognizer.location(in: self)
          switch gestureRecognizer.state {
          case .began:

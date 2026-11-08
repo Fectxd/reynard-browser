@@ -401,7 +401,15 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         // collection clips; the edge hints cover the flare that gets cut.
         clipsToBounds = true
         showsHorizontalScrollIndicator = false
-        contentInset = .zero
+        // Side padding equal to the fillet reach: the strip clips (so tabs can
+        // never paint over the "+"), and this keeps the first/last fillet
+        // inside those bounds instead of cutting them off.
+        contentInset = UIEdgeInsets(
+            top: 0,
+            left: TabBarCell.flareWidth,
+            bottom: 0,
+            right: TabBarCell.flareWidth
+        )
         contentInsetAdjustmentBehavior = .never
     }
     

@@ -153,7 +153,7 @@ final class TabBar: UIView {
         // Tabs keep a fixed length until they no longer fit, then shrink
         // proportionally -- but never below the width ten tabs would get. Past
         // that point the strip scrolls instead of squeezing the title out.
-        let fitWidth = floor(tabAreaWidth / CGFloat(layoutTabCount))
+        let fitWidth = floor(tabContentWidth / CGFloat(layoutTabCount))
         let tabWidth = max(minimumTabWidth, min(fixedTabWidth, fitWidth))
         if tabWidth <= TabBarCell.collapsedMinimumWidth {
             return CellLayout(width: max(0, tabWidth), mode: .faviconOnly)
@@ -173,7 +173,7 @@ final class TabBar: UIView {
         guard tabCount > 0 else {
             return false
         }
-        return tabCount * minimumTabWidth > tabAreaWidth + 0.5
+        return tabCount * minimumTabWidth > tabContentWidth + 0.5
     }
     
     // MARK: - Updates
@@ -304,7 +304,7 @@ final class TabBar: UIView {
         tabCollectionWidthConstraint = tabCollection.widthAnchor.constraint(equalToConstant: 0)
         let tabCollectionHeightConstraint = tabCollection.heightAnchor.constraint(equalToConstant: UX.tabBarHeight)
         NSLayoutConstraint.activate([
-            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.tabCollectionLeadingInset),
+            tabCollection.leadingAnchor.constraint(equalTo: leadingAnchor),
             tabCollection.topAnchor.constraint(equalTo: topAnchor),
             tabCollectionHeightConstraint,
             tabCollectionWidthConstraint,
@@ -341,6 +341,12 @@ final class TabBar: UIView {
     
     // MARK: - Strip Metrics
     
+    /// Width of the content area inside the collection, i.e. after the padding
+    /// that leaves room for the outer bottom fillets.
+    private var tabContentWidth: CGFloat {
+        return max(0, tabAreaWidth - TabBarCell.flareWidth)
+    }
+    
     /// Width available to tabs once the "+" button and its insets are removed.
     private var tabAreaWidth: CGFloat {
         let reserved = UX.tabCollectionLeadingInset
@@ -361,8 +367,9 @@ final class TabBar: UIView {
         // In scroll mode the strip takes the whole available width so the "+"
         // parks on the right edge instead of trailing the content.
         let total = isScrollable
-        ? tabAreaWidth
-        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabAreaWidth)
+        ? tabAreaWidth + TabBarCell.flareWidth
+        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabContentWidth)
+            + TabBarCell.flareWidth * 2
         if abs(widthConstraint.constant - total) > 0.5 {
             widthConstraint.constant = total
         }

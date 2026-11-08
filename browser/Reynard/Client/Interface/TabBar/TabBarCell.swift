@@ -57,6 +57,11 @@ final class TabBarCell: UICollectionViewCell {
         return UX.minimumTabWidth
     }
     
+    /// How far the bottom fillet reaches outside the cell on each side.
+    static var flareWidth: CGFloat {
+        return UX.tabFlareWidth
+    }
+    
     static var contentCornerRadius: CGFloat {
         return UX.contentCornerRadius
     }
@@ -272,7 +277,7 @@ final class TabBarCell: UICollectionViewCell {
         collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
         expandedLeadingConstraint = titleStack.leadingAnchor.constraint(equalTo: tabContentView.leadingAnchor, constant: UX.expandedTabContentLeadingInset)
         collapsedLeadingConstraint = titleStack.leadingAnchor.constraint(equalTo: tabContentView.leadingAnchor, constant: UX.collapsedTabContentHorizontalInset)
-        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
+        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(equalTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
         
         NSLayoutConstraint.activate([
             tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
@@ -345,12 +350,11 @@ final class TabBarCell: UICollectionViewCell {
         }
         
         titleFadeLayer.frame = bounds
-        // The mask only exists to soften a cut, so a title that already fits
-        // must stay fully opaque -- otherwise short labels lose their tail.
-        let textWidth = ceil(titleLabel.intrinsicContentSize.width)
-        let isClipped = textWidth > bounds.width + 0.5
-        let fade = isClipped ? min(UX.tabTitleFadeWidth, bounds.width) : 0
-        let solid = Double((bounds.width - fade) / bounds.width)
+        // The label always spans up to the close button, so a fixed-length
+        // fade parked at its trailing edge is always in the same place; a long
+        // title simply runs into it.
+        let fade = min(UX.tabTitleFadeWidth, bounds.width)
+        let solid = Double(max(0, bounds.width - fade) / bounds.width)
         titleFadeLayer.locations = [0, NSNumber(value: solid), 1]
     }
     
