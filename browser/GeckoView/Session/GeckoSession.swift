@@ -250,6 +250,12 @@ public class GeckoSession {
     
     public func isOpen() -> Bool { window != nil }
     
+    /// Fills the focused login form with a credential the app stores itself.
+    /// Used by the app's credential bar, which reads `LoginStore` directly.
+    public func autofillLogin(username: String, password: String) {
+        autofillHandler.didSelectAutofillUsername(username, password: password)
+    }
+    
     public var engineView: UIView? {
         return window?.view()
     }

@@ -188,6 +188,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     override func viewDidLoad() {
         super.viewDidLoad()
+        _ = LoginAutofillPresenter.shared
         view.backgroundColor = .systemBackground
         
         if sidebarCoordinator.installHostIfNeeded() {
