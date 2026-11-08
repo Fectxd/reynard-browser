@@ -35,7 +35,7 @@ final class AddressBar: UIView {
         static let addressBarButtonToTextSpacing: CGFloat = 8
         static let addressBarDismissButtonSpacing: CGFloat = 9
         static let addressBarButtonSize: CGFloat = 18
-        static let addressBarHeight: CGFloat = 34
+        static let addressBarHeight: CGFloat = 36
         static let addressBarLoadingProgressHeight: CGFloat = 2
         static let addressBarAutocompleteTrailingInset: CGFloat = 30
         static let addressBarTextFontSize: CGFloat = 16

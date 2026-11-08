@@ -198,6 +198,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         guard !isUpdatingTabs else {
             return
         }
+        // Cell widths come from the tab bar, so a resize needs a fresh layout
+        // pass before the visible cells are reconfigured.
+        collectionViewLayout.invalidateLayout()
         updateScrollability()
         refreshVisibleTabs()
         revealSelectedTab()

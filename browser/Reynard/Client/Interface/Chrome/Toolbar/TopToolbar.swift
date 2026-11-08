@@ -9,7 +9,7 @@ import UIKit
 
 final class TopToolbar: UIView {
     private enum UX {
-        static let topToolbarContentHeight: CGFloat = 50
+        static let topToolbarContentHeight: CGFloat = 54
         static let topToolbarButtonStackHeight: CGFloat = 30
         static let topToolbarStandardButtonStackWidth: CGFloat = 126
         // Landscape / pad address-bar right side has 4 static buttons

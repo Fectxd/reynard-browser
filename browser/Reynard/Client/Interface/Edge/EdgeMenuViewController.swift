@@ -163,6 +163,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         // a 116pt primary tile left a large empty band above the divider.
         static let primaryGroupHeight: CGFloat = 88
         static let listRowHeight: CGFloat = 56
+        /// Height of the paging affordance under the compact menu.
+        static let pageIndicatorHeight: CGFloat = 22
         static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
     }
 
@@ -197,6 +199,12 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         ? UIColor(hue: 240.0 / 360.0, saturation: 0.05, brightness: 0.15, alpha: 1)
         : .systemBackground
     }
+    
+    private let pageIndicator = UIStackView()
+    private var pageDots: [UIView] = []
+    private var pageDotWidths: [NSLayoutConstraint] = []
+    private var pageCount = 1
+    private var currentPage = 0
     
     private let cellReuseIdentifier = "EdgeMenuCell"
     private let dividerReuseIdentifier = "EdgeMenuDivider"
@@ -264,6 +272,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
             ),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        configurePageIndicator()
         collectionView.register(EdgeMenuCell.self, forCellWithReuseIdentifier: cellReuseIdentifier)
         collectionView.register(
             UICollectionReusableView.self,
@@ -301,7 +310,17 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         let visibleSecondaryRows = 2
         let pageHeight = CGFloat(visibleSecondaryRows) * UX.gridGroupHeight
             + CGFloat(visibleSecondaryRows - 1) * UX.gridItemSpacing
-        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 2 + 1
+        // Primary row + one page + the divider + the page indicator strip.
+        return UX.primaryGroupHeight
+            + pageHeight
+            + UX.gridContentInset * 2
+            + 1
+            + UX.pageIndicatorHeight
+    }
+    
+    /// Height of the panel the controller would build right now.
+    var panelHeight: CGFloat {
+        return preferredHeight
     }
     
     private var preferredHeight: CGFloat {
@@ -312,6 +331,62 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
     }
     
     /// Swaps between the wide 4-column grid and the compact paged layout.
+    private func configurePageIndicator() {
+        pageIndicator.translatesAutoresizingMaskIntoConstraints = false
+        pageIndicator.axis = .horizontal
+        pageIndicator.alignment = .center
+        pageIndicator.spacing = 6
+        pageIndicator.isHidden = true
+        view.addSubview(pageIndicator)
+        NSLayoutConstraint.activate([
+            pageIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            pageIndicator.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            pageIndicator.heightAnchor.constraint(equalToConstant: 6),
+        ])
+    }
+    
+    private func updatePageIndicator() {
+        let secondaryCount = items(in: .secondary).count
+        let perPage = 8
+        let pages = max(1, Int(ceil(Double(secondaryCount) / Double(perPage))))
+        guard isCompactLayout, pages > 1 else {
+            pageIndicator.isHidden = true
+            return
+        }
+        
+        if pageDots.count != pages {
+            pageDots.forEach { $0.removeFromSuperview() }
+            pageDots.removeAll()
+            pageDotWidths.forEach { $0.isActive = false }
+            pageDotWidths.removeAll()
+            for _ in 0..<pages {
+                let dot = UIView()
+                dot.translatesAutoresizingMaskIntoConstraints = false
+                dot.layer.cornerRadius = 3
+                dot.layer.cornerCurve = .continuous
+                pageIndicator.addArrangedSubview(dot)
+                let width = dot.widthAnchor.constraint(equalToConstant: 6)
+                NSLayoutConstraint.activate([
+                    dot.heightAnchor.constraint(equalToConstant: 6),
+                    width,
+                ])
+                pageDots.append(dot)
+                pageDotWidths.append(width)
+            }
+        }
+        
+        pageCount = pages
+        currentPage = min(currentPage, pages - 1)
+        for (index, dot) in pageDots.enumerated() {
+            let isCurrent = index == currentPage
+            dot.backgroundColor = isCurrent
+                ? UIColor.secondaryLabel
+                : UIColor.secondaryLabel.withAlphaComponent(0.3)
+            pageDotWidths[index].constant = isCurrent ? 16 : 6
+        }
+        pageIndicator.isHidden = false
+    }
+    
     private func applyCurrentLayout() {
         if #available(iOS 14.0, *), isCompactLayout {
             collectionView.setCollectionViewLayout(makeCompactLayout(), animated: false)
@@ -319,6 +394,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
             collectionView.setCollectionViewLayout(Self.makeGridLayout(), animated: false)
         }
         preferredContentSize = CGSize(width: 375, height: preferredHeight)
+        collectionView.contentInset.bottom = isCompactLayout ? UX.pageIndicatorHeight : 0
+        updatePageIndicator()
         collectionView.reloadData()
     }
     
@@ -383,6 +460,18 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         )
         let secondarySection = NSCollectionLayoutSection(group: pageGroup)
         secondarySection.orthogonalScrollingBehavior = .groupPaging
+        secondarySection.visibleItemsInvalidationHandler = { [weak self] _, contentOffset, environment in
+            let pageWidth = environment.container.effectiveContentSize.width
+            guard pageWidth > 1 else {
+                return
+            }
+            let page = max(0, Int((contentOffset.x / pageWidth).rounded()))
+            guard let self, page != self.currentPage else {
+                return
+            }
+            self.currentPage = page
+            self.updatePageIndicator()
+        }
         secondarySection.contentInsets = NSDirectionalEdgeInsets(
             top: inset,
             leading: 0,

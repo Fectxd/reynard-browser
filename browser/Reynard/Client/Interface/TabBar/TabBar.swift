@@ -88,6 +88,7 @@ final class TabBar: UIView {
     private let leadingScrollFade = ScrollFadeView(mirrored: false)
     private let trailingScrollFade = ScrollFadeView(mirrored: true)
     
+    private var lastTabAreaWidth: CGFloat = 0
     private var heightConstraint: NSLayoutConstraint!
     private var tabCollectionWidthConstraint: NSLayoutConstraint!
     
@@ -108,6 +109,14 @@ final class TabBar: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateTabCollectionWidth()
+        // Stage Manager / Split View change the strip width without changing the
+        // tab count, so the cells must be re-measured or they keep their old,
+        // narrower frames.
+        let width = tabAreaWidth
+        if abs(width - lastTabAreaWidth) > 0.5 {
+            lastTabAreaWidth = width
+            tabCollection.updateLayout()
+        }
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {

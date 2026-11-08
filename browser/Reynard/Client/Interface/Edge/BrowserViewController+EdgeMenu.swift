@@ -66,8 +66,10 @@ extension BrowserViewController {
                 // forcing a scroll; grabber stays for pull-to-dismiss.
                 sheet.detents = [.custom { _ in
                     let available = menu.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height
-                    let gridHeight = menu.preferredContentSize.height + 48
-                    return min(available * 0.92, gridHeight)
+                    // Ask the controller for the height of the layout it actually
+                    // built: the compact paged panel is much shorter than the grid.
+                    let panelHeight = menu.panelHeight + 32
+                    return min(available * 0.92, panelHeight)
                 }]
                 sheet.prefersGrabberVisible = true
                 sheet.preferredCornerRadius = 18

@@ -111,6 +111,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
                 if focusedField?.formUuid == form.uuid {
                     refreshAutofillSuggestions()
                 }
+                postFocusChange()
             }
         case .focus:
             let hadActiveAutofillFocus = hasActiveAutofillFocus()
@@ -142,6 +143,9 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
                     refreshAutofillSuggestions()
                 }
             }
+            // Announce every focus change so the app's own credential bar can
+            // react even when none of the reload paths above ran.
+            postFocusChange()
             return nil
         }
     }

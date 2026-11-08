@@ -130,10 +130,28 @@ index 30e447a..5c8ddee 100644
 +    }
  }
 diff --git a/browser/GeckoView/Session/GeckoAutofillHandler.swift b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-index 00bf4e7..a9c0ce2 100644
+index 00bf4e7..d3e2872 100644
 --- a/browser/GeckoView/Session/GeckoAutofillHandler.swift
 +++ b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-@@ -277,6 +277,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+@@ -111,6 +111,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+                 if focusedField?.formUuid == form.uuid {
+                     refreshAutofillSuggestions()
+                 }
++                postFocusChange()
+             }
+         case .focus:
+             let hadActiveAutofillFocus = hasActiveAutofillFocus()
+@@ -142,6 +143,9 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+                     refreshAutofillSuggestions()
+                 }
+             }
++            // Announce every focus change so the app's own credential bar can
++            // react even when none of the reload paths above ran.
++            postFocusChange()
+             return nil
+         }
+     }
+@@ -277,6 +281,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
          }
          credentialForms.removeAll()
          focusedField = nil
@@ -141,7 +159,7 @@ index 00bf4e7..a9c0ce2 100644
          if shouldRefresh && hadActiveAutofillFocus {
              refreshAutofillSuggestions()
          }
-@@ -288,6 +289,21 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+@@ -288,6 +293,21 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
      
      private func refreshAutofillSuggestions() {
          session?.engineView?.reloadInputViews()
@@ -840,7 +858,7 @@ index 9041c53..bf6e8d9 100644
      
      private func performContentLifecycle(_ action: () -> Void) {
 diff --git a/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift b/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift
-index 0e2b6c6..53c0c6a 100644
+index 0e2b6c6..4f0c45b 100644
 --- a/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift
 @@ -30,19 +30,19 @@ protocol AddressBarDelegate: AnyObject {
@@ -854,7 +872,7 @@ index 0e2b6c6..53c0c6a 100644
          static let addressBarDismissButtonSpacing: CGFloat = 9
          static let addressBarButtonSize: CGFloat = 18
 -        static let addressBarHeight: CGFloat = 44
-+        static let addressBarHeight: CGFloat = 34
++        static let addressBarHeight: CGFloat = 36
          static let addressBarLoadingProgressHeight: CGFloat = 2
          static let addressBarAutocompleteTrailingInset: CGFloat = 30
 -        static let addressBarTextFontSize: CGFloat = 17
@@ -1722,7 +1740,7 @@ index 5383025..3904c17 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 8d40460..0870c68 100644
+index 8d40460..792aa0e 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 @@ -9,14 +9,19 @@ import UIKit
@@ -1730,7 +1748,7 @@ index 8d40460..0870c68 100644
  final class TopToolbar: UIView {
      private enum UX {
 -        static let topToolbarContentHeight: CGFloat = 60
-+        static let topToolbarContentHeight: CGFloat = 50
++        static let topToolbarContentHeight: CGFloat = 54
          static let topToolbarButtonStackHeight: CGFloat = 30
          static let topToolbarStandardButtonStackWidth: CGFloat = 126
 +        // Landscape / pad address-bar right side has 4 static buttons
@@ -2665,10 +2683,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..f5e3bd3
+index 0000000..b3eaffd
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,329 @@
+@@ -0,0 +1,331 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -2737,8 +2755,10 @@ index 0000000..f5e3bd3
 +                // forcing a scroll; grabber stays for pull-to-dismiss.
 +                sheet.detents = [.custom { _ in
 +                    let available = menu.view.window?.screen.bounds.height ?? UIScreen.main.bounds.height
-+                    let gridHeight = menu.preferredContentSize.height + 48
-+                    return min(available * 0.92, gridHeight)
++                    // Ask the controller for the height of the layout it actually
++                    // built: the compact paged panel is much shorter than the grid.
++                    let panelHeight = menu.panelHeight + 32
++                    return min(available * 0.92, panelHeight)
 +                }]
 +                sheet.prefersGrabberVisible = true
 +                sheet.preferredCornerRadius = 18
@@ -3660,10 +3680,10 @@ index 0000000..75d95d3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..e01937f
+index 0000000..5908956
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,665 @@
+@@ -0,0 +1,754 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -3829,6 +3849,8 @@ index 0000000..e01937f
 +        // a 116pt primary tile left a large empty band above the divider.
 +        static let primaryGroupHeight: CGFloat = 88
 +        static let listRowHeight: CGFloat = 56
++        /// Height of the paging affordance under the compact menu.
++        static let pageIndicatorHeight: CGFloat = 22
 +        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
 +    }
 +
@@ -3863,6 +3885,12 @@ index 0000000..e01937f
 +        ? UIColor(hue: 240.0 / 360.0, saturation: 0.05, brightness: 0.15, alpha: 1)
 +        : .systemBackground
 +    }
++    
++    private let pageIndicator = UIStackView()
++    private var pageDots: [UIView] = []
++    private var pageDotWidths: [NSLayoutConstraint] = []
++    private var pageCount = 1
++    private var currentPage = 0
 +    
 +    private let cellReuseIdentifier = "EdgeMenuCell"
 +    private let dividerReuseIdentifier = "EdgeMenuDivider"
@@ -3930,6 +3958,7 @@ index 0000000..e01937f
 +            ),
 +            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 +        ])
++        configurePageIndicator()
 +        collectionView.register(EdgeMenuCell.self, forCellWithReuseIdentifier: cellReuseIdentifier)
 +        collectionView.register(
 +            UICollectionReusableView.self,
@@ -3967,7 +3996,17 @@ index 0000000..e01937f
 +        let visibleSecondaryRows = 2
 +        let pageHeight = CGFloat(visibleSecondaryRows) * UX.gridGroupHeight
 +            + CGFloat(visibleSecondaryRows - 1) * UX.gridItemSpacing
-+        return UX.primaryGroupHeight + pageHeight + UX.gridContentInset * 2 + 1
++        // Primary row + one page + the divider + the page indicator strip.
++        return UX.primaryGroupHeight
++            + pageHeight
++            + UX.gridContentInset * 2
++            + 1
++            + UX.pageIndicatorHeight
++    }
++    
++    /// Height of the panel the controller would build right now.
++    var panelHeight: CGFloat {
++        return preferredHeight
 +    }
 +    
 +    private var preferredHeight: CGFloat {
@@ -3978,6 +4017,62 @@ index 0000000..e01937f
 +    }
 +    
 +    /// Swaps between the wide 4-column grid and the compact paged layout.
++    private func configurePageIndicator() {
++        pageIndicator.translatesAutoresizingMaskIntoConstraints = false
++        pageIndicator.axis = .horizontal
++        pageIndicator.alignment = .center
++        pageIndicator.spacing = 6
++        pageIndicator.isHidden = true
++        view.addSubview(pageIndicator)
++        NSLayoutConstraint.activate([
++            pageIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++            pageIndicator.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
++            pageIndicator.heightAnchor.constraint(equalToConstant: 6),
++        ])
++    }
++    
++    private func updatePageIndicator() {
++        let secondaryCount = items(in: .secondary).count
++        let perPage = 8
++        let pages = max(1, Int(ceil(Double(secondaryCount) / Double(perPage))))
++        guard isCompactLayout, pages > 1 else {
++            pageIndicator.isHidden = true
++            return
++        }
++        
++        if pageDots.count != pages {
++            pageDots.forEach { $0.removeFromSuperview() }
++            pageDots.removeAll()
++            pageDotWidths.forEach { $0.isActive = false }
++            pageDotWidths.removeAll()
++            for _ in 0..<pages {
++                let dot = UIView()
++                dot.translatesAutoresizingMaskIntoConstraints = false
++                dot.layer.cornerRadius = 3
++                dot.layer.cornerCurve = .continuous
++                pageIndicator.addArrangedSubview(dot)
++                let width = dot.widthAnchor.constraint(equalToConstant: 6)
++                NSLayoutConstraint.activate([
++                    dot.heightAnchor.constraint(equalToConstant: 6),
++                    width,
++                ])
++                pageDots.append(dot)
++                pageDotWidths.append(width)
++            }
++        }
++        
++        pageCount = pages
++        currentPage = min(currentPage, pages - 1)
++        for (index, dot) in pageDots.enumerated() {
++            let isCurrent = index == currentPage
++            dot.backgroundColor = isCurrent
++                ? UIColor.secondaryLabel
++                : UIColor.secondaryLabel.withAlphaComponent(0.3)
++            pageDotWidths[index].constant = isCurrent ? 16 : 6
++        }
++        pageIndicator.isHidden = false
++    }
++    
 +    private func applyCurrentLayout() {
 +        if #available(iOS 14.0, *), isCompactLayout {
 +            collectionView.setCollectionViewLayout(makeCompactLayout(), animated: false)
@@ -3985,6 +4080,8 @@ index 0000000..e01937f
 +            collectionView.setCollectionViewLayout(Self.makeGridLayout(), animated: false)
 +        }
 +        preferredContentSize = CGSize(width: 375, height: preferredHeight)
++        collectionView.contentInset.bottom = isCompactLayout ? UX.pageIndicatorHeight : 0
++        updatePageIndicator()
 +        collectionView.reloadData()
 +    }
 +    
@@ -4049,6 +4146,18 @@ index 0000000..e01937f
 +        )
 +        let secondarySection = NSCollectionLayoutSection(group: pageGroup)
 +        secondarySection.orthogonalScrollingBehavior = .groupPaging
++        secondarySection.visibleItemsInvalidationHandler = { [weak self] _, contentOffset, environment in
++            let pageWidth = environment.container.effectiveContentSize.width
++            guard pageWidth > 1 else {
++                return
++            }
++            let page = max(0, Int((contentOffset.x / pageWidth).rounded()))
++            guard let self, page != self.currentPage else {
++                return
++            }
++            self.currentPage = page
++            self.updatePageIndicator()
++        }
 +        secondarySection.contentInsets = NSDirectionalEdgeInsets(
 +            top: inset,
 +            leading: 0,
@@ -5427,7 +5536,7 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..e661f60 100644
+index 7f65843..1758324 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 @@ -20,7 +20,18 @@ protocol TabBarDataSource: AnyObject {
@@ -5460,10 +5569,11 @@ index 7f65843..e661f60 100644
      
      private(set) var visibility: Visibility = .hidden
      private(set) var reorderState: ReorderState = .idle
-@@ -60,8 +74,22 @@ final class TabBar: UIView {
+@@ -60,8 +74,23 @@ final class TabBar: UIView {
      
      private let tabCollection = TabBarCollection()
      private lazy var presentation = TabBarPresentation(tabBar: self)
+-    
 +
 +    private lazy var newTabButton: ToolbarButton = {
 +        let button = ToolbarButton(
@@ -5477,25 +5587,34 @@ index 7f65843..e661f60 100644
 +    
 +    private let leadingScrollFade = ScrollFadeView(mirrored: false)
 +    private let trailingScrollFade = ScrollFadeView(mirrored: true)
-     
++    
++    private var lastTabAreaWidth: CGFloat = 0
      private var heightConstraint: NSLayoutConstraint!
 +    private var tabCollectionWidthConstraint: NSLayoutConstraint!
      
      // MARK: - Lifecycle
      
-@@ -77,6 +105,11 @@ final class TabBar: UIView {
+@@ -77,6 +106,19 @@ final class TabBar: UIView {
          fatalError("init(coder:) has not been implemented")
      }
      
 +    override func layoutSubviews() {
 +        super.layoutSubviews()
 +        updateTabCollectionWidth()
++        // Stage Manager / Split View change the strip width without changing the
++        // tab count, so the cells must be re-measured or they keep their old,
++        // narrower frames.
++        let width = tabAreaWidth
++        if abs(width - lastTabAreaWidth) > 0.5 {
++            lastTabAreaWidth = width
++            tabCollection.updateLayout()
++        }
 +    }
 +    
      override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
          let hitView = super.hitTest(point, with: event)
          return hitView === self && tabCollection.transform.ty < 0 ? nil : hitView
-@@ -104,42 +137,33 @@ final class TabBar: UIView {
+@@ -104,42 +146,33 @@ final class TabBar: UIView {
      
      func cellLayout(at index: Int) -> CellLayout {
          let tabs = dataSource?.tabs ?? []
@@ -5525,10 +5644,6 @@ index 7f65843..e661f60 100644
 -            let availableUnselectedWidth = availableWidth - (TabBarCell.expandedMinimumWidth * CGFloat(expandedTabCount))
 -            unselectedTabWidth = floor(availableUnselectedWidth / CGFloat(unselectedTabCount))
 -            usesFaviconOnlyLayout = unselectedTabWidth <= TabBarCell.collapsedMinimumWidth
--        }
--        
--        if usesExpandedLayout {
--            return CellLayout(width: TabBarCell.expandedMinimumWidth, mode: .expanded)
 +        // Tabs keep a fixed length until they no longer fit, then shrink
 +        // proportionally -- but never below the width ten tabs would get. Past
 +        // that point the strip scrolls instead of squeezing the title out.
@@ -5537,6 +5652,10 @@ index 7f65843..e661f60 100644
 +        if tabWidth <= TabBarCell.collapsedMinimumWidth {
 +            return CellLayout(width: max(0, tabWidth), mode: .faviconOnly)
          }
+-        
+-        if usesExpandedLayout {
+-            return CellLayout(width: TabBarCell.expandedMinimumWidth, mode: .expanded)
+-        }
 -        
 -        if usesFaviconOnlyLayout {
 -            return CellLayout(width: TabBarCell.collapsedMinimumWidth, mode: .faviconOnly)
@@ -5561,7 +5680,7 @@ index 7f65843..e661f60 100644
      }
      
      // MARK: - Updates
-@@ -156,6 +180,7 @@ final class TabBar: UIView {
+@@ -156,6 +189,7 @@ final class TabBar: UIView {
              tabCollection.reloadTabs()
          }
          displayedTabIDs = tabs.map { $0.id }
@@ -5569,7 +5688,7 @@ index 7f65843..e661f60 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +275,102 @@ final class TabBar: UIView {
+@@ -250,29 +284,102 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -5675,7 +5794,7 @@ index 7f65843..e661f60 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +411,74 @@ final class TabBar: UIView {
+@@ -313,11 +420,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -6075,7 +6194,7 @@ index aa1450a..f4dd544 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..11c33df 100644
+index 6da82ce..c528c72 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
@@ -6089,7 +6208,17 @@ index 6da82ce..11c33df 100644
      private let layout: TabBarCollectionLayout
      private var lastLayoutWidth: CGFloat = 0
      private var isUpdatingTabs = false
-@@ -246,29 +250,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -194,6 +198,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         guard !isUpdatingTabs else {
+             return
+         }
++        // Cell widths come from the tab bar, so a resize needs a fresh layout
++        // pass before the visible cells are reconfigured.
++        collectionViewLayout.invalidateLayout()
+         updateScrollability()
+         refreshVisibleTabs()
+         revealSelectedTab()
+@@ -246,29 +253,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
          isUpdatingTabs = true
@@ -6145,7 +6274,7 @@ index 6da82ce..11c33df 100644
          }
      }
      
-@@ -313,40 +321,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -313,40 +324,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private func updateScrollability() {
@@ -6210,7 +6339,7 @@ index 6da82ce..11c33df 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -395,6 +394,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -395,6 +397,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
