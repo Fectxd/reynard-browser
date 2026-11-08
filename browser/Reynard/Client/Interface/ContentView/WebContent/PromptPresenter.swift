@@ -447,6 +447,32 @@ final class PromptPresenter: PromptPresenting {
         return .loginSave(login)
     }
     
+    private func presentBeforeUnload(request: BeforeUnloadPromptRequest) async -> PromptResponse? {
+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+            return nil
+        }
+        
+        defer { beforeUnloadAlerts.removeValue(forKey: request.id) }
+        
+        return await withCheckedContinuation { continuation in
+            var allowed = false
+            let alert = PromptAlertController(
+                title: NSLocalizedString("Leave Page?", comment: ""),
+                message: NSLocalizedString("Changes you made may not be saved.", comment: ""),
+                preferredStyle: .alert
+            )
+            alert.onDismissed = {
+                continuation.resume(returning: .beforeUnload(allowed: allowed))
+            }
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Stay", comment: ""), style: .cancel))
+            alert.addAction(UIAlertAction(title: NSLocalizedString("Leave", comment: ""), style: .destructive) { _ in
+                allowed = true
+            })
+            beforeUnloadAlerts[request.id] = alert
+            presenter.present(alert, animated: true)
+        }
+    }
+    
     private func presentFolderUpload(request: FolderUploadPromptRequest) async -> PromptResponse? {
         guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
             return nil

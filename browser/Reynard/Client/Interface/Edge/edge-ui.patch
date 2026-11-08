@@ -130,21 +130,10 @@ index 30e447a..5c8ddee 100644
 +    }
  }
 diff --git a/browser/GeckoView/Session/GeckoAutofillHandler.swift b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-index 00bf4e7..1454941 100644
+index 00bf4e7..a9c0ce2 100644
 --- a/browser/GeckoView/Session/GeckoAutofillHandler.swift
 +++ b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-@@ -64,6 +64,10 @@ private struct CredentialForm {
- }
- 
- final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-+    /// Posted (on the main queue) whenever the login-field focus changes, so the
-+    /// app's own credential bar can offer the logins it stores itself.
-+    static let focusDidChangeNotification = Notification.Name("GeckoAutofillFocusDidChange")
-+    
-     let moduleName: String? = "GeckoViewAutofill"
-     let events = CredentialEvent.allCases.map(\.rawValue)
-     let enabled = true
-@@ -277,6 +281,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+@@ -277,6 +277,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
          }
          credentialForms.removeAll()
          focusedField = nil
@@ -152,7 +141,7 @@ index 00bf4e7..1454941 100644
          if shouldRefresh && hadActiveAutofillFocus {
              refreshAutofillSuggestions()
          }
-@@ -288,6 +293,21 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
+@@ -288,6 +289,21 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
      
      private func refreshAutofillSuggestions() {
          session?.engineView?.reloadInputViews()
@@ -164,7 +153,7 @@ index 00bf4e7..1454941 100644
 +            return
 +        }
 +        NotificationCenter.default.post(
-+            name: Self.focusDidChangeNotification,
++            name: GeckoSession.autofillFocusDidChangeNotification,
 +            object: session,
 +            userInfo: [
 +                "origin": autofillOrigin() ?? "",
@@ -175,13 +164,18 @@ index 00bf4e7..1454941 100644
      
      
 diff --git a/browser/GeckoView/Session/GeckoSession.swift b/browser/GeckoView/Session/GeckoSession.swift
-index 5478ee3..1508b1b 100644
+index 5478ee3..8c6998b 100644
 --- a/browser/GeckoView/Session/GeckoSession.swift
 +++ b/browser/GeckoView/Session/GeckoSession.swift
-@@ -250,6 +250,12 @@ public class GeckoSession {
+@@ -250,6 +250,17 @@ public class GeckoSession {
      
      public func isOpen() -> Bool { window != nil }
      
++    /// Posted when the focused login field changes, so the app's own credential
++    /// bar can offer logins stored by the app rather than by iOS.
++    public static let autofillFocusDidChangeNotification =
++        Notification.Name("GeckoAutofillFocusDidChange")
++    
 +    /// Fills the focused login form with a credential the app stores itself.
 +    /// Used by the app's credential bar, which reads `LoginStore` directly.
 +    public func autofillLogin(username: String, password: String) {
@@ -1167,15 +1161,16 @@ index 0000000..e6dd4d2
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 new file mode 100644
-index 0000000..6965e06
+index 0000000..3ad4ebb
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,245 @@
 +//
 +//  LoginAutofillBar.swift
 +//  Reynard
 +//
 +
++import GeckoView
 +import UIKit
 +
 +/// Floating strip that offers the logins this app stored for the focused page.
@@ -1189,6 +1184,7 @@ index 0000000..6965e06
 +    private let stack = UIStackView()
 +    private let iconView = UIImageView(image: UIImage(named: "reynard.key") ?? UIImage(systemName: "key.fill"))
 +    private let closeButton = UIButton(type: .system)
++    private var logins: [LoginRecord] = []
 +
 +    var onSelect: ((LoginRecord) -> Void)?
 +    var onClose: (() -> Void)?
@@ -1257,7 +1253,8 @@ index 0000000..6965e06
 +            view.removeFromSuperview()
 +        }
 +
-+        for login in logins.prefix(3) {
++        self.logins = Array(logins.prefix(3))
++        for (index, login) in self.logins.enumerated() {
 +            let button = UIButton(type: .system)
 +            button.setTitle(login.username.isEmpty ? login.host : login.username, for: .normal)
 +            button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
@@ -1267,14 +1264,19 @@ index 0000000..6965e06
 +            button.layer.cornerRadius = 10
 +            button.layer.cornerCurve = .continuous
 +            button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-+            button.addAction(
-+                UIAction { [weak self] _ in self?.onSelect?(login) },
-+                for: .touchUpInside
-+            )
++            button.tag = index
++            button.addTarget(self, action: #selector(handleAccountTap(_:)), for: .touchUpInside)
 +            stack.addArrangedSubview(button)
 +        }
 +    }
 +
++    @objc private func handleAccountTap(_ sender: UIButton) {
++        guard logins.indices.contains(sender.tag) else {
++            return
++        }
++        onSelect?(logins[sender.tag])
++    }
++    
 +    @objc private func handleClose() {
 +        onClose?()
 +    }
@@ -1302,7 +1304,7 @@ index 0000000..6965e06
 +        NotificationCenter.default.addObserver(
 +            self,
 +            selector: #selector(handleFocusChange(_:)),
-+            name: GeckoAutofillHandler.focusDidChangeNotification,
++            name: GeckoSession.autofillFocusDidChangeNotification,
 +            object: nil
 +        )
 +        NotificationCenter.default.addObserver(
@@ -2087,7 +2089,7 @@ index 8a34fe9..836d805 100644
          }
          
 diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
-index b961265..b2625a0 100644
+index b961265..54d799f 100644
 --- a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
 +++ b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
 @@ -16,11 +16,19 @@ final class PromptPresenter: PromptPresenting {
@@ -2258,7 +2260,7 @@ index b961265..b2625a0 100644
                      textField.textContentType = .username
                      textField.autocapitalizationType = .none
                      textField.autocorrectionType = .no
-@@ -204,49 +274,181 @@ final class PromptPresenter: PromptPresenting {
+@@ -204,23 +274,181 @@ final class PromptPresenter: PromptPresenting {
              
              alert.addTextField { textField in
                  textField.placeholder = NSLocalizedString("Password", comment: "")
@@ -2281,9 +2283,6 @@ index b961265..b2625a0 100644
          }
      }
      
--    private func presentBeforeUnload(request: BeforeUnloadPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
--            return nil
 +    /// Account chooser shown when an origin has more than one saved login.
 +    private func presentAuthAccountPicker(
 +        logins: [LoginRecord],
@@ -2369,9 +2368,8 @@ index b961265..b2625a0 100644
 +        }
 +        guard !username.isEmpty || !password.isEmpty else {
 +            return false
-         }
-         
--        defer { beforeUnloadAlerts.removeValue(forKey: request.id) }
++        }
++        
 +        let existing = LoginStore.shared.logins(forOrigin: origin, kind: .http)
 +        if let match = existing.first(where: { $0.username == username }) {
 +            // Only offer when the stored password actually changed.
@@ -2385,34 +2383,26 @@ index b961265..b2625a0 100644
 +        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
 +            return false
 +        }
-         
++        
 +        let account = username.isEmpty ? host : "\(username) — \(host)"
-         return await withCheckedContinuation { continuation in
--            var allowed = false
++        return await withCheckedContinuation { continuation in
 +            var accepted = false
-             let alert = PromptAlertController(
--                title: NSLocalizedString("Leave Page?", comment: ""),
--                message: NSLocalizedString("Changes you made may not be saved.", comment: ""),
++            let alert = PromptAlertController(
 +                title: NSLocalizedString("Save Password?", comment: ""),
 +                message: String(format: NSLocalizedString("Save the password for %@?", comment: "Login save host"), account),
-                 preferredStyle: .alert
-             )
-             alert.onDismissed = {
--                continuation.resume(returning: .beforeUnload(allowed: allowed))
++                preferredStyle: .alert
++            )
++            alert.onDismissed = {
 +                continuation.resume(returning: accepted)
-             }
--            alert.addAction(UIAlertAction(title: NSLocalizedString("Stay", comment: ""), style: .cancel))
--            alert.addAction(UIAlertAction(title: NSLocalizedString("Leave", comment: ""), style: .destructive) { _ in
--                allowed = true
++            }
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Not Now", comment: ""), style: .cancel))
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Save", comment: ""), style: .default) { _ in
 +                accepted = true
-             })
--            beforeUnloadAlerts[request.id] = alert
-             presenter.present(alert, animated: true)
-         }
-     }
-     
++            })
++            presenter.present(alert, animated: true)
++        }
++    }
++    
 +    /// Handles Gecko's `Autocomplete:Save:Login` prompt emitted when a page
 +    /// submits a login form. Private browsing declines (nothing is persisted).
 +    private func presentLoginSave(
@@ -2451,13 +2441,22 @@ index b961265..b2625a0 100644
 +        return .loginSave(login)
 +    }
 +    
+     private func presentBeforeUnload(request: BeforeUnloadPromptRequest) async -> PromptResponse? {
+-        guard let presenter = UIApplication.shared.topViewController() else {
++        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+             return nil
+         }
+         
+@@ -246,7 +474,7 @@ final class PromptPresenter: PromptPresenting {
+     }
+     
      private func presentFolderUpload(request: FolderUploadPromptRequest) async -> PromptResponse? {
 -        guard let presenter = UIApplication.shared.topViewController() else {
 +        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
              return nil
          }
          
-@@ -372,7 +574,7 @@ final class PromptPresenter: PromptPresenting {
+@@ -372,7 +600,7 @@ final class PromptPresenter: PromptPresenting {
          session: GeckoSession,
          request: SharePromptRequest
      ) async -> PromptResponse? {
@@ -2466,7 +2465,7 @@ index b961265..b2625a0 100644
                let sourceView = session.engineView else {
              return nil
          }
-@@ -448,6 +650,13 @@ final class PromptPresenter: PromptPresenting {
+@@ -448,6 +676,13 @@ final class PromptPresenter: PromptPresenting {
      }
  }
  

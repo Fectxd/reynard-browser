@@ -3,6 +3,7 @@
 //  Reynard
 //
 
+import GeckoView
 import UIKit
 
 /// Floating strip that offers the logins this app stored for the focused page.
@@ -16,6 +17,7 @@ final class LoginAutofillBar: UIView {
     private let stack = UIStackView()
     private let iconView = UIImageView(image: UIImage(named: "reynard.key") ?? UIImage(systemName: "key.fill"))
     private let closeButton = UIButton(type: .system)
+    private var logins: [LoginRecord] = []
 
     var onSelect: ((LoginRecord) -> Void)?
     var onClose: (() -> Void)?
@@ -84,7 +86,8 @@ final class LoginAutofillBar: UIView {
             view.removeFromSuperview()
         }
 
-        for login in logins.prefix(3) {
+        self.logins = Array(logins.prefix(3))
+        for (index, login) in self.logins.enumerated() {
             let button = UIButton(type: .system)
             button.setTitle(login.username.isEmpty ? login.host : login.username, for: .normal)
             button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
@@ -94,14 +97,19 @@ final class LoginAutofillBar: UIView {
             button.layer.cornerRadius = 10
             button.layer.cornerCurve = .continuous
             button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-            button.addAction(
-                UIAction { [weak self] _ in self?.onSelect?(login) },
-                for: .touchUpInside
-            )
+            button.tag = index
+            button.addTarget(self, action: #selector(handleAccountTap(_:)), for: .touchUpInside)
             stack.addArrangedSubview(button)
         }
     }
 
+    @objc private func handleAccountTap(_ sender: UIButton) {
+        guard logins.indices.contains(sender.tag) else {
+            return
+        }
+        onSelect?(logins[sender.tag])
+    }
+    
     @objc private func handleClose() {
         onClose?()
     }
@@ -129,7 +137,7 @@ final class LoginAutofillPresenter {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleFocusChange(_:)),
-            name: GeckoAutofillHandler.focusDidChangeNotification,
+            name: GeckoSession.autofillFocusDidChangeNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(

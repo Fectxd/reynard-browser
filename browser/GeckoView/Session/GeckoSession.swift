@@ -250,6 +250,11 @@ public class GeckoSession {
     
     public func isOpen() -> Bool { window != nil }
     
+    /// Posted when the focused login field changes, so the app's own credential
+    /// bar can offer logins stored by the app rather than by iOS.
+    public static let autofillFocusDidChangeNotification =
+        Notification.Name("GeckoAutofillFocusDidChange")
+    
     /// Fills the focused login form with a credential the app stores itself.
     /// Used by the app's credential bar, which reads `LoginStore` directly.
     public func autofillLogin(username: String, password: String) {

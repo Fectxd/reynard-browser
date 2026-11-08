@@ -64,10 +64,6 @@ private struct CredentialForm {
 }
 
 final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-    /// Posted (on the main queue) whenever the login-field focus changes, so the
-    /// app's own credential bar can offer the logins it stores itself.
-    static let focusDidChangeNotification = Notification.Name("GeckoAutofillFocusDidChange")
-    
     let moduleName: String? = "GeckoViewAutofill"
     let events = CredentialEvent.allCases.map(\.rawValue)
     let enabled = true
@@ -301,7 +297,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
             return
         }
         NotificationCenter.default.post(
-            name: Self.focusDidChangeNotification,
+            name: GeckoSession.autofillFocusDidChangeNotification,
             object: session,
             userInfo: [
                 "origin": autofillOrigin() ?? "",
