@@ -7452,15 +7452,6 @@ index c23eb59..5e7f1d5 100644
      @discardableResult
      func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
          let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
-diff --git a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-dark.png b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-dark.png
-index 15677c8..7eaafdd 100644
-Binary files a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-dark.png and b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-dark.png differ
-diff --git a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-tint.png b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-tint.png
-index 15677c8..7eaafdd 100644
-Binary files a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-tint.png and b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon-tint.png differ
-diff --git a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png
-index 5fc5fc1..7eaafdd 100644
-Binary files a/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png and b/browser/Reynard/Resources/Assets.xcassets/AppIcon.appiconset/icon.png differ
 diff --git a/browser/Reynard/Resources/Info.plist b/browser/Reynard/Resources/Info.plist
 index 7af267b..bd44990 100644
 --- a/browser/Reynard/Resources/Info.plist
