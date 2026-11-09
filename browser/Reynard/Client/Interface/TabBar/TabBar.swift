@@ -27,7 +27,7 @@ final class TabBar: UIView {
         // cells give up this much room so the button never covers a cell.
         static let newTabButtonSideLength: CGFloat = 30
         static let newTabButtonTrailingInset: CGFloat = 6
-        static let newTabButtonGap: CGFloat = 4
+        static let newTabButtonGap: CGFloat = 0
         // Small gap before the first tab; it also gives the active tab's
         // bottom flare somewhere to curve into.
         static let tabCollectionLeadingInset: CGFloat = 8
@@ -116,7 +116,9 @@ final class TabBar: UIView {
         let width = tabAreaWidth
         if abs(width - lastTabAreaWidth) > 0.5 {
             lastTabAreaWidth = width
-            tabCollection.updateLayout()
+            // Rebuild the cells at the new width: reconfigure-only paths left
+            // stale chips behind, with the close button drawn outside them.
+            tabCollection.reloadTabs()
         }
     }
     

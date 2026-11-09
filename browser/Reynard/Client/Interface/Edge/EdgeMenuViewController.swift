@@ -55,7 +55,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
             case .home:
                 return "主页"
             case .newInPrivateTab:
-                return "新建 InPrivate 标签页"
+                return "新建无痕标签页"
             case .addToFavorites:
                 return "添加到收藏夹"
             case .requestDesktopWebsite:
@@ -153,18 +153,18 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         // as the same reduced scale: primary 26→20, secondary 22→20.
         static let primarySymbolPointSize: CGFloat = 20
         static let secondarySymbolPointSize: CGFloat = 20
-        static let gridItemSpacing: CGFloat = 6
+        static let gridItemSpacing: CGFloat = 4
         static let gridContentInset: CGFloat = 8
         // Generous vertical room so tile titles can wrap to up to three lines
         // (smaller font) without clipping or an ellipsis.
-        static let gridGroupHeight: CGFloat = 116
+        static let gridGroupHeight: CGFloat = 100
         // The primary (blue) row's titles are always short (one line), so its
         // tiles are shorter too: with the icons now the same size as the rest,
         // a 116pt primary tile left a large empty band above the divider.
-        static let primaryGroupHeight: CGFloat = 88
+        static let primaryGroupHeight: CGFloat = 76
         static let listRowHeight: CGFloat = 56
         /// Height of the paging affordance under the compact menu.
-        static let pageIndicatorHeight: CGFloat = 22
+        static let pageIndicatorHeight: CGFloat = 16
         static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
     }
 
