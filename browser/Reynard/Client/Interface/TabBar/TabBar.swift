@@ -346,12 +346,14 @@ final class TabBar: UIView {
     /// Width of the content area inside the collection, i.e. after the padding
     /// that leaves room for the outer bottom fillets.
     private var tabContentWidth: CGFloat {
-        return max(0, tabAreaWidth - TabBarCell.flareWidth)
+        return max(0, tabAreaWidth - TabBarCell.flareWidth * 2)
     }
     
     /// Width available to tabs once the "+" button and its insets are removed.
     private var tabAreaWidth: CGFloat {
-        let reserved = UX.tabCollectionLeadingInset
+        // Both edges reserve the fillet reach so the outermost chips can bulge
+        // outwards without being clipped by the strip.
+        let reserved = TabBarCell.flareWidth * 2
             + UX.newTabButtonGap
             + UX.newTabButtonSideLength
             + UX.newTabButtonTrailingInset
@@ -369,7 +371,7 @@ final class TabBar: UIView {
         // In scroll mode the strip takes the whole available width so the "+"
         // parks on the right edge instead of trailing the content.
         let total = isScrollable
-        ? tabAreaWidth + TabBarCell.flareWidth
+        ? tabAreaWidth
         : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabContentWidth)
             + TabBarCell.flareWidth * 2
         if abs(widthConstraint.constant - total) > 0.5 {

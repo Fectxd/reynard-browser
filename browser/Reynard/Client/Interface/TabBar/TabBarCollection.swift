@@ -127,6 +127,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
 final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     private enum UX {
         static let tabReorderMinimumPressDuration: TimeInterval = 0.35
+        /// How long the tab must be held before its menu appears.
+        static let tabMenuDelay: TimeInterval = 0.45
         static let tabReorderStartDelay: TimeInterval = 0.06
         static let tabReorderDirectionThreshold: CGFloat = 1
         static let tabReorderTargetHysteresis: CGFloat = 8
@@ -406,7 +408,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         // inside those bounds instead of cutting them off.
         contentInset = UIEdgeInsets(
             top: 0,
-            left: TabBarCell.flareWidth,
+            left: 0,
             bottom: 0,
             right: TabBarCell.flareWidth
         )
@@ -417,7 +419,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         layout.scrollDirection = .horizontal
         layout.minimumLineSpacing = 0
         layout.minimumInteritemSpacing = 0
-        layout.sectionInset = .zero
+        layout.sectionInset = UIEdgeInsets(
+            top: 0,
+            left: TabBarCell.flareWidth,
+            bottom: 0,
+            right: 0
+        )
     }
     
     private func configureCollection() {
@@ -432,6 +439,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     }
     
     private var pendingPressLocation: CGPoint?
+    private var menuWorkItem: DispatchWorkItem?
     private var pendingPressIndexPath: IndexPath?
     private var isReordering = false
     
@@ -448,11 +456,13 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         let location = gestureRecognizer.location(in: self)
         switch gestureRecognizer.state {
         case .began:
-            // Defer the drag until the finger actually moves, so a plain
-            // long press can open the tab menu instead.
+            // Shrink the tab so the hold is visible, then open the menu when the
+            // timer fires -- the user should not have to lift the finger.
             pendingPressLocation = location
             pendingPressIndexPath = indexPathForItem(at: location)
             isReordering = false
+            setPressed(true, at: pendingPressIndexPath)
+            scheduleMenu(at: pendingPressIndexPath)
         case .changed:
             if !isReordering {
                 guard let start = pendingPressLocation else {
@@ -462,22 +472,65 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
                 guard distance > 6 else {
                     return
                 }
+                cancelMenu()
+                setPressed(false)
                 isReordering = true
                 beginReordering(at: location)
             }
             updateReordering(at: location)
         case .ended:
+            cancelMenu()
+            setPressed(false)
             if isReordering {
                 finishReordering(cancelled: false)
-            } else if let indexPath = pendingPressIndexPath {
-                presentTabMenu(forItemAt: indexPath)
             }
             clearPendingPress()
         default:
+            cancelMenu()
+            setPressed(false)
             if isReordering {
                 finishReordering(cancelled: true)
             }
             clearPendingPress()
+        }
+    }
+    
+    private func scheduleMenu(at indexPath: IndexPath?) {
+        menuWorkItem?.cancel()
+        guard let indexPath else {
+            return
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, !self.isReordering else {
+                return
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            self.setPressed(false)
+            self.presentTabMenu(forItemAt: indexPath)
+            self.pendingPressIndexPath = nil
+        }
+        menuWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + UX.tabMenuDelay, execute: workItem)
+    }
+    
+    private func cancelMenu() {
+        menuWorkItem?.cancel()
+        menuWorkItem = nil
+    }
+    
+    private func setPressed(_ pressed: Bool, at indexPath: IndexPath?) {
+        if pressed, let indexPath, let cell = cellForItem(at: indexPath) {
+            UIView.animate(withDuration: 0.12) {
+                cell.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                cell.alpha = 0.85
+            }
+            return
+        }
+        UIView.animate(withDuration: 0.12) {
+            for case let cell as TabBarCell in self.visibleCells {
+                cell.transform = .identity
+                cell.alpha = 1
+            }
         }
     }
     

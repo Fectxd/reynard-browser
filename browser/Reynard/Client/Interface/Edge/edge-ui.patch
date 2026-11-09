@@ -5564,7 +5564,7 @@ index f61a3ee..724ab13 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..97a7a5c 100644
+index 7f65843..e0e97f8 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 @@ -14,13 +14,25 @@ protocol TabBarDataSource: AnyObject {
@@ -5725,7 +5725,7 @@ index 7f65843..97a7a5c 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +287,109 @@ final class TabBar: UIView {
+@@ -250,29 +287,111 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -5790,12 +5790,14 @@ index 7f65843..97a7a5c 100644
 +    /// Width of the content area inside the collection, i.e. after the padding
 +    /// that leaves room for the outer bottom fillets.
 +    private var tabContentWidth: CGFloat {
-+        return max(0, tabAreaWidth - TabBarCell.flareWidth)
++        return max(0, tabAreaWidth - TabBarCell.flareWidth * 2)
 +    }
 +    
 +    /// Width available to tabs once the "+" button and its insets are removed.
 +    private var tabAreaWidth: CGFloat {
-+        let reserved = UX.tabCollectionLeadingInset
++        // Both edges reserve the fillet reach so the outermost chips can bulge
++        // outwards without being clipped by the strip.
++        let reserved = TabBarCell.flareWidth * 2
 +            + UX.newTabButtonGap
 +            + UX.newTabButtonSideLength
 +            + UX.newTabButtonTrailingInset
@@ -5813,7 +5815,7 @@ index 7f65843..97a7a5c 100644
 +        // In scroll mode the strip takes the whole available width so the "+"
 +        // parks on the right edge instead of trailing the content.
 +        let total = isScrollable
-+        ? tabAreaWidth + TabBarCell.flareWidth
++        ? tabAreaWidth
 +        : min(TabBarCell.expandedMinimumWidth * CGFloat(tabCount), tabContentWidth)
 +            + TabBarCell.flareWidth * 2
 +        if abs(widthConstraint.constant - total) > 0.5 {
@@ -5837,7 +5839,7 @@ index 7f65843..97a7a5c 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +430,74 @@ final class TabBar: UIView {
+@@ -313,11 +432,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -6243,10 +6245,19 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..f642bd8 100644
+index 6da82ce..3f9e2e8 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-@@ -140,6 +140,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -127,6 +127,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+     private enum UX {
+         static let tabReorderMinimumPressDuration: TimeInterval = 0.35
++        /// How long the tab must be held before its menu appears.
++        static let tabMenuDelay: TimeInterval = 0.45
+         static let tabReorderStartDelay: TimeInterval = 0.06
+         static let tabReorderDirectionThreshold: CGFloat = 1
+         static let tabReorderTargetHysteresis: CGFloat = 8
+@@ -140,6 +142,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private weak var tabBar: TabBar?
@@ -6257,7 +6268,7 @@ index 6da82ce..f642bd8 100644
      private let layout: TabBarCollectionLayout
      private var lastLayoutWidth: CGFloat = 0
      private var isUpdatingTabs = false
-@@ -194,6 +198,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -194,6 +200,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          guard !isUpdatingTabs else {
              return
          }
@@ -6267,7 +6278,7 @@ index 6da82ce..f642bd8 100644
          updateScrollability()
          refreshVisibleTabs()
          revealSelectedTab()
-@@ -246,29 +253,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -246,29 +255,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
          isUpdatingTabs = true
@@ -6323,7 +6334,7 @@ index 6da82ce..f642bd8 100644
          }
      }
      
-@@ -313,40 +324,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -313,40 +326,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private func updateScrollability() {
@@ -6388,7 +6399,7 @@ index 6da82ce..f642bd8 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -395,8 +397,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -395,8 +399,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
@@ -6402,34 +6413,51 @@ index 6da82ce..f642bd8 100644
 +        // inside those bounds instead of cutting them off.
 +        contentInset = UIEdgeInsets(
 +            top: 0,
-+            left: TabBarCell.flareWidth,
++            left: 0,
 +            bottom: 0,
 +            right: TabBarCell.flareWidth
 +        )
          contentInsetAdjustmentBehavior = .never
      }
      
-@@ -418,6 +431,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -404,7 +419,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         layout.scrollDirection = .horizontal
+         layout.minimumLineSpacing = 0
+         layout.minimumInteritemSpacing = 0
+-        layout.sectionInset = .zero
++        layout.sectionInset = UIEdgeInsets(
++            top: 0,
++            left: TabBarCell.flareWidth,
++            bottom: 0,
++            right: 0
++        )
+     }
+     
+     private func configureCollection() {
+@@ -418,6 +438,11 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          )
      }
      
 +    private var pendingPressLocation: CGPoint?
++    private var menuWorkItem: DispatchWorkItem?
 +    private var pendingPressIndexPath: IndexPath?
 +    private var isReordering = false
 +    
      private func configureGestures() {
          let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
          longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -431,13 +448,97 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -431,13 +456,142 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          let location = gestureRecognizer.location(in: self)
          switch gestureRecognizer.state {
          case .began:
 -            beginReordering(at: location)
-+            // Defer the drag until the finger actually moves, so a plain
-+            // long press can open the tab menu instead.
++            // Shrink the tab so the hold is visible, then open the menu when the
++            // timer fires -- the user should not have to lift the finger.
 +            pendingPressLocation = location
 +            pendingPressIndexPath = indexPathForItem(at: location)
 +            isReordering = false
++            setPressed(true, at: pendingPressIndexPath)
++            scheduleMenu(at: pendingPressIndexPath)
          case .changed:
 +            if !isReordering {
 +                guard let start = pendingPressLocation else {
@@ -6439,24 +6467,67 @@ index 6da82ce..f642bd8 100644
 +                guard distance > 6 else {
 +                    return
 +                }
++                cancelMenu()
++                setPressed(false)
 +                isReordering = true
 +                beginReordering(at: location)
 +            }
              updateReordering(at: location)
          case .ended:
 -            finishReordering(cancelled: false)
++            cancelMenu()
++            setPressed(false)
 +            if isReordering {
 +                finishReordering(cancelled: false)
-+            } else if let indexPath = pendingPressIndexPath {
-+                presentTabMenu(forItemAt: indexPath)
 +            }
 +            clearPendingPress()
          default:
 -            finishReordering(cancelled: true)
++            cancelMenu()
++            setPressed(false)
 +            if isReordering {
 +                finishReordering(cancelled: true)
 +            }
 +            clearPendingPress()
++        }
++    }
++    
++    private func scheduleMenu(at indexPath: IndexPath?) {
++        menuWorkItem?.cancel()
++        guard let indexPath else {
++            return
++        }
++        let workItem = DispatchWorkItem { [weak self] in
++            guard let self, !self.isReordering else {
++                return
++            }
++            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
++            self.setPressed(false)
++            self.presentTabMenu(forItemAt: indexPath)
++            self.pendingPressIndexPath = nil
++        }
++        menuWorkItem = workItem
++        DispatchQueue.main.asyncAfter(deadline: .now() + UX.tabMenuDelay, execute: workItem)
++    }
++    
++    private func cancelMenu() {
++        menuWorkItem?.cancel()
++        menuWorkItem = nil
++    }
++    
++    private func setPressed(_ pressed: Bool, at indexPath: IndexPath?) {
++        if pressed, let indexPath, let cell = cellForItem(at: indexPath) {
++            UIView.animate(withDuration: 0.12) {
++                cell.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
++                cell.alpha = 0.85
++            }
++            return
++        }
++        UIView.animate(withDuration: 0.12) {
++            for case let cell as TabBarCell in self.visibleCells {
++                cell.transform = .identity
++                cell.alpha = 1
++            }
 +        }
 +    }
 +    
