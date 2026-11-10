@@ -58,6 +58,7 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
     
     private var cachedAttributes: [IndexPath: UICollectionViewLayoutAttributes] = [:]
     private var contentSize: CGSize = .zero
+    private var itemCount = 0
     private var appearingIndexPaths = Set<IndexPath>()
     private var disappearingAttributes: [IndexPath: UICollectionViewLayoutAttributes] = [:]
     
@@ -77,6 +78,7 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
         }
         
         let itemCount = collectionView.numberOfItems(inSection: 0)
+        self.itemCount = itemCount
         let rowCount = Int(ceil(CGFloat(itemCount) / CGFloat(metrics.columnCount)))
         contentSize = CGSize(
             width: collectionView.bounds.width,
@@ -151,7 +153,11 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
     private func frame(forItemAt item: Int, metrics: FavoritesLayoutMetrics) -> CGRect {
         let row = item / metrics.columnCount
         let column = item % metrics.columnCount
-        let x = metrics.horizontalInset + CGFloat(column) * (metrics.itemSize.width + metrics.interitemSpacing)
+        let itemsInRow = min(metrics.columnCount, max(itemCount - (row * metrics.columnCount), 1))
+        let rowWidth = (CGFloat(itemsInRow) * metrics.itemSize.width)
+            + (CGFloat(max(itemsInRow - 1, 0)) * metrics.interitemSpacing)
+        let rowInset = max((contentSize.width - rowWidth) / 2, metrics.horizontalInset)
+        let x = rowInset + CGFloat(column) * (metrics.itemSize.width + metrics.interitemSpacing)
         let y = FavoritesLayoutMetrics.shadowPadding + CGFloat(row) * (metrics.itemSize.height + metrics.lineSpacing)
         return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
     }

@@ -448,6 +448,13 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
         delegate?.endHomepageEditing()
     }
     
+    func homepageViewControllerDidRequestAddressBarFocus(_ controller: HomepageViewController) {
+        overlayCoordinator.clearAddressBarScrollDismissal(for: .homepage)
+        delegate?.updateHomepageLayout(animated: true, duration: UX.layoutAnimationDuration)
+        delegate?.homepageChrome.focusAddressBarFirstResponder()
+        delegate?.endHomepageEditing()
+    }
+    
     func homepageViewControllerDidStartScrolling() {
         guard overlayCoordinator.beginAddressBarScrollDismissal(for: .homepage) else {
             return

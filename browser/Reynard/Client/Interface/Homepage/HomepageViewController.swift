@@ -17,6 +17,7 @@ protocol HomepageViewControllerDelegate: AnyObject {
     func homepageViewController(_ controller: HomepageViewController, didRequestHideFromSuggestions siteID: Int64)
     func homepageViewController(_ controller: HomepageViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageViewControllerDidSelectSettings(_ controller: HomepageViewController)
+    func homepageViewControllerDidRequestAddressBarFocus(_ controller: HomepageViewController)
     func homepageViewControllerDidStartScrolling()
 }
 
@@ -178,6 +179,10 @@ extension HomepageViewController: HomepageRootViewControllerDelegate {
     
     func homepageRootViewControllerDidSelectSettings(_ controller: HomepageRootViewController) {
         homepageDelegate?.homepageViewControllerDidSelectSettings(self)
+    }
+    
+    func homepageRootViewControllerDidRequestAddressBarFocus(_ controller: HomepageRootViewController) {
+        homepageDelegate?.homepageViewControllerDidRequestAddressBarFocus(self)
     }
     
     func homepageRootViewControllerDidSelectFolder(_ folder: BookmarkFolderSnapshot) {

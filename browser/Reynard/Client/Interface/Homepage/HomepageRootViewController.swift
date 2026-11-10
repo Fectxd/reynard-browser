@@ -18,6 +18,7 @@ protocol HomepageRootViewControllerDelegate: AnyObject {
     func homepageRootViewController(_ controller: HomepageRootViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageRootViewControllerDidSelectFolder(_ folder: BookmarkFolderSnapshot)
     func homepageRootViewControllerDidSelectSettings(_ controller: HomepageRootViewController)
+    func homepageRootViewControllerDidRequestAddressBarFocus(_ controller: HomepageRootViewController)
     func homepageRootViewControllerDidStartScrolling()
 }
 
@@ -26,14 +27,56 @@ protocol HomepageRecommendationViewController: UIViewController {
     func setPrivateBrowsing(_ isPrivateBrowsing: Bool)
 }
 
+final class HomepagePanelScrollView: UIScrollView {
+    let stackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.alignment = .fill
+        stackView.distribution = .fill
+        return stackView
+    }()
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        backgroundColor = .clear
+        alwaysBounceVertical = false
+        showsVerticalScrollIndicator = false
+        contentInsetAdjustmentBehavior = .never
+        addSubview(stackView)
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: contentLayoutGuide.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor),
+            stackView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor),
+        ])
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func removeAllPanelContent() {
+        for subview in stackView.arrangedSubviews {
+            stackView.removeArrangedSubview(subview)
+            subview.removeFromSuperview()
+        }
+    }
+}
+
 final class HomepageRootViewController: UIViewController {
     private enum UX {
-        static let topInset: CGFloat = 48
-        static let folderTopInset: CGFloat = 20
         static let horizontalInset: CGFloat = 16
-        static let bottomInset: CGFloat = 24
-        static let embeddedMaximumWidth: CGFloat = 800
-        static let detachedMaximumWidth: CGFloat = 700
+        static let maximumContentWidth: CGFloat = 800
+        static let headerTopInset: CGFloat = 8
+        static let headerSpacing: CGFloat = 10
+        static let bottomInset: CGFloat = 14
+        static let embeddedTopReserve: CGFloat = 48
+        static let detachedTopReserve: CGFloat = 20
+        static let panelOverflowTolerance: CGFloat = 4
+        static let weatherRefreshInterval: TimeInterval = 60
     }
     
     weak var delegate: HomepageRootViewControllerDelegate?
@@ -45,7 +88,13 @@ final class HomepageRootViewController: UIViewController {
     private var contentMode: HomepageContentMode = .embeddedNarrow
     private var visibleContentInsets: UIEdgeInsets = .zero
     private var sectionViewControllers: [HomepageSection: UIViewController] = [:]
-    private var sectionStackWidthConstraint: NSLayoutConstraint?
+    private var panelScrollViews: [HomepagePanelScrollView] = []
+    private var panelTitles: [String] = []
+    private var currentPageIndex = 0
+    private var weatherSnapshot: HomepageWeatherSnapshot?
+    private var weatherLoadDate = Date.distantPast
+    private var hasRequestedFeed = false
+    private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
     
     private let wallpaperImageView: UIImageView = {
         let imageView = UIImageView()
@@ -55,24 +104,87 @@ final class HomepageRootViewController: UIViewController {
         return imageView
     }()
     
-    private let scrollView: UIScrollView = {
+    private let headerContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let headerStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.alignment = .fill
+        stackView.spacing = UX.headerSpacing
+        return stackView
+    }()
+    
+    private lazy var weatherChipView: HomepageWeatherChipView = {
+        let chip = HomepageWeatherChipView(frame: .zero)
+        chip.addTarget(self, action: #selector(handleWeatherChipTap), for: .touchUpInside)
+        return chip
+    }()
+    
+    private let headerSpacerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private lazy var settingsButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = EdgeHomepagePalette.secondaryText
+        button.setImage(UIImage(
+            systemName: "gearshape",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)
+        ), for: .normal)
+        button.addTarget(self, action: #selector(handleSettingsTap), for: .touchUpInside)
+        return button
+    }()
+    
+    private lazy var searchFieldView: HomepageSearchFieldView = {
+        let field = HomepageSearchFieldView(frame: .zero)
+        field.addTarget(self, action: #selector(handleSearchFieldTap), for: .touchUpInside)
+        return field
+    }()
+    
+    private let pagerScrollView: UIScrollView = {
         let scrollView = UIScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.alwaysBounceVertical = true
         scrollView.backgroundColor = .clear
-        scrollView.keyboardDismissMode = .none
+        scrollView.isPagingEnabled = true
         scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.keyboardDismissMode = .none
         return scrollView
     }()
     
-    private let sectionStackView: UIStackView = {
+    private let pagesStackView: UIStackView = {
         let stackView = UIStackView()
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .vertical
         stackView.alignment = .fill
         stackView.distribution = .fill
+        stackView.spacing = 0
         return stackView
     }()
+    
+    private lazy var panelRailView: HomepagePanelRailView = {
+        let view = HomepagePanelRailView(frame: .zero)
+        return view
+    }()
+    
+    private lazy var hintView: HomepagePanelHintView = {
+        let view = HomepagePanelHintView(frame: .zero)
+        return view
+    }()
+    
+    private var headerTopConstraint: NSLayoutConstraint?
+    private var pagesWidthConstraint: NSLayoutConstraint?
+    private var hintBottomConstraint: NSLayoutConstraint?
     
     // MARK: - Lifecycle
     
@@ -101,20 +213,34 @@ final class HomepageRootViewController: UIViewController {
         super.viewDidLoad()
         title = folder?.title
         observeHomepageSettings()
-        configureScrollView()
+        configureAppearance()
         configureHierarchy()
         configureConstraints()
-        configureSections()
+        headerContainerView.isHidden = folder != nil
+        pagerScrollView.delegate = self
+        rebuildPanels()
+        reloadWeather(force: false)
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        reloadWeather(force: true)
+        showHintForCurrentPage()
     }
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        updateSectionStackWidth()
+        updatePanelScrollability()
     }
     
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
-        updateScrollInsets()
+        updateInsets()
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        updateBackground()
     }
     
     // MARK: - Public API
@@ -133,10 +259,9 @@ final class HomepageRootViewController: UIViewController {
         frequentlyVisitedSectionViewController?.setContentMode(contentMode)
         recentlyClosedTabsSectionViewController?.setContentMode(contentMode)
         if isViewLoaded {
-            updateWallpaper()
-            updateScrollInsets()
+            updateBackground()
+            updateInsets()
         }
-        updateSectionStackWidth()
     }
     
     func setPrivateBrowsing(_ isPrivateBrowsing: Bool) {
@@ -150,7 +275,7 @@ final class HomepageRootViewController: UIViewController {
         }
         
         if folder == nil {
-            reloadSections()
+            rebuildPanels()
             return
         }
         
@@ -169,46 +294,65 @@ final class HomepageRootViewController: UIViewController {
         guard isViewLoaded else {
             return
         }
-        updateScrollInsets()
+        updateInsets()
     }
     
     // MARK: - Configuration
     
-    private func configureScrollView() {
-        scrollView.delegate = self
-        scrollView.contentInsetAdjustmentBehavior = .never
-        updateScrollInsets()
-    }
-    
-    private func updateScrollInsets() {
-        let isAtTop = scrollView.contentOffset.y <= -scrollView.contentInset.top
-        let effectiveVisibleContentInsets = contentMode.isDetached ? .zero : visibleContentInsets
-        let topInset = folder == nil
-        ? effectiveVisibleContentInsets.top + UX.topInset
-        : max(effectiveVisibleContentInsets.top, view.safeAreaInsets.top) + UX.folderTopInset
-        let contentInset = UIEdgeInsets(
-            top: topInset,
-            left: 0,
-            bottom: effectiveVisibleContentInsets.bottom + UX.bottomInset,
-            right: 0
-        )
-        scrollView.contentInset = contentInset
-        scrollView.scrollIndicatorInsets = contentInset
-        if isAtTop {
-            scrollView.contentOffset.y = -contentInset.top
-        }
+    private func configureAppearance() {
+        view.backgroundColor = EdgeHomepagePalette.background
+        updateBackground()
     }
     
     private func configureHierarchy() {
         view.addSubview(wallpaperImageView)
-        view.addSubview(scrollView)
-        scrollView.addSubview(sectionStackView)
-        updateWallpaper()
+        view.addSubview(pagerScrollView)
+        pagerScrollView.addSubview(pagesStackView)
+        view.addSubview(headerContainerView)
+        headerContainerView.addSubview(headerStackView)
+        view.addSubview(panelRailView)
+        view.addSubview(hintView)
+        
+        let headerRow = UIStackView(arrangedSubviews: [weatherChipView, headerSpacerView, settingsButton])
+        headerRow.translatesAutoresizingMaskIntoConstraints = false
+        headerRow.axis = .horizontal
+        headerRow.alignment = .center
+        headerRow.spacing = 8
+        
+        headerStackView.addArrangedSubview(headerRow)
+        headerStackView.addArrangedSubview(searchFieldView)
+        
+        NSLayoutConstraint.activate([
+            settingsButton.widthAnchor.constraint(equalToConstant: 30),
+            settingsButton.heightAnchor.constraint(equalToConstant: 30),
+        ])
+        
     }
     
     private func configureConstraints() {
-        let widthConstraint = sectionStackView.widthAnchor.constraint(equalToConstant: 1)
-        sectionStackWidthConstraint = widthConstraint
+        let headerTop = headerContainerView.topAnchor.constraint(equalTo: view.topAnchor, constant: UX.headerTopInset)
+        headerTopConstraint = headerTop
+        
+        let headerWidth = headerContainerView.widthAnchor.constraint(
+            equalTo: view.widthAnchor,
+            constant: -UX.horizontalInset * 2
+        )
+        headerWidth.priority = .defaultHigh
+        
+        let pagesWidth = pagesStackView.widthAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.widthAnchor)
+        pagesWidth.priority = .defaultHigh
+        pagesWidthConstraint = pagesWidth
+        
+        let hintBottom = hintView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.bottomInset)
+        hintBottomConstraint = hintBottom
+        
+        let pagerTop = pagerScrollView.topAnchor.constraint(
+            equalTo: headerContainerView.bottomAnchor,
+            constant: UX.headerSpacing
+        )
+        let folderPagerTop = pagerScrollView.topAnchor.constraint(equalTo: view.topAnchor)
+        pagerTop.isActive = folder == nil
+        folderPagerTop.isActive = folder != nil
         
         NSLayoutConstraint.activate([
             wallpaperImageView.topAnchor.constraint(equalTo: view.topAnchor),
@@ -216,40 +360,168 @@ final class HomepageRootViewController: UIViewController {
             wallpaperImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             wallpaperImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             
-            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scrollView.contentLayoutGuide.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor),
+            headerTop,
+            headerContainerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            headerContainerView.widthAnchor.constraint(lessThanOrEqualToConstant: UX.maximumContentWidth),
+            headerWidth,
             
-            sectionStackView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            sectionStackView.centerXAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerXAnchor),
-            sectionStackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            widthConstraint,
+            headerStackView.topAnchor.constraint(equalTo: headerContainerView.topAnchor),
+            headerStackView.bottomAnchor.constraint(equalTo: headerContainerView.bottomAnchor),
+            headerStackView.leadingAnchor.constraint(equalTo: headerContainerView.leadingAnchor),
+            headerStackView.trailingAnchor.constraint(equalTo: headerContainerView.trailingAnchor),
+            
+            pagerScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            pagerScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pagerScrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            pagesStackView.topAnchor.constraint(equalTo: pagerScrollView.contentLayoutGuide.topAnchor),
+            pagesStackView.bottomAnchor.constraint(equalTo: pagerScrollView.contentLayoutGuide.bottomAnchor),
+            pagesStackView.centerXAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.centerXAnchor),
+            pagesStackView.widthAnchor.constraint(lessThanOrEqualToConstant: UX.maximumContentWidth),
+            pagesWidth,
+            
+            panelRailView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            panelRailView.centerYAnchor.constraint(equalTo: pagerScrollView.centerYAnchor),
+            
+            hintView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            hintBottom,
         ])
     }
     
-    private func configureSections() {
-        displayedSections.forEach { section in
-            let viewController = makeSectionViewController(for: section)
-            addChild(viewController)
-            viewController.view.translatesAutoresizingMaskIntoConstraints = false
-            sectionStackView.addArrangedSubview(viewController.view)
-            viewController.didMove(toParent: self)
-            sectionViewControllers[section] = viewController
+    // MARK: - Panels
+    
+    private func rebuildPanels() {
+        if let feedViewController = feedPanelViewController {
+            feedViewController.willMove(toParent: nil)
+            feedViewController.view.removeFromSuperview()
+            feedViewController.removeFromParent()
+            feedPanelViewController = nil
         }
+        
+        let shouldReloadFeed = hasRequestedFeed
+        hasRequestedFeed = false
+        
+        for view in pagesStackView.arrangedSubviews {
+            pagesStackView.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        
+        panelScrollViews = []
+        panelTitles = []
+        currentPageIndex = 0
+        pagerScrollView.setContentOffset(.zero, animated: false)
+        
+        let panels = panelDefinitions()
+        for definition in panels {
+            let panel = HomepagePanelScrollView(frame: .zero)
+            pagesStackView.addArrangedSubview(panel)
+            panelScrollViews.append(panel)
+            panelTitles.append(definition.title)
+            
+            NSLayoutConstraint.activate([
+                panel.heightAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.heightAnchor),
+            ])
+            
+            if definition.isFeed {
+                let feedViewController = HomepageFeedPanelViewController()
+                feedViewController.delegate = self
+                addChild(feedViewController)
+                feedViewController.view.translatesAutoresizingMaskIntoConstraints = false
+                panel.stackView.addArrangedSubview(feedViewController.view)
+                feedViewController.didMove(toParent: self)
+                feedPanelViewController = feedViewController
+                continue
+            }
+            
+            for section in definition.sections {
+                guard let viewController = sectionViewController(for: section) else {
+                    continue
+                }
+                panel.stackView.addArrangedSubview(viewController.view)
+            }
+        }
+        
+        if shouldReloadFeed, let feedViewController = feedPanelViewController {
+            hasRequestedFeed = true
+            feedViewController.reload()
+        }
+        
+        panelRailView.configure(pageCount: panelScrollViews.count)
+        updateInsets()
+        updateHintForOffset()
     }
     
-    private func reloadSections() {
-        sectionViewControllers.values.forEach { viewController in
-            viewController.willMove(toParent: nil)
-            sectionStackView.removeArrangedSubview(viewController.view)
-            viewController.view.removeFromSuperview()
-            viewController.removeFromParent()
+    private struct PanelDefinition {
+        let title: String
+        let sections: [HomepageSection]
+        let isFeed: Bool
+    }
+    
+    private func panelDefinitions() -> [PanelDefinition] {
+        if folder != nil {
+            return [PanelDefinition(title: NSLocalizedString("Favorites", comment: ""), sections: sections, isFeed: false)]
         }
-        sectionViewControllers.removeAll(keepingCapacity: true)
-        configureSections()
-        updateSectionStackWidth()
+        
+        var primarySections: [HomepageSection] = []
+        var frequentlyVisitedSections: [HomepageSection] = []
+        var recentlyClosedSections: [HomepageSection] = []
+        
+        for section in displayedSections {
+            switch section {
+            case .recommendation, .privateBrowsing, .favorites:
+                primarySections.append(section)
+            case .frequentlyVisited:
+                frequentlyVisitedSections.append(section)
+            case .recentlyClosedTabs:
+                recentlyClosedSections.append(section)
+            }
+        }
+        
+        var definitions: [PanelDefinition] = []
+        definitions.append(PanelDefinition(
+            title: NSLocalizedString("Favorites", comment: ""),
+            sections: primarySections,
+            isFeed: false
+        ))
+        
+        if !frequentlyVisitedSections.isEmpty {
+            definitions.append(PanelDefinition(
+                title: NSLocalizedString("Frequently Visited", comment: ""),
+                sections: frequentlyVisitedSections,
+                isFeed: false
+            ))
+        }
+        
+        if !recentlyClosedSections.isEmpty {
+            definitions.append(PanelDefinition(
+                title: NSLocalizedString("Recently Closed Tabs", comment: ""),
+                sections: recentlyClosedSections,
+                isFeed: false
+            ))
+        }
+        
+        definitions.append(PanelDefinition(
+            title: NSLocalizedString("Feed", comment: "Homepage information panel title"),
+            sections: [],
+            isFeed: true
+        ))
+        
+        return definitions
+    }
+    
+    private var feedPanelViewController: HomepageFeedPanelViewController?
+    
+    private func sectionViewController(for section: HomepageSection) -> UIViewController? {
+        if let existing = sectionViewControllers[section] {
+            return existing
+        }
+        
+        let viewController = makeSectionViewController(for: section)
+        addChild(viewController)
+        viewController.view.translatesAutoresizingMaskIntoConstraints = false
+        viewController.didMove(toParent: self)
+        sectionViewControllers[section] = viewController
+        return viewController
     }
     
     private func makeSectionViewController(for section: HomepageSection) -> UIViewController {
@@ -307,52 +579,174 @@ final class HomepageRootViewController: UIViewController {
     
     // MARK: - Layout
     
-    private func updateSectionStackWidth() {
-        let width = scrollView.bounds.width - (UX.horizontalInset * 2)
-        guard width > 0 else {
+    private func updateBackground() {
+        let showsWallpaper = folder == nil
+        && Prefs.HomepageSettings.showsWallpaper
+        && !contentMode.isDetached
+        && HomepageWallpaper.image != nil
+        
+        if showsWallpaper {
+            wallpaperImageView.image = HomepageWallpaper.image
+            wallpaperImageView.isHidden = false
+            view.backgroundColor = .clear
+        } else {
+            wallpaperImageView.image = nil
+            wallpaperImageView.isHidden = true
+            view.backgroundColor = EdgeHomepagePalette.background
+        }
+    }
+    
+    private func updateInsets() {
+        let topReserve = contentMode.isDetached ? UX.detachedTopReserve : UX.embeddedTopReserve
+        headerTopConstraint?.constant = max(visibleContentInsets.top, 0) + topReserve + UX.headerTopInset
+        hintBottomConstraint?.constant = -(visibleContentInsets.bottom + UX.bottomInset)
+        
+        for panel in panelScrollViews {
+            panel.contentInset = UIEdgeInsets(
+                top: 0,
+                left: 0,
+                bottom: visibleContentInsets.bottom + UX.bottomInset,
+                right: 0
+            )
+        }
+    }
+    
+    private func updatePanelScrollability() {
+        guard pagerScrollView.bounds.height > 0 else {
             return
         }
         
-        let maximumWidth = contentMode.isDetached ? UX.detachedMaximumWidth : UX.embeddedMaximumWidth
-        sectionStackWidthConstraint?.constant = min(width, maximumWidth)
+        for panel in panelScrollViews {
+            let availableHeight = pagerScrollView.bounds.height
+            let contentHeight = panel.contentSize.height - panel.contentInset.bottom
+            panel.isScrollEnabled = contentHeight > availableHeight + UX.panelOverflowTolerance
+        }
     }
     
-    private func updateWallpaper() {
-        guard Prefs.HomepageSettings.showsWallpaper,
-              !contentMode.isDetached else {
-            wallpaperImageView.image = nil
+    private func updateHintForOffset() {
+        guard !panelTitles.isEmpty else {
+            hintView.hide()
             return
         }
-        wallpaperImageView.image = HomepageWallpaper.image
-    }
-    
-    // MARK: - Helpers
-    
-    private var recommendationViewControllers: [HomepageRecommendationViewController] {
-        return sectionViewControllers.compactMap { section, viewController in
-            guard case .recommendation = section else {
-                return nil
-            }
-            
-            return viewController as? HomepageRecommendationViewController
+        
+        let pageHeight = pagerScrollView.bounds.height
+        guard pageHeight > 0 else {
+            return
+        }
+        
+        let progress = pagerScrollView.contentOffset.y / pageHeight
+        panelRailView.update(progress: progress)
+        currentPageIndex = min(max(Int(progress.rounded()), 0), panelTitles.count - 1)
+        
+        let index = currentPageIndex
+        var hint: String?
+        if index + 1 < panelTitles.count {
+            hint = String(
+                format: NSLocalizedString("Swipe up for %@", comment: "Homepage panel swipe hint"),
+                panelTitles[index + 1]
+            )
+        } else if index > 0 {
+            hint = String(
+                format: NSLocalizedString("Swipe down for %@", comment: "Homepage panel swipe hint"),
+                panelTitles[index - 1]
+            )
+        }
+        
+        if let hint = hint, panelTitles.count > 1 {
+            hintView.show(hint)
+        } else {
+            hintView.hide()
         }
     }
     
-    private var privateBrowsingSectionViewController: PrivateBrowsingSectionViewController? {
-        return sectionViewControllers[.privateBrowsing] as? PrivateBrowsingSectionViewController
+    private func showHintForCurrentPage() {
+        guard isViewLoaded, panelTitles.count > 1 else {
+            return
+        }
+        
+        updateHintForOffset()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.hintView.hide()
+        }
     }
     
-    private var favoritesSectionViewController: FavoritesSectionViewController? {
-        return sectionViewControllers[.favorites] as? FavoritesSectionViewController
+    // MARK: - Weather
+    
+    private func reloadWeather(force: Bool) {
+        guard folder == nil else {
+            return
+        }
+        
+        if !force, Date().timeIntervalSince(weatherLoadDate) < UX.weatherRefreshInterval {
+            return
+        }
+        
+        if force, Date().timeIntervalSince(weatherLoadDate) < 5 {
+            return
+        }
+        
+        weatherLoadDate = Date()
+        weatherChipView.setLoading(true)
+        HomepageWeatherService.shared.load { [weak self] snapshot in
+            guard let self = self else {
+                return
+            }
+            
+            self.weatherChipView.setLoading(false)
+            guard let snapshot = snapshot else {
+                return
+            }
+            
+            self.weatherSnapshot = snapshot
+            self.weatherChipView.update(with: snapshot)
+            self.weatherDetailViewController?.update(with: snapshot)
+        }
     }
     
-    private var frequentlyVisitedSectionViewController: FrequentlyVisitedSectionViewController? {
-        return sectionViewControllers[.frequentlyVisited] as? FrequentlyVisitedSectionViewController
+    @objc private func handleWeatherChipTap() {
+        let viewController = HomepageWeatherDetailViewController(snapshot: weatherSnapshot)
+        viewController.onRequestRefresh = { [weak self] in
+            guard let self = self else {
+                return
+            }
+            self.reloadWeather(force: true)
+        }
+        weatherDetailViewController = viewController
+        present(viewController, animated: true)
+        
+        if weatherSnapshot == nil {
+            viewController.setRefreshing(true)
+        }
+        reloadWeather(force: true)
     }
     
-    private var recentlyClosedTabsSectionViewController: RecentlyClosedTabsSectionViewController? {
-        return sectionViewControllers[.recentlyClosedTabs] as? RecentlyClosedTabsSectionViewController
+    // MARK: - Actions
+    
+    @objc private func handleSearchFieldTap() {
+        delegate?.homepageRootViewControllerDidRequestAddressBarFocus(self)
     }
+    
+    @objc private func handleSettingsTap() {
+        presentHomepageSettings()
+    }
+        
+    private func presentHomepageSettings() {
+        let viewController = HomepagePreferencesViewController()
+        let navigationController = UINavigationController(rootViewController: viewController)
+        navigationController.modalPresentationStyle = .popover
+        navigationController.preferredContentSize = CGSize(width: 380, height: 560)
+        
+        if let popover = navigationController.popoverPresentationController {
+            popover.sourceView = settingsButton
+            popover.sourceRect = settingsButton.bounds
+            popover.permittedArrowDirections = [.up, .down]
+            popover.delegate = self
+        }
+        
+        present(navigationController, animated: true)
+    }
+    
+    // MARK: - Settings Observation
     
     private var displayedSections: [HomepageSection] {
         guard folder == nil else {
@@ -391,15 +785,90 @@ final class HomepageRootViewController: UIViewController {
     }
     
     @objc private func homepageSettingsDidChange() {
-        updateWallpaper()
-        reloadSections()
+        updateBackground()
+        rebuildPanels()
     }
     
+    // MARK: - Helpers
+    
+    private var recommendationViewControllers: [HomepageRecommendationViewController] {
+        return sectionViewControllers.compactMap { section, viewController in
+            guard case .recommendation = section else {
+                return nil
+            }
+            
+            return viewController as? HomepageRecommendationViewController
+        }
+    }
+    
+    private var privateBrowsingSectionViewController: PrivateBrowsingSectionViewController? {
+        return sectionViewControllers[.privateBrowsing] as? PrivateBrowsingSectionViewController
+    }
+    
+    private var favoritesSectionViewController: FavoritesSectionViewController? {
+        return sectionViewControllers[.favorites] as? FavoritesSectionViewController
+    }
+    
+    private var frequentlyVisitedSectionViewController: FrequentlyVisitedSectionViewController? {
+        return sectionViewControllers[.frequentlyVisited] as? FrequentlyVisitedSectionViewController
+    }
+    
+    private var recentlyClosedTabsSectionViewController: RecentlyClosedTabsSectionViewController? {
+        return sectionViewControllers[.recentlyClosedTabs] as? RecentlyClosedTabsSectionViewController
+    }
+}
+
+extension HomepageRootViewController: UIPopoverPresentationControllerDelegate {
+    func adaptivePresentationStyle(
+        for controller: UIPresentationController,
+        traitCollection: UITraitCollection
+    ) -> UIModalPresentationStyle {
+        return .none
+    }
 }
 
 extension HomepageRootViewController: UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         delegate?.homepageRootViewControllerDidStartScrolling()
+    }
+    
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard scrollView === pagerScrollView else {
+            return
+        }
+        updateHintForOffset()
+    }
+    
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        guard scrollView === pagerScrollView else {
+            return
+        }
+        finishPageChange()
+    }
+    
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        guard scrollView === pagerScrollView, !decelerate else {
+            return
+        }
+        finishPageChange()
+    }
+    
+    private func finishPageChange() {
+        updateHintForOffset()
+        guard currentPageIndex == panelScrollViews.count - 1,
+              let feedPanelViewController = feedPanelViewController,
+              !hasRequestedFeed else {
+            return
+        }
+        
+        hasRequestedFeed = true
+        feedPanelViewController.reload()
+    }
+}
+
+extension HomepageRootViewController: HomepageFeedPanelViewControllerDelegate {
+    func homepageFeedPanelViewController(_ controller: HomepageFeedPanelViewController, didSelect article: HomepageFeedArticle) {
+        delegate?.homepageRootViewController(self, didRequestOpenURL: article.url, disposition: .currentTab)
     }
 }
 
@@ -429,7 +898,7 @@ extension HomepageRootViewController: HomepageSectionDelegate {
     }
     
     func homepageSectionDidSelectSettings(_ viewController: UIViewController) {
-        delegate?.homepageRootViewControllerDidSelectSettings(self)
+        presentHomepageSettings()
     }
 }
 
