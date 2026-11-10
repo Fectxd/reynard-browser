@@ -518,7 +518,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         menuWorkItem = nil
     }
     
-    private func setPressed(_ pressed: Bool, at indexPath: IndexPath?) {
+    private func setPressed(_ pressed: Bool, at indexPath: IndexPath? = nil) {
         if pressed, let indexPath, let cell = cellForItem(at: indexPath) {
             UIView.animate(withDuration: 0.12) {
                 cell.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)

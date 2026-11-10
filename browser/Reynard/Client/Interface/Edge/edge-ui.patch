@@ -6245,7 +6245,7 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..3f9e2e8 100644
+index 6da82ce..4bf54f6 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -127,6 +127,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -6515,7 +6515,7 @@ index 6da82ce..3f9e2e8 100644
 +        menuWorkItem = nil
 +    }
 +    
-+    private func setPressed(_ pressed: Bool, at indexPath: IndexPath?) {
++    private func setPressed(_ pressed: Bool, at indexPath: IndexPath? = nil) {
 +        if pressed, let indexPath, let cell = cellForItem(at: indexPath) {
 +            UIView.animate(withDuration: 0.12) {
 +                cell.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
