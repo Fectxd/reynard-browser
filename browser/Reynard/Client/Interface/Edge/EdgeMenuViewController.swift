@@ -157,11 +157,11 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         static let gridContentInset: CGFloat = 8
         // Generous vertical room so tile titles can wrap to up to three lines
         // (smaller font) without clipping or an ellipsis.
-        static let gridGroupHeight: CGFloat = 100
+        static let gridGroupHeight: CGFloat = 108    // fits a three-line title without clipping
         // The primary (blue) row's titles are always short (one line), so its
         // tiles are shorter too: with the icons now the same size as the rest,
         // a 116pt primary tile left a large empty band above the divider.
-        static let primaryGroupHeight: CGFloat = 76
+        static let primaryGroupHeight: CGFloat = 84   // icon 40 + label 15 + paddings
         static let listRowHeight: CGFloat = 56
         /// Height of the paging affordance under the compact menu.
         static let pageIndicatorHeight: CGFloat = 16
