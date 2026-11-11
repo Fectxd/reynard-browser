@@ -59,6 +59,7 @@ final class HomepagePanelScrollView: UIScrollView {
             stackView.centerYAnchor.constraint(equalTo: contentLayoutGuide.centerYAnchor),
             stackView.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
             stackView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maximumContentWidth),
+            stackView.widthAnchor.constraint(lessThanOrEqualTo: frameLayoutGuide.widthAnchor),
             fillWidth,
         ])
     }
@@ -92,8 +93,8 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         static let headerTopInset: CGFloat = 8
         static let headerSpacing: CGFloat = 10
         static let bottomInset: CGFloat = 14
-        static let embeddedTopReserve: CGFloat = 48
-        static let detachedTopReserve: CGFloat = 20
+        static let embeddedTopReserve: CGFloat = 4
+        static let detachedTopReserve: CGFloat = 4
         static let panelOverflowTolerance: CGFloat = 4
         static let weatherRefreshInterval: TimeInterval = 60
     }
@@ -202,6 +203,9 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     
     private lazy var panelRailView: HomepagePanelRailView = {
         let view = HomepagePanelRailView(frame: .zero)
+        view.onSelectPage = { [weak self] index, animated in
+            self?.scrollToPage(index, animated: animated)
+        }
         return view
     }()
     
@@ -351,6 +355,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         headerSpacerView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         weatherChipView.setContentHuggingPriority(.required, for: .horizontal)
         weatherChipView.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        weatherChipView.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
         
         headerStackView.addArrangedSubview(searchFieldView)
         
@@ -513,12 +518,29 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             }
         }
         
+        // Recommendation cards (update / donation / performance) are not a page
+        // of their own: if Favorites is switched off they ride along on the
+        // first remaining page instead of keeping an otherwise blank page.
+        if !primarySections.contains(where: { $0 == .favorites || $0 == .privateBrowsing }) {
+            let recommendations = primarySections
+            primarySections = []
+            if !frequentlyVisitedSections.isEmpty {
+                frequentlyVisitedSections = recommendations + frequentlyVisitedSections
+            } else if !recentlyClosedSections.isEmpty {
+                recentlyClosedSections = recommendations + recentlyClosedSections
+            }
+        }
+        
         var definitions: [PanelDefinition] = []
-        definitions.append(PanelDefinition(
-            title: NSLocalizedString("Favorites", comment: ""),
-            sections: primarySections,
-            isFeed: false
-        ))
+        // Only add pages that have something switched on; a section turned off
+        // in Homepage settings removes its whole page from the pager.
+        if !primarySections.isEmpty {
+            definitions.append(PanelDefinition(
+                title: NSLocalizedString("Favorites", comment: ""),
+                sections: primarySections,
+                isFeed: false
+            ))
+        }
         
         if !frequentlyVisitedSections.isEmpty {
             definitions.append(PanelDefinition(
@@ -884,6 +906,27 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
     
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
         guard scrollView === pagerScrollView, !decelerate else {
+            return
+        }
+        finishPageChange()
+    }
+    
+    func scrollToPage(_ index: Int, animated: Bool) {
+        guard panelScrollViews.indices.contains(index) else {
+            return
+        }
+        let target = CGPoint(x: 0, y: CGFloat(index) * pagerScrollView.bounds.height)
+        if index != currentPageIndex {
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+        pagerScrollView.setContentOffset(target, animated: animated)
+        if !animated {
+            finishPageChange()
+        }
+    }
+    
+    func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+        guard scrollView === pagerScrollView else {
             return
         }
         finishPageChange()

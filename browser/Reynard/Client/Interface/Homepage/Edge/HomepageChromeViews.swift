@@ -289,18 +289,65 @@ final class HomepagePanelRailView: UIView {
     
     private var dots: [UIView] = []
     private var heightConstraints: [NSLayoutConstraint] = []
+    private var lastDraggedIndex: Int?
+    
+    /// Called with a page index when the rail is tapped or dragged, so the
+    /// user can jump between pages (e.g. out of a long feed) without scrolling.
+    var onSelectPage: ((Int, Bool) -> Void)?
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         translatesAutoresizingMaskIntoConstraints = false
-        isUserInteractionEnabled = false
+        isUserInteractionEnabled = true
         addSubview(stackView)
+        // Dots stay small; the touch target is a wider, taller strip around them.
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: topAnchor),
-            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            stackView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            widthAnchor.constraint(equalToConstant: 32),
         ])
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap(_:))))
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(pan)
+    }
+    
+    private func pageIndex(at point: CGPoint) -> Int? {
+        guard !dots.isEmpty else {
+            return nil
+        }
+        let y = convert(point, to: stackView).y
+        var best = 0
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for (index, dot) in dots.enumerated() {
+            let distance = abs(dot.frame.midY - y)
+            if distance < bestDistance {
+                bestDistance = distance
+                best = index
+            }
+        }
+        return best
+    }
+    
+    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        guard let index = pageIndex(at: recognizer.location(in: self)) else {
+            return
+        }
+        onSelectPage?(index, true)
+    }
+    
+    @objc private func handlePan(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .began, .changed:
+            guard let index = pageIndex(at: recognizer.location(in: self)),
+                  index != lastDraggedIndex else {
+                return
+            }
+            lastDraggedIndex = index
+            onSelectPage?(index, true)
+        default:
+            lastDraggedIndex = nil
+        }
     }
     
     required init?(coder: NSCoder) {
