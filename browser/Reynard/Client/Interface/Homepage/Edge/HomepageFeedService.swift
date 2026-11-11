@@ -26,7 +26,7 @@ final class HomepageFeedService {
     }
     
     private let session: URLSession
-    private var isFetching = false
+    private var pendingCompletions: [([HomepageFeedArticle]) -> Void] = []
     
     init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -37,33 +37,37 @@ final class HomepageFeedService {
         session = URLSession(configuration: configuration)
     }
     
+    /// Always calls back on the main queue. Concurrent requests share one fetch.
     func load(completion: @escaping ([HomepageFeedArticle]) -> Void) {
-        guard !isFetching, let url = feedURL() else {
-            completion([])
+        dispatchPrecondition(condition: .onQueue(.main))
+        pendingCompletions.append(completion)
+        guard pendingCompletions.count == 1 else {
             return
         }
         
-        isFetching = true
+        guard let url = feedURL() else {
+            finish(with: [])
+            return
+        }
+        
         var request = URLRequest(url: url)
         request.setValue(Endpoint.userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("zh-CN", forHTTPHeaderField: "Accept-Language")
+        request.setValue("zh-CN,zh;q=0.9", forHTTPHeaderField: "Accept-Language")
         
         let task = session.dataTask(with: request) { [weak self] data, _, _ in
-            self?.isFetching = false
-            guard let data = data,
-                  let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                DispatchQueue.main.async {
-                    completion([])
-                }
-                return
-            }
-            
-            let articles = HomepageFeedService.parseArticles(payload)
-            DispatchQueue.main.async {
-                completion(articles)
+            let payload = data.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
+            let articles = payload.map(HomepageFeedService.parseArticles) ?? []
+            DispatchQueue.main.async { [weak self] in
+                self?.finish(with: articles)
             }
         }
         task.resume()
+    }
+    
+    private func finish(with articles: [HomepageFeedArticle]) {
+        let completions = pendingCompletions
+        pendingCompletions = []
+        completions.forEach { $0(articles) }
     }
     
     private func feedURL() -> URL? {
@@ -78,65 +82,127 @@ final class HomepageFeedService {
             URLQueryItem(name: "ocid", value: "hponeservicefeed"),
             URLQueryItem(name: "column", value: "c2"),
             URLQueryItem(name: "colwidth", value: "300"),
-            URLQueryItem(name: "contentType", value: "article,video,slideshow,webcontent"),
+            URLQueryItem(name: "contentType", value: "article,video,slideshow"),
             URLQueryItem(name: "newsTop", value: "48"),
             URLQueryItem(name: "newsSkip", value: "0"),
         ]
         return components?.url
     }
     
+    private static let maximumArticleCount = 60
+    private static let contentTypes: Set<String> = ["article", "video", "slideshow"]
+    
+    /// MSN nests cards at varying depths (sections[].subSections[].cards[],
+    /// cards[].subCards[], ...), so walk the whole payload and keep every
+    /// content card, skipping ads and sponsored placements.
     private static func parseArticles(_ payload: [String: Any]) -> [HomepageFeedArticle] {
-        guard let sections = payload["sections"] as? [[String: Any]] else {
-            return []
-        }
-        
         var articles: [HomepageFeedArticle] = []
         var seen = Set<String>()
-        for section in sections {
-            guard let cards = section["cards"] as? [[String: Any]] else {
-                continue
+        collectArticles(from: payload, into: &articles, seen: &seen)
+        return articles
+    }
+    
+    private static func collectArticles(from node: Any, into articles: inout [HomepageFeedArticle], seen: inout Set<String>) {
+        guard articles.count < maximumArticleCount else {
+            return
+        }
+        
+        if let list = node as? [Any] {
+            for item in list {
+                collectArticles(from: item, into: &articles, seen: &seen)
             }
-            
-            for card in cards {
-                guard let type = card["type"] as? String,
-                      type == "article" || type == "webcontent" || type == "video" || type == "slideshow",
-                      let title = card["title"] as? String,
-                      !title.isEmpty,
-                      let urlText = card["url"] as? String,
-                      let url = URL(string: urlText),
-                      !seen.contains(urlText) else {
-                    continue
-                }
-                
-                seen.insert(urlText)
-                let provider = (card["provider"] as? [String: Any])?["name"] as? String ?? ""
-                var imageURL: URL?
-                if let images = card["images"] as? [[String: Any]],
-                   let first = images.first,
-                   let imageText = first["url"] as? String {
-                    imageURL = URL(string: imageText)
-                }
-                
-                var publishedAt: Date?
-                if let published = card["publishedDateTime"] as? String {
-                    publishedAt = HomepageFeedService.date(from: published)
-                }
-                
-                articles.append(HomepageFeedArticle(
-                    title: title,
-                    url: url,
-                    provider: provider,
-                    imageURL: imageURL,
-                    publishedAt: publishedAt
-                ))
-                
-                if articles.count >= 40 {
-                    return articles
-                }
+            return
+        }
+        
+        guard let card = node as? [String: Any] else {
+            return
+        }
+        
+        if let article = article(from: card), !seen.contains(article.url.absoluteString) {
+            seen.insert(article.url.absoluteString)
+            articles.append(article)
+        }
+        
+        for key in ["sections", "subSections", "cards", "subCards", "regions"] {
+            if let child = card[key] {
+                collectArticles(from: child, into: &articles, seen: &seen)
+            }
+        }
+    }
+    
+    private static func article(from card: [String: Any]) -> HomepageFeedArticle? {
+        guard let type = card["type"] as? String,
+              contentTypes.contains(type.lowercased()),
+              !isAdvertisement(card),
+              let title = (card["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty,
+              let urlText = card["url"] as? String,
+              let url = URL(string: urlText) ?? URL(string: urlText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""),
+              url.scheme == "https" || url.scheme == "http" else {
+            return nil
+        }
+        
+        let provider = (card["provider"] as? [String: Any])?["name"] as? String ?? ""
+        var imageURL: URL?
+        if let images = card["images"] as? [[String: Any]],
+           let imageText = images.first?["url"] as? String {
+            imageURL = URL(string: imageText)
+        }
+        
+        var publishedAt: Date?
+        if let published = card["publishedDateTime"] as? String {
+            publishedAt = date(from: published)
+        }
+        
+        return HomepageFeedArticle(title: title, url: url, provider: provider, imageURL: imageURL, publishedAt: publishedAt)
+    }
+    
+    // MARK: - Ad Filtering
+    
+    private static let adMarkers = ["nativead", "native_ad", "sponsored", "advert", "promoted", "adslot", "taboola", "outbrain"]
+    private static let adProviderMarkers = ["广告", "推广", "赞助", "sponsored", "advertisement", "promoted"]
+    private static let adHostPrefixes = ["ad.", "ads.", "adserver.", "clk.", "click.", "track."]
+    private static let adDomains = [
+        "doubleclick.net", "googlesyndication.com", "googleadservices.com", "taboola.com",
+        "outbrain.com", "adnxs.com", "criteo.com", "criteo.net", "amazon-adsystem.com",
+    ]
+    
+    static func isAdvertisement(_ card: [String: Any]) -> Bool {
+        let type = (card["type"] as? String ?? "").lowercased()
+        if adMarkers.contains(where: { type.contains($0) }) || type == "ad" {
+            return true
+        }
+        
+        for key in ["isSponsored", "sponsored", "isAd", "isNativeAd", "isPromoted"] {
+            if let flag = card[key] as? Bool, flag { return true }
+            if let flag = card[key] as? String, flag.lowercased() == "true" { return true }
+        }
+        if card["adId"] != nil || card["nativeAd"] != nil || card["adMetadata"] != nil {
+            return true
+        }
+        
+        let provider = card["provider"] as? [String: Any]
+        let providerName = (provider?["name"] as? String ?? "").lowercased()
+        if adProviderMarkers.contains(where: { providerName.contains($0) }) {
+            return true
+        }
+        
+        let source = (card["source"] as? String ?? "").lowercased()
+        if adMarkers.contains(where: { source.contains($0) }) {
+            return true
+        }
+        
+        if let urlText = card["url"] as? String,
+           let components = URLComponents(string: urlText),
+           let host = components.host?.lowercased() {
+            if adHostPrefixes.contains(where: { host.hasPrefix($0) }) ||
+                adDomains.contains(where: { host == $0 || host.hasSuffix("." + $0) }) ||
+                components.path.lowercased().contains("/aclk") {
+                return true
             }
         }
         
-        return articles
+        return false
     }
     
     private static func date(from text: String) -> Date? {

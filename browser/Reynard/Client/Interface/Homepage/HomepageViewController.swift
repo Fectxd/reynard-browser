@@ -17,14 +17,14 @@ protocol HomepageViewControllerDelegate: AnyObject {
     func homepageViewController(_ controller: HomepageViewController, didRequestHideFromSuggestions siteID: Int64)
     func homepageViewController(_ controller: HomepageViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageViewControllerDidSelectSettings(_ controller: HomepageViewController)
-    func homepageViewControllerDidRequestAddressBarFocus(_ controller: HomepageViewController)
     func homepageViewControllerDidStartScrolling()
 }
 
 final class HomepageViewController: UINavigationController {
     weak var homepageDelegate: HomepageViewControllerDelegate?
+    weak var addressBarDelegate: HomepageViewControllerAddressBarDelegate?
     
-    private let rootViewController: HomepageRootViewController
+    private let rootViewController: HomepageRootContent
     private let bookmarkStore: BookmarkStore
     private var isPrivateBrowsing: Bool
     private var contentMode: HomepageContentMode = .embeddedNarrow
@@ -40,15 +40,21 @@ final class HomepageViewController: UINavigationController {
         return super.preferredStatusBarStyle
     }
     
-    init(bookmarkStore: BookmarkStore = .shared, isPrivateBrowsing: Bool = false) {
+    init(style: HomepageStyle = .classic, bookmarkStore: BookmarkStore = .shared, isPrivateBrowsing: Bool = false) {
         self.bookmarkStore = bookmarkStore
         self.isPrivateBrowsing = isPrivateBrowsing
-        rootViewController = HomepageRootViewController(
-            bookmarkStore: bookmarkStore,
-            isPrivateBrowsing: isPrivateBrowsing
-        )
-        super.init(rootViewController: rootViewController)
-        rootViewController.delegate = self
+        switch style {
+        case .classic:
+            let classic = HomepageRootViewController(bookmarkStore: bookmarkStore, isPrivateBrowsing: isPrivateBrowsing)
+            rootViewController = classic
+            super.init(rootViewController: classic)
+            classic.delegate = self
+        case .edge:
+            let edge = EdgeStartPageViewController(bookmarkStore: bookmarkStore, isPrivateBrowsing: isPrivateBrowsing)
+            rootViewController = edge
+            super.init(rootViewController: edge)
+            edge.delegate = self
+        }
     }
     
     required init?(coder: NSCoder) {
@@ -76,7 +82,7 @@ final class HomepageViewController: UINavigationController {
     func setContentMode(_ contentMode: HomepageContentMode) {
         self.contentMode = contentMode
         viewControllers.forEach { viewController in
-            (viewController as? HomepageRootViewController)?.setContentMode(contentMode)
+            (viewController as? HomepageRootContent)?.setContentMode(contentMode)
         }
         if isViewLoaded {
             updateNavigationBarAppearance()
@@ -95,7 +101,7 @@ final class HomepageViewController: UINavigationController {
         
         self.visibleContentInsets = visibleContentInsets
         viewControllers.forEach { viewController in
-            (viewController as? HomepageRootViewController)?.setVisibleContentInsets(visibleContentInsets)
+            (viewController as? HomepageRootContent)?.setVisibleContentInsets(visibleContentInsets)
         }
     }
     
@@ -106,7 +112,7 @@ final class HomepageViewController: UINavigationController {
         
         self.isPrivateBrowsing = isPrivateBrowsing
         viewControllers.forEach { viewController in
-            (viewController as? HomepageRootViewController)?.setPrivateBrowsing(isPrivateBrowsing)
+            (viewController as? HomepageRootContent)?.setPrivateBrowsing(isPrivateBrowsing)
         }
     }
     
@@ -179,10 +185,6 @@ extension HomepageViewController: HomepageRootViewControllerDelegate {
     
     func homepageRootViewControllerDidSelectSettings(_ controller: HomepageRootViewController) {
         homepageDelegate?.homepageViewControllerDidSelectSettings(self)
-    }
-    
-    func homepageRootViewControllerDidRequestAddressBarFocus(_ controller: HomepageRootViewController) {
-        homepageDelegate?.homepageViewControllerDidRequestAddressBarFocus(self)
     }
     
     func homepageRootViewControllerDidSelectFolder(_ folder: BookmarkFolderSnapshot) {

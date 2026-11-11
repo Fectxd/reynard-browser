@@ -206,7 +206,7 @@ final class HomepageFeedPanelViewController: UIViewController {
             subview.removeFromSuperview()
         }
         
-        let visible = Array(articles.prefix(20))
+        let visible = Array(articles.prefix(40))
         self.articles = visible
         
         guard !visible.isEmpty else {

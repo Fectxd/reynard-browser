@@ -14,6 +14,11 @@ name: Edge UI Build (Fork)
 on:
   workflow_dispatch:
     inputs:
+      upstream_ref:
+        description: Upstream (minh-ton/reynard-browser) branch or tag to patch
+        required: false
+        default: main
+        type: string
       build_normal_ipa:
         description: Build normal IPA
         required: false
@@ -106,8 +111,22 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Replay Edge UI instrumentation patch
-        run: sh ./tools/development/apply-edge-ui.sh --non-interactive
+      - name: Fetch upstream Reynard
+        run: |
+          git remote add upstream https://github.com/minh-ton/reynard-browser.git 2>/dev/null || true
+          git fetch --no-tags upstream "${UPSTREAM_REF}"
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+
+      # Reset browser/, engine/ and patches/ to the upstream revision and replay
+      # tools/edge-ui on top. This proves on every build that the customisation
+      # is still a clean patch over upstream, rather than building the fork's
+      # already-edited sources.
+      - name: Replay Edge UI patch onto upstream
+        run: sh ./tools/development/apply-edge-ui.sh --non-interactive --from-upstream FETCH_HEAD
+
+      - name: Show upstream revision
+        run: git log -1 --format='Upstream base %h %s' FETCH_HEAD
 
       - name: Set up latest Xcode
         uses: maxim-lobanov/setup-xcode@v1

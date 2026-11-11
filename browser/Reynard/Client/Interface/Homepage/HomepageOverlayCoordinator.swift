@@ -35,7 +35,10 @@ final class HomepageOverlayCoordinator {
     private weak var delegate: HomepageOverlayCoordinatorDelegate?
     private let overlayCoordinator: OverlayCoordinator
     private unowned let toolbarController: ToolbarController
-    private let homepageViewController: HomepageViewController
+    /// Edge start page for homepage tabs; upstream homepage for the address-bar overlay.
+    private let edgeHomepageViewController: HomepageViewController
+    private let classicHomepageViewController: HomepageViewController
+    private var homepageViewController: HomepageViewController
     private let homepageThumbnailRenderer: HomepageThumbnailRenderer
     private var presentationIntent: HomepagePresentationIntent = .inactive
     
@@ -55,10 +58,15 @@ final class HomepageOverlayCoordinator {
         self.delegate = delegate
         self.overlayCoordinator = overlayCoordinator
         self.toolbarController = toolbarController
-        homepageViewController = HomepageViewController()
-        homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: homepageViewController)
-        homepageViewController.homepageDelegate = self
-        homepageViewController.setPrivateBrowsing(isPrivateBrowsing)
+        edgeHomepageViewController = HomepageViewController(style: .edge)
+        classicHomepageViewController = HomepageViewController(style: .classic)
+        homepageViewController = edgeHomepageViewController
+        homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: edgeHomepageViewController)
+        for controller in [edgeHomepageViewController, classicHomepageViewController] {
+            controller.homepageDelegate = self
+            controller.addressBarDelegate = self
+            controller.setPrivateBrowsing(isPrivateBrowsing)
+        }
     }
     
     // MARK: - State
@@ -159,6 +167,16 @@ final class HomepageOverlayCoordinator {
     // MARK: - Presentation
     
     private func presentHomepage(_ presentation: HomepagePresentation, animated: Bool) {
+        // Homepage tabs (which draw their own background) get the Edge start
+        // page; the overlay shown while the address bar is focused keeps the
+        // simpler upstream homepage.
+        let target = presentation.showsBackground ? edgeHomepageViewController : classicHomepageViewController
+        if target !== homepageViewController {
+            overlayCoordinator.dismiss(.homepage, on: .embedded, animated: false)
+            overlayCoordinator.dismiss(.homepage, on: .detached, animated: false)
+            homepageViewController = target
+        }
+        
         overlayCoordinator.dismiss(.homepage, on: otherHost(from: presentation.host), animated: false)
         
         guard !overlayCoordinator.contains(.homepage, on: presentation.host),
@@ -448,18 +466,23 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
         delegate?.endHomepageEditing()
     }
     
-    func homepageViewControllerDidRequestAddressBarFocus(_ controller: HomepageViewController) {
-        overlayCoordinator.clearAddressBarScrollDismissal(for: .homepage)
-        delegate?.updateHomepageLayout(animated: true, duration: UX.layoutAnimationDuration)
-        delegate?.homepageChrome.focusAddressBarFirstResponder()
-        delegate?.endHomepageEditing()
-    }
-    
     func homepageViewControllerDidStartScrolling() {
         guard overlayCoordinator.beginAddressBarScrollDismissal(for: .homepage) else {
             return
         }
         
         delegate?.updateHomepageLayout(animated: false, duration: UX.layoutAnimationDuration)
+    }
+}
+
+// MARK: - Start Page Search Field
+
+extension HomepageOverlayCoordinator: HomepageViewControllerAddressBarDelegate {
+    func homepageViewControllerDidRequestAddressBarFocus(_ controller: HomepageViewController) {
+        // Do not call endHomepageEditing() here: it runs view.endEditing(true)
+        // and would immediately resign the address bar we just focused.
+        overlayCoordinator.clearAddressBarScrollDismissal(for: .homepage)
+        delegate?.updateHomepageLayout(animated: true, duration: UX.layoutAnimationDuration)
+        delegate?.homepageChrome.addressBar.focusForHardwareKeyboard()
     }
 }

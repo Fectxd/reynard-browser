@@ -2,43 +2,50 @@
 #
 # apply-edge-ui.sh
 #
-# Re-applies the Edge-style overflow-menu ("≡") instrumentation to the
-# browser app Swift sources. The upstream `engine/firefox` submodule is NOT
-# touched by this patch; only the app-side `browser/Reynard/...` Swift files
-# are modified, so this runs independently of `apply-patches.sh`.
-#
-# Why this exists
-# ---------------
-# The Edge UI lives in `browser/Reynard/...`, which is part of this repo (the
-# app), not the Gecko engine submodule. On every upstream sync the app sources
-# can change, so we keep the Edge UI customisation as a single replayable
-# unified-diff and apply it on top of whatever upstream shipped. Because the
-# app stack is compiled by `tools/release/build-app.sh` against the
-# `Reynard.xcodeproj` (whose `Reynard` folder uses synchronized root groups),
-# any new Swift file we add under `browser/Reynard/...` is picked up
-# automatically; no `project.pbxproj` edit is ever needed.
+# Replays the Edge UI customisation (tools/edge-ui/edge-ui.patch plus the
+# binary files in tools/edge-ui/overlay/) onto the app sources in browser/.
+# The Gecko engine (engine/, patches/) is not touched; that is handled by
+# apply-patches.sh as upstream does.
 #
 # Usage
 # -----
-#   ./tools/development/apply-edge-ui.sh [--non-interactive]
+#   ./tools/development/apply-edge-ui.sh [--non-interactive] [--from-upstream <ref>]
 #
-# Idempotent: if the patch is already applied it exits 0 immediately.
+#   --from-upstream <ref>  First reset browser/, engine/ and patches/ to <ref>
+#                          (e.g. upstream/main),
+#                          then apply the patch. This is what CI does, so every
+#                          build proves the patch still applies to the latest
+#                          upstream instead of re-building already-edited files.
+#   --non-interactive      Fail instead of prompting on conflicts (CI).
+#
+# Without --from-upstream the script is idempotent: if the patch is already
+# applied to the working tree it only refreshes the overlay files.
 
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-PATCH_FILE="$ROOT_DIR/browser/Reynard/Client/Interface/Edge/edge-ui.patch"
-BROWSER_DIR="$ROOT_DIR/browser"
+EDGE_DIR="$ROOT_DIR/tools/edge-ui"
+PATCH_FILE="$EDGE_DIR/edge-ui.patch"
+OVERLAY_DIR="$EDGE_DIR/overlay"
 
-# Non-interactive mode (used by CI): fail instead of prompting on conflict.
 NON_INTERACTIVE=false
-for argument in "$@"; do
-	case "$argument" in
+UPSTREAM_REF=""
+while [ $# -gt 0 ]; do
+	case "$1" in
 		--non-interactive)
 			NON_INTERACTIVE=true
 			;;
+		--from-upstream)
+			shift
+			UPSTREAM_REF=${1:?--from-upstream needs a ref}
+			;;
+		*)
+			echo "Unknown argument: $1"
+			exit 2
+			;;
 	esac
+	shift
 done
 
 if [ ! -f "$PATCH_FILE" ]; then
@@ -46,38 +53,47 @@ if [ ! -f "$PATCH_FILE" ]; then
 	exit 1
 fi
 
-if [ ! -d "$BROWSER_DIR" ]; then
-	echo "Missing browser directory: $BROWSER_DIR"
-	exit 1
-fi
+cd "$ROOT_DIR"
 
-echo "Applying Edge UI patch."
-echo "  patch:  $PATCH_FILE"
-echo "  target: $BROWSER_DIR"
+copy_overlay() {
+	if [ -d "$OVERLAY_DIR" ]; then
+		echo "Copying overlay files from tools/edge-ui/overlay/."
+		cp -R "$OVERLAY_DIR/." "$ROOT_DIR/"
+	fi
+	python3 -I "$EDGE_DIR/merge-strings.py" "$EDGE_DIR/strings.json" \
+		"$ROOT_DIR/browser/Reynard/Resources/Localizable.xcstrings"
+}
 
-# Idempotency: if the patch is already applied, `git apply --reverse --check`
-# succeeds, so we skip rather than failing on a fresh tree that already has our
-# tooling committed. We must not let `set -e` abort on the non-zero (not
-# applied) case, hence the `if`.
-if git -C "$ROOT_DIR" -c core.autocrlf=false apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
-	echo "Edge UI patch is already applied; nothing to do."
+if [ -n "$UPSTREAM_REF" ]; then
+	echo "Resetting browser/ to $UPSTREAM_REF ($(git rev-parse --short "$UPSTREAM_REF"))."
+	git rm -r -q --cached browser >/dev/null
+	rm -rf browser
+	git checkout "$UPSTREAM_REF" -- browser
+	# Keep the Gecko engine pin and engine patches in step with that upstream
+	# revision too, so the app and engine sources always match.
+	git checkout "$UPSTREAM_REF" -- engine patches
+elif git -c core.autocrlf=false apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
+	echo "Edge UI patch is already applied."
+	copy_overlay
 	exit 0
 fi
 
-# git apply works relative to the repo root. `--3way` lets the patch merge when
-# context around the edit moves between upstream revisions. `--whitespace=nowarn`
-# keeps CRLF/LF noise from aborting the apply.
-if ! git -C "$ROOT_DIR" -c core.autocrlf=false apply --3way --whitespace=nowarn "$PATCH_FILE"; then
+echo "Applying $PATCH_FILE"
+# --3way lets hunks merge when upstream moved the surrounding code; the
+# pre-image blobs come from this repository's history.
+if ! git -c core.autocrlf=false apply --3way --whitespace=nowarn "$PATCH_FILE"; then
 	echo "Failed to apply edge-ui.patch."
+	git diff --name-only --diff-filter=U || true
 	if [ "$NON_INTERACTIVE" = "true" ]; then
-		echo "Non-interactive mode: aborting."
+		echo "Non-interactive mode: aborting. Rebase the patch onto the new upstream and run tools/edge-ui/regenerate-patch.sh."
 		exit 1
 	fi
-	echo "Resolve conflicts in $BROWSER_DIR, then press Enter to continue or type q to stop."
+	echo "Resolve conflicts in browser/, then press Enter to continue or type q to stop."
 	read response
 	if [ "$response" = "q" ] || [ "$response" = "Q" ]; then
 		exit 1
 	fi
 fi
 
+copy_overlay
 echo "Finished applying the Edge UI patch."

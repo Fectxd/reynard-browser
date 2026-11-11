@@ -596,8 +596,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     
     func resignAddressBarFirstResponder() { _ = addressBar.resignFirstResponder() }
     
-    func focusAddressBarFirstResponder() { _ = addressBar.becomeFirstResponder() }
-    
     func performAfterAddressBarMenuDismissal(_ action: @escaping () -> Void) {
         addressBar.performAfterMenuDismissal(action)
     }
