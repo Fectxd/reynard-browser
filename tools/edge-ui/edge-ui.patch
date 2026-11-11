@@ -4769,10 +4769,10 @@ index 0000000..53fa2a6
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..1f3565d
+index 0000000..b50efe8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,984 @@
+@@ -0,0 +1,1061 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -4795,8 +4795,7 @@ index 0000000..1f3565d
 +
 +final class HomepagePanelScrollView: UIScrollView {
 +    static let maximumContentWidth: CGFloat = 720
-+    /// Pulls short pages a little above the geometric centre, which reads as centred.
-+    static let centreOffset: CGFloat = 24
++    static let topPadding: CGFloat = 4
 +    
 +    let stackView: UIStackView = {
 +        let stackView = UIStackView()
@@ -4813,25 +4812,19 @@ index 0000000..1f3565d
 +        translatesAutoresizingMaskIntoConstraints = false
 +        backgroundColor = .clear
 +        alwaysBounceVertical = false
++        bounces = false
 +        showsVerticalScrollIndicator = false
 +        contentInsetAdjustmentBehavior = .never
 +        addSubview(stackView)
-+        // The content guide is at least one page tall; the stack sits in its
-+        // vertical centre (slightly above, see centreOffset) when it is shorter
-+        // than the page, and scrolls normally once it overflows. Horizontally
-+        // it follows the page width so narrow windows (Split View, Slide Over)
-+        // reflow instead of clipping, and is capped on very wide screens.
-+        let contentHeight = contentLayoutGuide.heightAnchor.constraint(equalTo: stackView.heightAnchor)
-+        contentHeight.priority = .defaultLow
++        // Every page starts at the same top offset (so Favorites, Frequently
++        // Visited and Recently Closed line up), follows the page width so
++        // narrow windows reflow, and is capped on very wide screens.
 +        let fillWidth = stackView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor)
 +        fillWidth.priority = .defaultHigh
 +        NSLayoutConstraint.activate([
 +            contentLayoutGuide.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor),
-+            contentLayoutGuide.heightAnchor.constraint(greaterThanOrEqualTo: frameLayoutGuide.heightAnchor, constant: -Self.centreOffset * 2),
-+            contentHeight,
-+            stackView.topAnchor.constraint(greaterThanOrEqualTo: contentLayoutGuide.topAnchor),
-+            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentLayoutGuide.bottomAnchor),
-+            stackView.centerYAnchor.constraint(equalTo: contentLayoutGuide.centerYAnchor),
++            stackView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Self.topPadding),
++            stackView.bottomAnchor.constraint(equalTo: contentLayoutGuide.bottomAnchor),
 +            stackView.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
 +            stackView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maximumContentWidth),
 +            stackView.widthAnchor.constraint(lessThanOrEqualTo: frameLayoutGuide.widthAnchor),
@@ -4881,6 +4874,9 @@ index 0000000..1f3565d
 +    private let sections: [HomepageSection]
 +    private var isPrivateBrowsing: Bool
 +    private var contentMode: HomepageContentMode = .embeddedNarrow
++    /// Mode handed to the sections. Derived from the real page width so a
++    /// narrow window (Split View, portrait) gets the narrow layout even on iPad.
++    private var sectionContentMode: HomepageContentMode = .embeddedNarrow
 +    private var visibleContentInsets: UIEdgeInsets = .zero
 +    private var sectionViewControllers: [HomepageSection: UIViewController] = [:]
 +    private var panelScrollViews: [HomepagePanelScrollView] = []
@@ -4925,7 +4921,9 @@ index 0000000..1f3565d
 +    
 +    private lazy var weatherChipView: HomepageWeatherChipView = {
 +        let chip = HomepageWeatherChipView(frame: .zero)
-+        chip.addTarget(self, action: #selector(handleWeatherChipTap), for: .touchUpInside)
++        let tap = UITapGestureRecognizer(target: self, action: #selector(handleWeatherChipTap))
++        tap.cancelsTouchesInView = false
++        chip.addGestureRecognizer(tap)
 +        return chip
 +    }()
 +    
@@ -4960,7 +4958,8 @@ index 0000000..1f3565d
 +        scrollView.isPagingEnabled = true
 +        scrollView.showsVerticalScrollIndicator = false
 +        scrollView.showsHorizontalScrollIndicator = false
-+        scrollView.alwaysBounceVertical = true
++        scrollView.alwaysBounceVertical = false
++        scrollView.bounces = false
 +        scrollView.contentInsetAdjustmentBehavior = .never
 +        scrollView.keyboardDismissMode = .none
 +        return scrollView
@@ -5038,7 +5037,29 @@ index 0000000..1f3565d
 +    
 +    override func viewDidLayoutSubviews() {
 +        super.viewDidLayoutSubviews()
++        updateSectionContentMode()
 +        updatePanelScrollability()
++    }
++    
++    private func updateSectionContentMode() {
++        let width = isViewLoaded ? view.bounds.width : 0
++        var mode = contentMode
++        if width > 0 {
++            if width < 540 {
++                mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
++            } else if width < 820, contentMode == .embeddedExpanded {
++                mode = .embeddedWide
++            }
++        }
++        guard mode != sectionContentMode else {
++            return
++        }
++        sectionContentMode = mode
++        recommendationViewControllers.forEach { $0.setContentMode(mode) }
++        privateBrowsingSectionViewController?.setContentMode(mode)
++        favoritesSectionViewController?.setContentMode(mode)
++        frequentlyVisitedSectionViewController?.setContentMode(mode)
++        recentlyClosedTabsSectionViewController?.setContentMode(mode)
 +    }
 +    
 +    override func viewSafeAreaInsetsDidChange() {
@@ -5059,13 +5080,7 @@ index 0000000..1f3565d
 +        }
 +        
 +        self.contentMode = contentMode
-+        recommendationViewControllers.forEach { viewController in
-+            viewController.setContentMode(contentMode)
-+        }
-+        privateBrowsingSectionViewController?.setContentMode(contentMode)
-+        favoritesSectionViewController?.setContentMode(contentMode)
-+        frequentlyVisitedSectionViewController?.setContentMode(contentMode)
-+        recentlyClosedTabsSectionViewController?.setContentMode(contentMode)
++        updateSectionContentMode()
 +        if isViewLoaded {
 +            updateBackground()
 +            updateInsets()
@@ -5175,6 +5190,7 @@ index 0000000..1f3565d
 +            headerTop,
 +            topBarView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: UX.horizontalInset),
 +            topBarView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -UX.horizontalInset),
++            topBarView.heightAnchor.constraint(equalToConstant: 36),
 +            
 +            headerContainerView.topAnchor.constraint(equalTo: topBarView.bottomAnchor, constant: UX.headerSpacing),
 +            headerContainerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -5252,6 +5268,15 @@ index 0000000..1f3565d
 +            for section in definition.sections {
 +                guard let viewController = sectionViewController(for: section) else {
 +                    continue
++                }
++                // Favorites has no built-in top spacing while Frequently
++                // Visited / Recently Closed start ~16pt down; pad it so the
++                // three page titles sit at the same height.
++                if section == .favorites {
++                    let spacer = UIView()
++                    spacer.translatesAutoresizingMaskIntoConstraints = false
++                    spacer.heightAnchor.constraint(equalToConstant: 16).isActive = true
++                    panel.stackView.addArrangedSubview(spacer)
 +                }
 +                panel.stackView.addArrangedSubview(viewController.view)
 +            }
@@ -5362,27 +5387,27 @@ index 0000000..1f3565d
 +        case .recommendation(.performance):
 +            let viewController = PerformanceRecommendationViewController()
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            viewController.setPrivateBrowsing(isPrivateBrowsing)
 +            return viewController
 +            
 +        case .recommendation(.updateAvailable):
 +            let viewController = UpdateAvailableViewController()
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            viewController.setPrivateBrowsing(isPrivateBrowsing)
 +            return viewController
 +            
 +        case .recommendation(.donation):
 +            let viewController = DonationRecommendationViewController()
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            viewController.setPrivateBrowsing(isPrivateBrowsing)
 +            return viewController
 +            
 +        case .privateBrowsing:
 +            let viewController = PrivateBrowsingSectionViewController()
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            viewController.setPrivateBrowsing(isPrivateBrowsing)
 +            return viewController
 +            
@@ -5393,19 +5418,26 @@ index 0000000..1f3565d
 +                showsSectionTitle: folder == nil
 +            )
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
++            if folder == nil {
++                viewController.showsAddTile = true
++                viewController.centersRows = true
++                viewController.onAddFavorite = { [weak self] in
++                    self?.presentAddFavorite()
++                }
++            }
 +            return viewController
 +            
 +        case .frequentlyVisited:
 +            let viewController = FrequentlyVisitedSectionViewController()
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            return viewController
 +            
 +        case .recentlyClosedTabs:
 +            let viewController = RecentlyClosedTabsSectionViewController()
 +            viewController.delegate = self
-+            viewController.setContentMode(contentMode)
++            viewController.setContentMode(sectionContentMode)
 +            return viewController
 +        }
 +    }
@@ -5557,6 +5589,51 @@ index 0000000..1f3565d
 +    
 +    @objc private func handleSearchFieldTap() {
 +        delegate?.edgeStartPageDidRequestAddressBarFocus(self)
++    }
++    
++    private func presentAddFavorite() {
++        let alert = UIAlertController(
++            title: NSLocalizedString("Add to Favorites", comment: ""),
++            message: nil,
++            preferredStyle: .alert
++        )
++        alert.addTextField { field in
++            field.placeholder = NSLocalizedString("Name", comment: "Add favorite name field")
++            field.autocapitalizationType = .sentences
++            field.returnKeyType = .next
++        }
++        alert.addTextField { field in
++            field.placeholder = NSLocalizedString("URL", comment: "Add favorite address field")
++            field.keyboardType = .URL
++            field.autocapitalizationType = .none
++            field.autocorrectionType = .no
++            field.returnKeyType = .done
++        }
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Add", comment: "Homepage favorites add tile"), style: .default) { [weak self, weak alert] _ in
++            guard let self,
++                  let fields = alert?.textFields,
++                  let url = Self.favoriteURL(from: fields[1].text) else {
++                return
++            }
++            let typedTitle = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++            let title = typedTitle.isEmpty ? (url.host ?? url.absoluteString) : typedTitle
++            let favoritesGUID = self.bookmarkStore.favoritesFolderContents().parent.guid
++            _ = self.bookmarkStore.addBookmark(title: title, url: url, to: favoritesGUID)
++        })
++        present(alert, animated: true)
++    }
++    
++    private static func favoriteURL(from text: String?) -> URL? {
++        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
++        guard !trimmed.isEmpty, !trimmed.contains(" ") else {
++            return nil
++        }
++        let candidate = trimmed.contains("://") ? trimmed : "https://" + trimmed
++        guard let url = URL(string: candidate), url.host?.isEmpty == false else {
++            return nil
++        }
++        return url
 +    }
 +    
 +    @objc private func handleSettingsTap() {
@@ -5755,6 +5832,105 @@ index 0000000..1f3565d
 +extension EdgeStartPageViewController: FavoritesSectionViewControllerDelegate {
 +    func favoritesSectionViewController(_ controller: FavoritesSectionViewController, didSelectFolder folder: BookmarkFolderSnapshot) {
 +        delegate?.edgeStartPageDidSelectFolder(folder)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/FavoriteAddCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Edge/FavoriteAddCollectionViewCell.swift
+new file mode 100644
+index 0000000..dcce9dd
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Homepage/Edge/FavoriteAddCollectionViewCell.swift
+@@ -0,0 +1,93 @@
++//
++//  FavoriteAddCollectionViewCell.swift
++//  Reynard
++//
++//  Trailing "+" tile of the Edge start page favorites grid. It wraps onto the
++//  next row like any other favorite when the current row is full.
++//
++
++import UIKit
++
++final class FavoriteAddCollectionViewCell: UICollectionViewCell {
++    static let reuseIdentifier = "FavoriteAddCollectionViewCell"
++    
++    private enum UX {
++        static let cornerRadius: CGFloat = 17
++        static let titleHeight: CGFloat = 34
++        static let symbolSize: CGFloat = 24
++    }
++    
++    private let tileView: UIView = {
++        let view = UIView()
++        view.translatesAutoresizingMaskIntoConstraints = false
++        view.backgroundColor = EdgeHomepagePalette.chip
++        view.layer.cornerRadius = UX.cornerRadius
++        view.layer.cornerCurve = .continuous
++        view.layer.borderWidth = EdgeHomepagePalette.UX.hairline
++        view.layer.borderColor = EdgeHomepagePalette.hairline.cgColor
++        return view
++    }()
++    
++    private let plusView: UIImageView = {
++        let imageView = UIImageView(image: UIImage(
++            systemName: "plus",
++            withConfiguration: UIImage.SymbolConfiguration(pointSize: UX.symbolSize, weight: .regular)
++        ))
++        imageView.translatesAutoresizingMaskIntoConstraints = false
++        imageView.tintColor = EdgeHomepagePalette.secondaryText
++        imageView.contentMode = .center
++        return imageView
++    }()
++    
++    private let titleLabel: UILabel = {
++        let label = UILabel()
++        label.translatesAutoresizingMaskIntoConstraints = false
++        label.font = .systemFont(ofSize: 12, weight: .semibold)
++        label.textAlignment = .center
++        label.numberOfLines = 2
++        label.text = NSLocalizedString("Add", comment: "Homepage favorites add tile")
++        return label
++    }()
++    
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        isAccessibilityElement = true
++        accessibilityTraits = .button
++        accessibilityLabel = NSLocalizedString("Add to Favorites", comment: "")
++        contentView.addSubview(tileView)
++        tileView.addSubview(plusView)
++        contentView.addSubview(titleLabel)
++        NSLayoutConstraint.activate([
++            tileView.topAnchor.constraint(equalTo: contentView.topAnchor),
++            tileView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
++            tileView.widthAnchor.constraint(equalTo: contentView.widthAnchor),
++            tileView.heightAnchor.constraint(equalTo: tileView.widthAnchor),
++            
++            plusView.centerXAnchor.constraint(equalTo: tileView.centerXAnchor),
++            plusView.centerYAnchor.constraint(equalTo: tileView.centerYAnchor),
++            
++            titleLabel.topAnchor.constraint(equalTo: tileView.bottomAnchor, constant: 4),
++            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
++            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
++        ])
++    }
++    
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++    
++    override var isHighlighted: Bool {
++        didSet {
++            tileView.alpha = isHighlighted ? 0.6 : 1
++        }
++    }
++    
++    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
++        super.traitCollectionDidChange(previousTraitCollection)
++        tileView.layer.borderColor = EdgeHomepagePalette.hairline.cgColor
++    }
++    
++    func configure(titleColor: UIColor) {
++        titleLabel.textColor = titleColor
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/HomepageChromeViews.swift b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageChromeViews.swift
@@ -8266,22 +8442,6 @@ index 0000000..850a8a7
 +        return Calendar.current
 +    }
 +}
-diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageContentMode.swift b/browser/Reynard/Client/Interface/Homepage/HomepageContentMode.swift
-index 031f422..58bc31b 100644
---- a/browser/Reynard/Client/Interface/Homepage/HomepageContentMode.swift
-+++ b/browser/Reynard/Client/Interface/Homepage/HomepageContentMode.swift
-@@ -17,9 +17,9 @@ enum HomepageContentMode: Equatable {
-         case .embeddedNarrow, .detachedNarrow:
-             return 4
-         case .embeddedWide, .detachedWide:
--            return 6
-+            return 5
-         case .embeddedExpanded:
--            return 8
-+            return 5
-         }
-     }
-     
 diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift b/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
 index 77ca970..da80372 100644
 --- a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
@@ -8423,18 +8583,28 @@ index 4e3f81c..896e6f1 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
-index 455c732..2e332b5 100644
+index 455c732..0ed577c 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
-@@ -58,6 +58,7 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
+@@ -56,8 +56,17 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
+         }
+     }
      
++    /// Centre partially filled rows. Off by default so upstream's homepage
++    /// keeps its left-aligned grid; the Edge start page turns it on.
++    var centersRows = false {
++        didSet {
++            invalidateLayout()
++        }
++    }
++    
      private var cachedAttributes: [IndexPath: UICollectionViewLayoutAttributes] = [:]
      private var contentSize: CGSize = .zero
 +    private var itemCount = 0
      private var appearingIndexPaths = Set<IndexPath>()
      private var disappearingAttributes: [IndexPath: UICollectionViewLayoutAttributes] = [:]
      
-@@ -77,6 +78,7 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
+@@ -77,6 +86,7 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
          }
          
          let itemCount = collectionView.numberOfItems(inSection: 0)
@@ -8442,7 +8612,7 @@ index 455c732..2e332b5 100644
          let rowCount = Int(ceil(CGFloat(itemCount) / CGFloat(metrics.columnCount)))
          contentSize = CGSize(
              width: collectionView.bounds.width,
-@@ -151,7 +153,11 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
+@@ -151,7 +161,13 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
      private func frame(forItemAt item: Int, metrics: FavoritesLayoutMetrics) -> CGRect {
          let row = item / metrics.columnCount
          let column = item % metrics.columnCount
@@ -8450,16 +8620,76 @@ index 455c732..2e332b5 100644
 +        let itemsInRow = min(metrics.columnCount, max(itemCount - (row * metrics.columnCount), 1))
 +        let rowWidth = (CGFloat(itemsInRow) * metrics.itemSize.width)
 +            + (CGFloat(max(itemsInRow - 1, 0)) * metrics.interitemSpacing)
-+        let rowInset = max((contentSize.width - rowWidth) / 2, metrics.horizontalInset)
++        let rowInset = centersRows
++            ? max((contentSize.width - rowWidth) / 2, metrics.horizontalInset)
++            : metrics.horizontalInset
 +        let x = rowInset + CGFloat(column) * (metrics.itemSize.width + metrics.interitemSpacing)
          let y = FavoritesLayoutMetrics.shadowPadding + CGFloat(row) * (metrics.itemSize.height + metrics.lineSpacing)
          return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
      }
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-index bf26062..d1c38bf 100644
+index bf26062..a4ba51c 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-@@ -426,7 +426,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -75,6 +75,28 @@ final class FavoritesSectionViewController: UIViewController {
+     
+     private let collectionLayout = FavoritesCollectionViewLayout()
+     
++    /// Edge start page only: a trailing "+" tile that asks to add a favorite.
++    /// Off by default, so upstream's homepage is unchanged.
++    var showsAddTile = false {
++        didSet {
++            guard oldValue != showsAddTile, isViewLoaded else { return }
++            applyFavoriteItemLimit()
++        }
++    }
++    var onAddFavorite: (() -> Void)?
++    var centersRows: Bool {
++        get { collectionLayout.centersRows }
++        set { collectionLayout.centersRows = newValue }
++    }
++    
++    private var addTileCount: Int {
++        return showsAddTile && folder == nil ? 1 : 0
++    }
++    
++    private func isAddTile(_ indexPath: IndexPath) -> Bool {
++        return addTileCount > 0 && indexPath.item == displayedFavoriteItems.count
++    }
++    
+     private lazy var collectionView: UICollectionView = {
+         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionLayout)
+         collectionView.translatesAutoresizingMaskIntoConstraints = false
+@@ -91,6 +113,10 @@ final class FavoritesSectionViewController: UIViewController {
+             FavoriteFolderCollectionViewCell.self,
+             forCellWithReuseIdentifier: FavoriteFolderCollectionViewCell.reuseIdentifier
+         )
++        collectionView.register(
++            FavoriteAddCollectionViewCell.self,
++            forCellWithReuseIdentifier: FavoriteAddCollectionViewCell.reuseIdentifier
++        )
+         return collectionView
+     }()
+     
+@@ -246,7 +272,7 @@ final class FavoritesSectionViewController: UIViewController {
+         displayedFavoriteItems = currentFavoriteItems()
+         updateShowAllButton()
+         collectionView.reloadData()
+-        view.isHidden = allFavoriteItems.isEmpty
++        view.isHidden = allFavoriteItems.isEmpty && addTileCount == 0
+         invalidateFavoriteLayout()
+     }
+     
+@@ -363,7 +389,7 @@ final class FavoritesSectionViewController: UIViewController {
+             collectionLayout.metrics = metrics
+         }
+         
+-        let displayedItemCount = itemCount ?? displayedFavoriteItems.count
++        let displayedItemCount = (itemCount ?? displayedFavoriteItems.count) + addTileCount
+         let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
+         let contentHeight = metrics.contentHeight(rowCount: rowCount)
+         guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
+@@ -426,7 +452,7 @@ final class FavoritesSectionViewController: UIViewController {
          let viewController = EditBookmarkViewController(bookmark: bookmark, store: bookmarkStore)
          let navigationController = UINavigationController(rootViewController: viewController)
          navigationController.modalPresentationStyle = .pageSheet
@@ -8468,6 +8698,82 @@ index bf26062..d1c38bf 100644
      }
      
      func deleteFavoriteBookmark(_ bookmark: BookmarkSnapshot) {
+@@ -456,6 +482,7 @@ final class FavoritesSectionViewController: UIViewController {
+             let translation = gestureRecognizer.translation(in: collectionView)
+             let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
+             guard let indexPath = collectionView.indexPathForItem(at: startLocation),
++                  !isAddTile(indexPath),
+                   let cell = collectionView.cellForItem(at: indexPath),
+                   collectionView.beginInteractiveMovementForItem(at: indexPath) else {
+                 return
+@@ -481,6 +508,7 @@ final class FavoritesSectionViewController: UIViewController {
+     @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
+         let location = gestureRecognizer.location(in: collectionView)
+         guard let indexPath = collectionView.indexPathForItem(at: location),
++              !isAddTile(indexPath),
+               let cell = collectionView.cellForItem(at: indexPath) else {
+             return
+         }
+@@ -494,6 +522,7 @@ final class FavoritesSectionViewController: UIViewController {
+         switch gestureRecognizer.state {
+         case .began:
+             guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
++                  !isAddTile(indexPath),
+                   let cell = collectionView.cellForItem(at: indexPath) else {
+                 return
+             }
+@@ -624,10 +653,19 @@ final class FavoritesSectionViewController: UIViewController {
+ 
+ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
+     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+-        return displayedFavoriteItems.count
++        return displayedFavoriteItems.count + addTileCount
+     }
+     
+     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
++        if isAddTile(indexPath) {
++            let cell = collectionView.dequeueReusableCell(
++                withReuseIdentifier: FavoriteAddCollectionViewCell.reuseIdentifier,
++                for: indexPath
++            ) as! FavoriteAddCollectionViewCell
++            cell.configure(titleColor: HomepageWallpaper.foregroundColor(for: contentMode))
++            return cell
++        }
++        
+         switch displayedFavoriteItems[indexPath.item] {
+         case let .bookmark(bookmark):
+             let cell = collectionView.dequeueReusableCell(
+@@ -655,6 +693,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+     }
+     
+     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
++        if isAddTile(indexPath) {
++            onAddFavorite?()
++            return
++        }
+         guard displayedFavoriteItems.indices.contains(indexPath.item) else {
+             return
+         }
+@@ -671,6 +713,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+         return displayedFavoriteItems.indices.contains(indexPath.item)
+     }
+     
++    func collectionView(
++        _ collectionView: UICollectionView,
++        targetIndexPathForMoveOfItemFromOriginalIndexPath originalIndexPath: IndexPath,
++        atCurrentIndexPath currentIndexPath: IndexPath,
++        toProposedIndexPath proposedIndexPath: IndexPath
++    ) -> IndexPath {
++        // The "+" tile always stays last.
++        guard addTileCount > 0, proposedIndexPath.item >= displayedFavoriteItems.count else {
++            return proposedIndexPath
++        }
++        return IndexPath(item: max(displayedFavoriteItems.count - 1, 0), section: proposedIndexPath.section)
++    }
++    
+     func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+         guard displayedFavoriteItems.indices.contains(sourceIndexPath.item) else {
+             reloadFavorites()
 diff --git a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
 index 7f723fd..0ca560e 100644
 --- a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift

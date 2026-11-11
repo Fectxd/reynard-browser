@@ -17,9 +17,9 @@ enum HomepageContentMode: Equatable {
         case .embeddedNarrow, .detachedNarrow:
             return 4
         case .embeddedWide, .detachedWide:
-            return 5
+            return 6
         case .embeddedExpanded:
-            return 5
+            return 8
         }
     }
     

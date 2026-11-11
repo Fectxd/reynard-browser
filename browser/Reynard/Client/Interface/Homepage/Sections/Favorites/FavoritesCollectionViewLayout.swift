@@ -56,6 +56,14 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
         }
     }
     
+    /// Centre partially filled rows. Off by default so upstream's homepage
+    /// keeps its left-aligned grid; the Edge start page turns it on.
+    var centersRows = false {
+        didSet {
+            invalidateLayout()
+        }
+    }
+    
     private var cachedAttributes: [IndexPath: UICollectionViewLayoutAttributes] = [:]
     private var contentSize: CGSize = .zero
     private var itemCount = 0
@@ -156,7 +164,9 @@ final class FavoritesCollectionViewLayout: UICollectionViewLayout {
         let itemsInRow = min(metrics.columnCount, max(itemCount - (row * metrics.columnCount), 1))
         let rowWidth = (CGFloat(itemsInRow) * metrics.itemSize.width)
             + (CGFloat(max(itemsInRow - 1, 0)) * metrics.interitemSpacing)
-        let rowInset = max((contentSize.width - rowWidth) / 2, metrics.horizontalInset)
+        let rowInset = centersRows
+            ? max((contentSize.width - rowWidth) / 2, metrics.horizontalInset)
+            : metrics.horizontalInset
         let x = rowInset + CGFloat(column) * (metrics.itemSize.width + metrics.interitemSpacing)
         let y = FavoritesLayoutMetrics.shadowPadding + CGFloat(row) * (metrics.itemSize.height + metrics.lineSpacing)
         return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)

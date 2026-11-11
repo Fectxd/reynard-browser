@@ -20,8 +20,7 @@ protocol EdgeStartPageViewControllerDelegate: AnyObject {
 
 final class HomepagePanelScrollView: UIScrollView {
     static let maximumContentWidth: CGFloat = 720
-    /// Pulls short pages a little above the geometric centre, which reads as centred.
-    static let centreOffset: CGFloat = 24
+    static let topPadding: CGFloat = 4
     
     let stackView: UIStackView = {
         let stackView = UIStackView()
@@ -38,25 +37,19 @@ final class HomepagePanelScrollView: UIScrollView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         alwaysBounceVertical = false
+        bounces = false
         showsVerticalScrollIndicator = false
         contentInsetAdjustmentBehavior = .never
         addSubview(stackView)
-        // The content guide is at least one page tall; the stack sits in its
-        // vertical centre (slightly above, see centreOffset) when it is shorter
-        // than the page, and scrolls normally once it overflows. Horizontally
-        // it follows the page width so narrow windows (Split View, Slide Over)
-        // reflow instead of clipping, and is capped on very wide screens.
-        let contentHeight = contentLayoutGuide.heightAnchor.constraint(equalTo: stackView.heightAnchor)
-        contentHeight.priority = .defaultLow
+        // Every page starts at the same top offset (so Favorites, Frequently
+        // Visited and Recently Closed line up), follows the page width so
+        // narrow windows reflow, and is capped on very wide screens.
         let fillWidth = stackView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor)
         fillWidth.priority = .defaultHigh
         NSLayoutConstraint.activate([
             contentLayoutGuide.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor),
-            contentLayoutGuide.heightAnchor.constraint(greaterThanOrEqualTo: frameLayoutGuide.heightAnchor, constant: -Self.centreOffset * 2),
-            contentHeight,
-            stackView.topAnchor.constraint(greaterThanOrEqualTo: contentLayoutGuide.topAnchor),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: contentLayoutGuide.bottomAnchor),
-            stackView.centerYAnchor.constraint(equalTo: contentLayoutGuide.centerYAnchor),
+            stackView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Self.topPadding),
+            stackView.bottomAnchor.constraint(equalTo: contentLayoutGuide.bottomAnchor),
             stackView.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
             stackView.widthAnchor.constraint(lessThanOrEqualToConstant: Self.maximumContentWidth),
             stackView.widthAnchor.constraint(lessThanOrEqualTo: frameLayoutGuide.widthAnchor),
@@ -106,6 +99,9 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     private let sections: [HomepageSection]
     private var isPrivateBrowsing: Bool
     private var contentMode: HomepageContentMode = .embeddedNarrow
+    /// Mode handed to the sections. Derived from the real page width so a
+    /// narrow window (Split View, portrait) gets the narrow layout even on iPad.
+    private var sectionContentMode: HomepageContentMode = .embeddedNarrow
     private var visibleContentInsets: UIEdgeInsets = .zero
     private var sectionViewControllers: [HomepageSection: UIViewController] = [:]
     private var panelScrollViews: [HomepagePanelScrollView] = []
@@ -150,7 +146,9 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     
     private lazy var weatherChipView: HomepageWeatherChipView = {
         let chip = HomepageWeatherChipView(frame: .zero)
-        chip.addTarget(self, action: #selector(handleWeatherChipTap), for: .touchUpInside)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleWeatherChipTap))
+        tap.cancelsTouchesInView = false
+        chip.addGestureRecognizer(tap)
         return chip
     }()
     
@@ -185,7 +183,8 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         scrollView.isPagingEnabled = true
         scrollView.showsVerticalScrollIndicator = false
         scrollView.showsHorizontalScrollIndicator = false
-        scrollView.alwaysBounceVertical = true
+        scrollView.alwaysBounceVertical = false
+        scrollView.bounces = false
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.keyboardDismissMode = .none
         return scrollView
@@ -263,7 +262,29 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateSectionContentMode()
         updatePanelScrollability()
+    }
+    
+    private func updateSectionContentMode() {
+        let width = isViewLoaded ? view.bounds.width : 0
+        var mode = contentMode
+        if width > 0 {
+            if width < 540 {
+                mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
+            } else if width < 820, contentMode == .embeddedExpanded {
+                mode = .embeddedWide
+            }
+        }
+        guard mode != sectionContentMode else {
+            return
+        }
+        sectionContentMode = mode
+        recommendationViewControllers.forEach { $0.setContentMode(mode) }
+        privateBrowsingSectionViewController?.setContentMode(mode)
+        favoritesSectionViewController?.setContentMode(mode)
+        frequentlyVisitedSectionViewController?.setContentMode(mode)
+        recentlyClosedTabsSectionViewController?.setContentMode(mode)
     }
     
     override func viewSafeAreaInsetsDidChange() {
@@ -284,13 +305,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         }
         
         self.contentMode = contentMode
-        recommendationViewControllers.forEach { viewController in
-            viewController.setContentMode(contentMode)
-        }
-        privateBrowsingSectionViewController?.setContentMode(contentMode)
-        favoritesSectionViewController?.setContentMode(contentMode)
-        frequentlyVisitedSectionViewController?.setContentMode(contentMode)
-        recentlyClosedTabsSectionViewController?.setContentMode(contentMode)
+        updateSectionContentMode()
         if isViewLoaded {
             updateBackground()
             updateInsets()
@@ -400,6 +415,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             headerTop,
             topBarView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: UX.horizontalInset),
             topBarView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -UX.horizontalInset),
+            topBarView.heightAnchor.constraint(equalToConstant: 36),
             
             headerContainerView.topAnchor.constraint(equalTo: topBarView.bottomAnchor, constant: UX.headerSpacing),
             headerContainerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -477,6 +493,15 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             for section in definition.sections {
                 guard let viewController = sectionViewController(for: section) else {
                     continue
+                }
+                // Favorites has no built-in top spacing while Frequently
+                // Visited / Recently Closed start ~16pt down; pad it so the
+                // three page titles sit at the same height.
+                if section == .favorites {
+                    let spacer = UIView()
+                    spacer.translatesAutoresizingMaskIntoConstraints = false
+                    spacer.heightAnchor.constraint(equalToConstant: 16).isActive = true
+                    panel.stackView.addArrangedSubview(spacer)
                 }
                 panel.stackView.addArrangedSubview(viewController.view)
             }
@@ -587,27 +612,27 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         case .recommendation(.performance):
             let viewController = PerformanceRecommendationViewController()
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             viewController.setPrivateBrowsing(isPrivateBrowsing)
             return viewController
             
         case .recommendation(.updateAvailable):
             let viewController = UpdateAvailableViewController()
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             viewController.setPrivateBrowsing(isPrivateBrowsing)
             return viewController
             
         case .recommendation(.donation):
             let viewController = DonationRecommendationViewController()
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             viewController.setPrivateBrowsing(isPrivateBrowsing)
             return viewController
             
         case .privateBrowsing:
             let viewController = PrivateBrowsingSectionViewController()
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             viewController.setPrivateBrowsing(isPrivateBrowsing)
             return viewController
             
@@ -618,19 +643,26 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
                 showsSectionTitle: folder == nil
             )
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
+            if folder == nil {
+                viewController.showsAddTile = true
+                viewController.centersRows = true
+                viewController.onAddFavorite = { [weak self] in
+                    self?.presentAddFavorite()
+                }
+            }
             return viewController
             
         case .frequentlyVisited:
             let viewController = FrequentlyVisitedSectionViewController()
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             return viewController
             
         case .recentlyClosedTabs:
             let viewController = RecentlyClosedTabsSectionViewController()
             viewController.delegate = self
-            viewController.setContentMode(contentMode)
+            viewController.setContentMode(sectionContentMode)
             return viewController
         }
     }
@@ -782,6 +814,51 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     
     @objc private func handleSearchFieldTap() {
         delegate?.edgeStartPageDidRequestAddressBarFocus(self)
+    }
+    
+    private func presentAddFavorite() {
+        let alert = UIAlertController(
+            title: NSLocalizedString("Add to Favorites", comment: ""),
+            message: nil,
+            preferredStyle: .alert
+        )
+        alert.addTextField { field in
+            field.placeholder = NSLocalizedString("Name", comment: "Add favorite name field")
+            field.autocapitalizationType = .sentences
+            field.returnKeyType = .next
+        }
+        alert.addTextField { field in
+            field.placeholder = NSLocalizedString("URL", comment: "Add favorite address field")
+            field.keyboardType = .URL
+            field.autocapitalizationType = .none
+            field.autocorrectionType = .no
+            field.returnKeyType = .done
+        }
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Add", comment: "Homepage favorites add tile"), style: .default) { [weak self, weak alert] _ in
+            guard let self,
+                  let fields = alert?.textFields,
+                  let url = Self.favoriteURL(from: fields[1].text) else {
+                return
+            }
+            let typedTitle = fields[0].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let title = typedTitle.isEmpty ? (url.host ?? url.absoluteString) : typedTitle
+            let favoritesGUID = self.bookmarkStore.favoritesFolderContents().parent.guid
+            _ = self.bookmarkStore.addBookmark(title: title, url: url, to: favoritesGUID)
+        })
+        present(alert, animated: true)
+    }
+    
+    private static func favoriteURL(from text: String?) -> URL? {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty, !trimmed.contains(" ") else {
+            return nil
+        }
+        let candidate = trimmed.contains("://") ? trimmed : "https://" + trimmed
+        guard let url = URL(string: candidate), url.host?.isEmpty == false else {
+            return nil
+        }
+        return url
     }
     
     @objc private func handleSettingsTap() {

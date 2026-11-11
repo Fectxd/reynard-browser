@@ -75,6 +75,28 @@ final class FavoritesSectionViewController: UIViewController {
     
     private let collectionLayout = FavoritesCollectionViewLayout()
     
+    /// Edge start page only: a trailing "+" tile that asks to add a favorite.
+    /// Off by default, so upstream's homepage is unchanged.
+    var showsAddTile = false {
+        didSet {
+            guard oldValue != showsAddTile, isViewLoaded else { return }
+            applyFavoriteItemLimit()
+        }
+    }
+    var onAddFavorite: (() -> Void)?
+    var centersRows: Bool {
+        get { collectionLayout.centersRows }
+        set { collectionLayout.centersRows = newValue }
+    }
+    
+    private var addTileCount: Int {
+        return showsAddTile && folder == nil ? 1 : 0
+    }
+    
+    private func isAddTile(_ indexPath: IndexPath) -> Bool {
+        return addTileCount > 0 && indexPath.item == displayedFavoriteItems.count
+    }
+    
     private lazy var collectionView: UICollectionView = {
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionLayout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
@@ -90,6 +112,10 @@ final class FavoritesSectionViewController: UIViewController {
         collectionView.register(
             FavoriteFolderCollectionViewCell.self,
             forCellWithReuseIdentifier: FavoriteFolderCollectionViewCell.reuseIdentifier
+        )
+        collectionView.register(
+            FavoriteAddCollectionViewCell.self,
+            forCellWithReuseIdentifier: FavoriteAddCollectionViewCell.reuseIdentifier
         )
         return collectionView
     }()
@@ -246,7 +272,7 @@ final class FavoritesSectionViewController: UIViewController {
         displayedFavoriteItems = currentFavoriteItems()
         updateShowAllButton()
         collectionView.reloadData()
-        view.isHidden = allFavoriteItems.isEmpty
+        view.isHidden = allFavoriteItems.isEmpty && addTileCount == 0
         invalidateFavoriteLayout()
     }
     
@@ -363,7 +389,7 @@ final class FavoritesSectionViewController: UIViewController {
             collectionLayout.metrics = metrics
         }
         
-        let displayedItemCount = itemCount ?? displayedFavoriteItems.count
+        let displayedItemCount = (itemCount ?? displayedFavoriteItems.count) + addTileCount
         let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
         let contentHeight = metrics.contentHeight(rowCount: rowCount)
         guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
@@ -456,6 +482,7 @@ final class FavoritesSectionViewController: UIViewController {
             let translation = gestureRecognizer.translation(in: collectionView)
             let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
             guard let indexPath = collectionView.indexPathForItem(at: startLocation),
+                  !isAddTile(indexPath),
                   let cell = collectionView.cellForItem(at: indexPath),
                   collectionView.beginInteractiveMovementForItem(at: indexPath) else {
                 return
@@ -481,6 +508,7 @@ final class FavoritesSectionViewController: UIViewController {
     @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
         let location = gestureRecognizer.location(in: collectionView)
         guard let indexPath = collectionView.indexPathForItem(at: location),
+              !isAddTile(indexPath),
               let cell = collectionView.cellForItem(at: indexPath) else {
             return
         }
@@ -494,6 +522,7 @@ final class FavoritesSectionViewController: UIViewController {
         switch gestureRecognizer.state {
         case .began:
             guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
+                  !isAddTile(indexPath),
                   let cell = collectionView.cellForItem(at: indexPath) else {
                 return
             }
@@ -624,10 +653,19 @@ final class FavoritesSectionViewController: UIViewController {
 
 extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return displayedFavoriteItems.count
+        return displayedFavoriteItems.count + addTileCount
     }
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        if isAddTile(indexPath) {
+            let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: FavoriteAddCollectionViewCell.reuseIdentifier,
+                for: indexPath
+            ) as! FavoriteAddCollectionViewCell
+            cell.configure(titleColor: HomepageWallpaper.foregroundColor(for: contentMode))
+            return cell
+        }
+        
         switch displayedFavoriteItems[indexPath.item] {
         case let .bookmark(bookmark):
             let cell = collectionView.dequeueReusableCell(
@@ -655,6 +693,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
     }
     
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        if isAddTile(indexPath) {
+            onAddFavorite?()
+            return
+        }
         guard displayedFavoriteItems.indices.contains(indexPath.item) else {
             return
         }
@@ -669,6 +711,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
     
     func collectionView(_ collectionView: UICollectionView, canMoveItemAt indexPath: IndexPath) -> Bool {
         return displayedFavoriteItems.indices.contains(indexPath.item)
+    }
+    
+    func collectionView(
+        _ collectionView: UICollectionView,
+        targetIndexPathForMoveOfItemFromOriginalIndexPath originalIndexPath: IndexPath,
+        atCurrentIndexPath currentIndexPath: IndexPath,
+        toProposedIndexPath proposedIndexPath: IndexPath
+    ) -> IndexPath {
+        // The "+" tile always stays last.
+        guard addTileCount > 0, proposedIndexPath.item >= displayedFavoriteItems.count else {
+            return proposedIndexPath
+        }
+        return IndexPath(item: max(displayedFavoriteItems.count - 1, 0), section: proposedIndexPath.section)
     }
     
     func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
