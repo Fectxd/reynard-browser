@@ -110,6 +110,11 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     private var weatherSnapshot: HomepageWeatherSnapshot?
     private var weatherLoadDate = Date.distantPast
     private var hasRequestedFeed = false
+    /// Pager size of the last layout pass; when the window is resized the
+    /// pager is snapped back onto the current page and every section re-lays out.
+    private var lastPagerSize: CGSize = .zero
+    private var isResizing = false
+    private var lastSettledPageIndex = 0
     private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
     
     private let wallpaperImageView: UIImageView = {
@@ -257,13 +262,84 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         reloadWeather(force: true)
+        // Every time the start page is shown it opens on the first page
+        // (Favorites), with each page scrolled back to its top.
+        if folder == nil {
+            resetToFirstPage()
+        }
         showHintForCurrentPage()
     }
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         updateSectionContentMode()
+        handlePagerResizeIfNeeded()
         updatePanelScrollability()
+    }
+    
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        let pageIndex = currentPageIndex
+        isResizing = true
+        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            self.isResizing = false
+            self.lastPagerSize = .zero
+            self.currentPageIndex = pageIndex
+            self.view.setNeedsLayout()
+            self.view.layoutIfNeeded()
+        }
+    }
+    
+    /// iPad window resizes (Split View, Slide Over, Stage Manager, rotation)
+    /// change the pager size without a page change. Keep the visible page
+    /// aligned and make every section recompute its columns for the new width.
+    private func handlePagerResizeIfNeeded() {
+        let size = pagerScrollView.bounds.size
+        guard size.width > 0, size.height > 0, size != lastPagerSize else {
+            return
+        }
+        let widthChanged = abs(size.width - lastPagerSize.width) > 0.5
+        lastPagerSize = size
+        
+        if widthChanged {
+            for viewController in sectionViewControllers.values {
+                viewController.view.setNeedsLayout()
+            }
+            for panel in panelScrollViews {
+                panel.setNeedsLayout()
+                panel.stackView.setNeedsLayout()
+            }
+            pagesStackView.setNeedsLayout()
+            pagesStackView.layoutIfNeeded()
+        }
+        
+        guard !pagerScrollView.isDragging, !pagerScrollView.isDecelerating else {
+            return
+        }
+        let index = min(max(currentPageIndex, 0), max(panelScrollViews.count - 1, 0))
+        let target = CGPoint(x: 0, y: CGFloat(index) * size.height)
+        if abs(pagerScrollView.contentOffset.y - target.y) > 0.5 {
+            pagerScrollView.setContentOffset(target, animated: false)
+        }
+        if !isResizing {
+            updateHintForOffset()
+        }
+    }
+    
+    private func resetToFirstPage() {
+        guard isViewLoaded, !panelScrollViews.isEmpty else {
+            return
+        }
+        pagerScrollView.setContentOffset(.zero, animated: false)
+        currentPageIndex = 0
+        for panel in panelScrollViews {
+            panel.setContentOffset(.zero, animated: false)
+        }
+        frequentlyVisitedSectionViewController?.scrollToStart(animated: false)
+        updateHintForOffset()
     }
     
     private func updateSectionContentMode() {
@@ -466,6 +542,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         panelScrollViews = []
         panelTitles = []
         currentPageIndex = 0
+        lastSettledPageIndex = 0
         pagerScrollView.setContentOffset(.zero, animated: false)
         
         let panels = panelDefinitions()
@@ -583,11 +660,13 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             ))
         }
         
-        definitions.append(PanelDefinition(
-            title: NSLocalizedString("Feed", comment: "Homepage information panel title"),
-            sections: [],
-            isFeed: true
-        ))
+        if Prefs.HomepageSettings.showsFeed {
+            definitions.append(PanelDefinition(
+                title: NSLocalizedString("Feed", comment: "Homepage information panel title"),
+                sections: [],
+                isFeed: true
+            ))
+        }
         
         return definitions
     }
@@ -730,15 +809,12 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         
         let index = currentPageIndex
         var hint: String?
+        // Only point at the next page. The last page (e.g. the feed) shows
+        // no hint: "swipe down for Recently Closed" there was misleading.
         if index + 1 < panelTitles.count {
             hint = String(
                 format: NSLocalizedString("Swipe up for %@", comment: "Homepage panel swipe hint"),
                 panelTitles[index + 1]
-            )
-        } else if index > 0 {
-            hint = String(
-                format: NSLocalizedString("Swipe down for %@", comment: "Homepage panel swipe hint"),
-                panelTitles[index - 1]
             )
         }
         
@@ -971,6 +1047,11 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
         guard scrollView === pagerScrollView else {
             return
         }
+        // A window resize changes the page height before viewDidLayoutSubviews
+        // re-aligns the pager; offsets seen in between would pick a wrong page.
+        if isResizing || (lastPagerSize != .zero && scrollView.bounds.size != lastPagerSize) {
+            return
+        }
         updateHintForOffset()
     }
     
@@ -1011,6 +1092,12 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
     
     private func finishPageChange() {
         updateHintForOffset()
+        if lastSettledPageIndex != currentPageIndex {
+            // Leaving or entering a page puts Frequently Visited back at its
+            // first (left-most) site.
+            frequentlyVisitedSectionViewController?.scrollToStart(animated: false)
+            lastSettledPageIndex = currentPageIndex
+        }
         guard currentPageIndex == panelScrollViews.count - 1,
               let feedPanelViewController = feedPanelViewController,
               !hasRequestedFeed else {

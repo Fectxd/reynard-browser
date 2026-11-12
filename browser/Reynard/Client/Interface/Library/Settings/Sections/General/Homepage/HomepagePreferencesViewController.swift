@@ -44,6 +44,7 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         case chooseWallpaper
     }
     
+    private let feedSwitch = UISwitch()
     private let recommendationsSwitch = UISwitch()
     private let newUpdatesSwitch = UISwitch()
     private let showWallpaperSwitch = UISwitch()
@@ -95,7 +96,8 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         case .openingScreen:
             return HomepageOpeningScreen.allCases.count
         case .includeOnHomepage:
-            return HomepageSectionPreferencesViewController.OverviewRow.allCases.count
+            // The section rows plus the Feed switch.
+            return HomepageSectionPreferencesViewController.OverviewRow.allCases.count + 1
         case .homepageBanners:
             return HomepageBannerRow.allCases.count
         case .wallpaper:
@@ -129,7 +131,11 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
             return cell
         case .includeOnHomepage:
             guard HomepageSectionPreferencesViewController.OverviewRow.allCases.indices.contains(indexPath.row) else {
-                return UITableViewCell()
+                let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+                cell.selectionStyle = .none
+                cell.textLabel?.text = NSLocalizedString("Feed", comment: "Homepage information panel title")
+                cell.accessoryView = feedSwitch
+                return cell
             }
             
             let row = HomepageSectionPreferencesViewController.OverviewRow.allCases[indexPath.row]
@@ -215,15 +221,21 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
     }
     
     private func configureSwitches() {
+        feedSwitch.addTarget(self, action: #selector(feedSwitchDidChange(_:)), for: .valueChanged)
         recommendationsSwitch.addTarget(self, action: #selector(recommendationsSwitchDidChange(_:)), for: .valueChanged)
         newUpdatesSwitch.addTarget(self, action: #selector(newUpdatesSwitchDidChange(_:)), for: .valueChanged)
         showWallpaperSwitch.addTarget(self, action: #selector(showWallpaperSwitchDidChange(_:)), for: .valueChanged)
     }
     
     private func refreshDisplayedState() {
+        feedSwitch.isOn = Prefs.HomepageSettings.showsFeed
         recommendationsSwitch.isOn = Prefs.HomepageSettings.showsRecommendations
         newUpdatesSwitch.isOn = Prefs.HomepageSettings.showsNewUpdates
         showWallpaperSwitch.isOn = Prefs.HomepageSettings.showsWallpaper
+    }
+    
+    @objc private func feedSwitchDidChange(_ sender: UISwitch) {
+        Prefs.HomepageSettings.showsFeed = sender.isOn
     }
     
     @objc private func recommendationsSwitchDidChange(_ sender: UISwitch) {

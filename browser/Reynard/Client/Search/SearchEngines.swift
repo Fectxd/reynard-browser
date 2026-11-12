@@ -61,7 +61,7 @@ enum SearchEngine: String, CaseIterable {
         case .google:
             return "https://www.google.com/search?q=%s"
         case .baidu:
-            return "https://www.baidu.com/s?wd=%s"
+            return "https://www.baidu.com/s?ie=utf-8&wd=%s"
         case .yahoo:
             return "https://search.yahoo.com/search?p=%s"
         case .bing:

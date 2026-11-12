@@ -103,6 +103,15 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
         super.viewWillAppear(animated)
     }
     
+    /// Scrolls the site row back to its first (left-most) card.
+    func scrollToStart(animated: Bool) {
+        guard isViewLoaded else {
+            return
+        }
+        let start = CGPoint(x: -scrollView.adjustedContentInset.left, y: scrollView.contentOffset.y)
+        scrollView.setContentOffset(start, animated: animated)
+    }
+    
     func setContentMode(_ contentMode: HomepageContentMode) {
         guard self.contentMode != contentMode else {
             return

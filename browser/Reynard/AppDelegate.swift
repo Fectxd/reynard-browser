@@ -11,6 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         JITController.shared.startBackgroundAudioIfNeeded()
+        ScribbleGuard.install()
         return true
     }
     

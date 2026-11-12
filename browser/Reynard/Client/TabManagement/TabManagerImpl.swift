@@ -65,6 +65,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
     private var selectionCounter = 0
     
+    private static let invisibleInputScalars: Set<UInt32> = [
+        0x2005, 0x2006, 0x2009, 0x200A, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF,
+    ]
+    
     private lazy var lenientURLExpression: NSRegularExpression = {
         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
         return try! NSRegularExpression(pattern: pattern)
@@ -944,7 +948,12 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     func browse(to term: String, in tab: Tab) {
-        let navigationInput = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Chinese/Japanese keyboards separate un-committed syllables with
+        // U+2006 (six-per-em space) and similar invisible characters; drop them
+        // so "mai\u{2006}l\u{2006}qq" is searched as "mailqq".
+        let navigationInput = String(String.UnicodeScalarView(term.unicodeScalars.filter { scalar in
+            !Self.invisibleInputScalars.contains(scalar.value)
+        })).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !navigationInput.isEmpty else {
             return
         }

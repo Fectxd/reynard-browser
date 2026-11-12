@@ -93,6 +93,7 @@ final class BrowserPreferences {
             key("HomepageSettings", "showsRecommendations"): true,
             key("HomepageSettings", "showsNewUpdates"): true,
             key("HomepageSettings", "showsWallpaper"): false,
+            key("HomepageSettings", "showsFeed"): true,
             key("HomepageSettings", "donationRecommendationMultiplier"): 1,
             
             // Appearance
@@ -668,6 +669,17 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(newValue, forSetting: "HomepageSettings", key: "showsFavoritesInPrivateBrowsing")
+                NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
+            }
+        }
+        
+        /// The MSN feed page at the end of the Edge start page.
+        static var showsFeed: Bool {
+            get {
+                return prefs.bool(forSetting: "HomepageSettings", key: "showsFeed")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HomepageSettings", key: "showsFeed")
                 NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
             }
         }

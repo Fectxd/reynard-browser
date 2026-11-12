@@ -40,6 +40,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         case downloadPage
         case findInPage
         case fontSize
+        case openLocalFile
         case exitBrowser
 
         var title: String {
@@ -80,6 +81,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
                 return "在页面上查找"
             case .fontSize:
                 return "字体大小"
+            case .openLocalFile:
+                return "本地网页/PDF"
             case .exitBrowser:
                 return "退出浏览器"
             }
@@ -123,6 +126,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
                 return "reynard.magnifyingglass"
             case .fontSize:
                 return "reynard.textformat.size"
+            case .openLocalFile:
+                return "reynard.document"
             case .exitBrowser:
                 return "reynard.xmark"
             }
@@ -523,7 +528,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
             return [
                 .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
                 .appearance, .clearData, .shareExtension, .share, .translate,
-                .addToPhone, .findInPage, .fontSize, .exitBrowser,
+                .addToPhone, .findInPage, .fontSize, .openLocalFile, .exitBrowser,
             ]
         }
     }

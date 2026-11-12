@@ -111,6 +111,8 @@ extension BrowserViewController {
             presentPageTranslation()
         case .addToPhone:
             presentQRCodeShare()
+        case .openLocalFile:
+            presentLocalFilePicker()
         case .exitBrowser:
             exitBrowserToBackground()
         case .findInPage:

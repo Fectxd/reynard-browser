@@ -216,6 +216,18 @@ index 8ddcda7..69de0a3 100644
      
      static func fromDictionary(_ payload: [String: Any?]) -> ContentPermission {
          let rawValue = PayloadValue.int32(payload["value"] ?? nil) ?? ContentPermission.Value.prompt.rawValue
+diff --git a/browser/Reynard/AppDelegate.swift b/browser/Reynard/AppDelegate.swift
+index 795d1eb..82827eb 100644
+--- a/browser/Reynard/AppDelegate.swift
++++ b/browser/Reynard/AppDelegate.swift
+@@ -11,6 +11,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
+     
+     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+         JITController.shared.startBackgroundAudioIfNeeded()
++        ScribbleGuard.install()
+         return true
+     }
+     
 diff --git a/browser/Reynard/ApplicationMenuBuilder.swift b/browser/Reynard/ApplicationMenuBuilder.swift
 index 5e088c8..70abdc8 100644
 --- a/browser/Reynard/ApplicationMenuBuilder.swift
@@ -2711,10 +2723,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..b3eaffd
+index 0000000..7920af8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,333 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -2828,6 +2840,8 @@ index 0000000..b3eaffd
 +            presentPageTranslation()
 +        case .addToPhone:
 +            presentQRCodeShare()
++        case .openLocalFile:
++            presentLocalFilePicker()
 +        case .exitBrowser:
 +            exitBrowserToBackground()
 +        case .findInPage:
@@ -3044,6 +3058,112 @@ index 0000000..b3eaffd
 +            }
 +        }
 +        present(controller, animated: true)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
+new file mode 100644
+index 0000000..6d11e65
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
+@@ -0,0 +1,100 @@
++//
++//  BrowserViewController+LocalFile.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  "本地网页/PDF" in the Edge menu: pick an HTML (.html/.htm/.xhtml) or PDF file
++//  from Files and open it in a new tab. PDFs are rendered by Gecko's built-in
++//  pdf.js viewer (the same one that already serves web PDFs; its download
++//  button goes through TabManager.onSavePdf).
++//
++//  The picked file is copied into the app's own caches folder first, because
++//  a security-scoped Files URL is only readable while the picker grant is held
++//  and Gecko loads the page asynchronously.
++//
++
++import ObjectiveC
++import UIKit
++import UniformTypeIdentifiers
++
++extension BrowserViewController {
++    func presentLocalFilePicker() {
++        let picker: UIDocumentPickerViewController
++        if #available(iOS 14.0, *) {
++            var types: [UTType] = [.html, .pdf]
++            if let xhtml = UTType("public.xhtml") {
++                types.append(xhtml)
++            }
++            if let webArchive = UTType("com.apple.webarchive") {
++                types.append(webArchive)
++            }
++            picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
++        } else {
++            picker = UIDocumentPickerViewController(documentTypes: ["public.html", "com.adobe.pdf"], in: .import)
++        }
++        picker.allowsMultipleSelection = false
++
++        let coordinator = LocalFilePickerCoordinator { [weak self] url in
++            self?.openLocalFile(url)
++        }
++        picker.delegate = coordinator
++        objc_setAssociatedObject(picker, &LocalFilePickerCoordinator.associationKey, coordinator, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
++        present(picker, animated: true)
++    }
++
++    private func openLocalFile(_ pickedURL: URL) {
++        guard let localURL = LocalFilePickerCoordinator.copyIntoSandbox(pickedURL) else {
++            return
++        }
++        _ = tabManager.createRegularTab(
++            selecting: true,
++            target: .end,
++            url: localURL.absoluteString,
++            loadImmediately: true
++        )
++    }
++}
++
++private final class LocalFilePickerCoordinator: NSObject, UIDocumentPickerDelegate {
++    static var associationKey: UInt8 = 0
++
++    private let onPick: (URL) -> Void
++
++    init(onPick: @escaping (URL) -> Void) {
++        self.onPick = onPick
++    }
++
++    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
++        guard let url = urls.first else {
++            return
++        }
++        onPick(url)
++    }
++
++    /// Copies the picked file to Caches/LocalFiles/<uuid>/<name> and returns it.
++    static func copyIntoSandbox(_ url: URL) -> URL? {
++        let isScoped = url.startAccessingSecurityScopedResource()
++        defer {
++            if isScoped {
++                url.stopAccessingSecurityScopedResource()
++            }
++        }
++
++        let fileManager = FileManager.default
++        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
++            return nil
++        }
++        let folder = caches
++            .appendingPathComponent("LocalFiles", isDirectory: true)
++            .appendingPathComponent(UUID().uuidString, isDirectory: true)
++        let destination = folder.appendingPathComponent(url.lastPathComponent)
++        do {
++            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
++            try fileManager.copyItem(at: url, to: destination)
++            return destination
++        } catch {
++            return nil
++        }
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
@@ -3708,10 +3828,10 @@ index 0000000..75d95d3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..180b7bd
+index 0000000..271e805
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,754 @@
+@@ -0,0 +1,759 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -3754,6 +3874,7 @@ index 0000000..180b7bd
 +        case downloadPage
 +        case findInPage
 +        case fontSize
++        case openLocalFile
 +        case exitBrowser
 +
 +        var title: String {
@@ -3794,6 +3915,8 @@ index 0000000..180b7bd
 +                return "在页面上查找"
 +            case .fontSize:
 +                return "字体大小"
++            case .openLocalFile:
++                return "本地网页/PDF"
 +            case .exitBrowser:
 +                return "退出浏览器"
 +            }
@@ -3837,6 +3960,8 @@ index 0000000..180b7bd
 +                return "reynard.magnifyingglass"
 +            case .fontSize:
 +                return "reynard.textformat.size"
++            case .openLocalFile:
++                return "reynard.document"
 +            case .exitBrowser:
 +                return "reynard.xmark"
 +            }
@@ -4237,7 +4362,7 @@ index 0000000..180b7bd
 +            return [
 +                .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
 +                .appearance, .clearData, .shareExtension, .share, .translate,
-+                .addToPhone, .findInPage, .fontSize, .exitBrowser,
++                .addToPhone, .findInPage, .fontSize, .openLocalFile, .exitBrowser,
 +            ]
 +        }
 +    }
@@ -4650,6 +4775,73 @@ index 0000000..6fe8761
 +        present(activity, animated: true)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
+new file mode 100644
+index 0000000..9343811
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
+@@ -0,0 +1,61 @@
++//
++//  ScribbleGuard.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Tapping with an Apple Pencil (or a third-party pencil) crashed the app:
++//  iPadOS starts Scribble (handwriting into text inputs) and its PencilKit
++//  renderer crashes inside -[PKRendererVSyncController init] under Gecko's run
++//  loop (see minh-ton/reynard-browser#100). The page view and the address bar
++//  are both text inputs, so the crash could happen anywhere.
++//
++//  Scribble is switched off by attaching a UIScribbleInteraction whose delegate
++//  refuses to begin to every text-input view when it enters a window. Pencil
++//  taps, drawing on web pages, pressure and hover still go through as before;
++//  only handwriting-to-text is unavailable.
++//
++
++import ObjectiveC
++import UIKit
++
++enum ScribbleGuard {
++    private static var isInstalled = false
++
++    static func install() {
++        guard !isInstalled, #available(iOS 14.0, *) else {
++            return
++        }
++        isInstalled = true
++
++        guard let original = class_getInstanceMethod(UIView.self, #selector(UIView.didMoveToWindow)),
++              let replacement = class_getInstanceMethod(UIView.self, #selector(UIView.reynard_scribbleGuardDidMoveToWindow)) else {
++            return
++        }
++        method_exchangeImplementations(original, replacement)
++    }
++}
++
++@available(iOS 14.0, *)
++private final class ScribbleBlocker: NSObject, UIScribbleInteractionDelegate {
++    static let shared = ScribbleBlocker()
++
++    func scribbleInteraction(_ interaction: UIScribbleInteraction, shouldBeginAt location: CGPoint) -> Bool {
++        return false
++    }
++}
++
++extension UIView {
++    @objc fileprivate func reynard_scribbleGuardDidMoveToWindow() {
++        // Calls the original didMoveToWindow (implementations are exchanged).
++        reynard_scribbleGuardDidMoveToWindow()
++
++        guard #available(iOS 14.0, *),
++              window != nil,
++              self is UITextInput,
++              !interactions.contains(where: { $0 is UIScribbleInteraction }) else {
++            return
++        }
++        addInteraction(UIScribbleInteraction(delegate: ScribbleBlocker.shared))
++    }
++}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift
 new file mode 100644
 index 0000000..53fa2a6
@@ -4769,10 +4961,10 @@ index 0000000..53fa2a6
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..b50efe8
+index 0000000..33be1a2
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1061 @@
+@@ -0,0 +1,1148 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -4885,6 +5077,11 @@ index 0000000..b50efe8
 +    private var weatherSnapshot: HomepageWeatherSnapshot?
 +    private var weatherLoadDate = Date.distantPast
 +    private var hasRequestedFeed = false
++    /// Pager size of the last layout pass; when the window is resized the
++    /// pager is snapped back onto the current page and every section re-lays out.
++    private var lastPagerSize: CGSize = .zero
++    private var isResizing = false
++    private var lastSettledPageIndex = 0
 +    private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
 +    
 +    private let wallpaperImageView: UIImageView = {
@@ -5032,13 +5229,84 @@ index 0000000..b50efe8
 +    override func viewWillAppear(_ animated: Bool) {
 +        super.viewWillAppear(animated)
 +        reloadWeather(force: true)
++        // Every time the start page is shown it opens on the first page
++        // (Favorites), with each page scrolled back to its top.
++        if folder == nil {
++            resetToFirstPage()
++        }
 +        showHintForCurrentPage()
 +    }
 +    
 +    override func viewDidLayoutSubviews() {
 +        super.viewDidLayoutSubviews()
 +        updateSectionContentMode()
++        handlePagerResizeIfNeeded()
 +        updatePanelScrollability()
++    }
++    
++    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
++        super.viewWillTransition(to: size, with: coordinator)
++        let pageIndex = currentPageIndex
++        isResizing = true
++        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
++            guard let self else {
++                return
++            }
++            self.isResizing = false
++            self.lastPagerSize = .zero
++            self.currentPageIndex = pageIndex
++            self.view.setNeedsLayout()
++            self.view.layoutIfNeeded()
++        }
++    }
++    
++    /// iPad window resizes (Split View, Slide Over, Stage Manager, rotation)
++    /// change the pager size without a page change. Keep the visible page
++    /// aligned and make every section recompute its columns for the new width.
++    private func handlePagerResizeIfNeeded() {
++        let size = pagerScrollView.bounds.size
++        guard size.width > 0, size.height > 0, size != lastPagerSize else {
++            return
++        }
++        let widthChanged = abs(size.width - lastPagerSize.width) > 0.5
++        lastPagerSize = size
++        
++        if widthChanged {
++            for viewController in sectionViewControllers.values {
++                viewController.view.setNeedsLayout()
++            }
++            for panel in panelScrollViews {
++                panel.setNeedsLayout()
++                panel.stackView.setNeedsLayout()
++            }
++            pagesStackView.setNeedsLayout()
++            pagesStackView.layoutIfNeeded()
++        }
++        
++        guard !pagerScrollView.isDragging, !pagerScrollView.isDecelerating else {
++            return
++        }
++        let index = min(max(currentPageIndex, 0), max(panelScrollViews.count - 1, 0))
++        let target = CGPoint(x: 0, y: CGFloat(index) * size.height)
++        if abs(pagerScrollView.contentOffset.y - target.y) > 0.5 {
++            pagerScrollView.setContentOffset(target, animated: false)
++        }
++        if !isResizing {
++            updateHintForOffset()
++        }
++    }
++    
++    private func resetToFirstPage() {
++        guard isViewLoaded, !panelScrollViews.isEmpty else {
++            return
++        }
++        pagerScrollView.setContentOffset(.zero, animated: false)
++        currentPageIndex = 0
++        for panel in panelScrollViews {
++            panel.setContentOffset(.zero, animated: false)
++        }
++        frequentlyVisitedSectionViewController?.scrollToStart(animated: false)
++        updateHintForOffset()
 +    }
 +    
 +    private func updateSectionContentMode() {
@@ -5241,6 +5509,7 @@ index 0000000..b50efe8
 +        panelScrollViews = []
 +        panelTitles = []
 +        currentPageIndex = 0
++        lastSettledPageIndex = 0
 +        pagerScrollView.setContentOffset(.zero, animated: false)
 +        
 +        let panels = panelDefinitions()
@@ -5358,11 +5627,13 @@ index 0000000..b50efe8
 +            ))
 +        }
 +        
-+        definitions.append(PanelDefinition(
-+            title: NSLocalizedString("Feed", comment: "Homepage information panel title"),
-+            sections: [],
-+            isFeed: true
-+        ))
++        if Prefs.HomepageSettings.showsFeed {
++            definitions.append(PanelDefinition(
++                title: NSLocalizedString("Feed", comment: "Homepage information panel title"),
++                sections: [],
++                isFeed: true
++            ))
++        }
 +        
 +        return definitions
 +    }
@@ -5505,15 +5776,12 @@ index 0000000..b50efe8
 +        
 +        let index = currentPageIndex
 +        var hint: String?
++        // Only point at the next page. The last page (e.g. the feed) shows
++        // no hint: "swipe down for Recently Closed" there was misleading.
 +        if index + 1 < panelTitles.count {
 +            hint = String(
 +                format: NSLocalizedString("Swipe up for %@", comment: "Homepage panel swipe hint"),
 +                panelTitles[index + 1]
-+            )
-+        } else if index > 0 {
-+            hint = String(
-+                format: NSLocalizedString("Swipe down for %@", comment: "Homepage panel swipe hint"),
-+                panelTitles[index - 1]
 +            )
 +        }
 +        
@@ -5746,6 +6014,11 @@ index 0000000..b50efe8
 +        guard scrollView === pagerScrollView else {
 +            return
 +        }
++        // A window resize changes the page height before viewDidLayoutSubviews
++        // re-aligns the pager; offsets seen in between would pick a wrong page.
++        if isResizing || (lastPagerSize != .zero && scrollView.bounds.size != lastPagerSize) {
++            return
++        }
 +        updateHintForOffset()
 +    }
 +    
@@ -5786,6 +6059,12 @@ index 0000000..b50efe8
 +    
 +    private func finishPageChange() {
 +        updateHintForOffset()
++        if lastSettledPageIndex != currentPageIndex {
++            // Leaving or entering a page puts Frequently Visited back at its
++            // first (left-most) site.
++            frequentlyVisitedSectionViewController?.scrollToStart(animated: false)
++            lastSettledPageIndex = currentPageIndex
++        }
 +        guard currentPageIndex == panelScrollViews.count - 1,
 +              let feedPanelViewController = feedPanelViewController,
 +              !hasRequestedFeed else {
@@ -8774,6 +9053,26 @@ index bf26062..a4ba51c 100644
      func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
          guard displayedFavoriteItems.indices.contains(sourceIndexPath.item) else {
              reloadFavorites()
+diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
+index 28377e6..5a3a80f 100644
+--- a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
++++ b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
+@@ -103,6 +103,15 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+         super.viewWillAppear(animated)
+     }
+     
++    /// Scrolls the site row back to its first (left-most) card.
++    func scrollToStart(animated: Bool) {
++        guard isViewLoaded else {
++            return
++        }
++        let start = CGPoint(x: -scrollView.adjustedContentInset.left, y: scrollView.contentOffset.y)
++        scrollView.setContentOffset(start, animated: animated)
++    }
++    
+     func setContentMode(_ contentMode: HomepageContentMode) {
+         guard self.contentMode != contentMode else {
+             return
 diff --git a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
 index 7f723fd..0ca560e 100644
 --- a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
@@ -8829,6 +9128,65 @@ index 1897494..0f189e2 100644
          
          if navigationController?.presentingViewController is BrowserViewController {
              navigationController?.dismiss(animated: true)
+diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/General/Homepage/HomepagePreferencesViewController.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/General/Homepage/HomepagePreferencesViewController.swift
+index c73c69a..eae8ea1 100644
+--- a/browser/Reynard/Client/Interface/Library/Settings/Sections/General/Homepage/HomepagePreferencesViewController.swift
++++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/General/Homepage/HomepagePreferencesViewController.swift
+@@ -44,6 +44,7 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
+         case chooseWallpaper
+     }
+     
++    private let feedSwitch = UISwitch()
+     private let recommendationsSwitch = UISwitch()
+     private let newUpdatesSwitch = UISwitch()
+     private let showWallpaperSwitch = UISwitch()
+@@ -95,7 +96,8 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
+         case .openingScreen:
+             return HomepageOpeningScreen.allCases.count
+         case .includeOnHomepage:
+-            return HomepageSectionPreferencesViewController.OverviewRow.allCases.count
++            // The section rows plus the Feed switch.
++            return HomepageSectionPreferencesViewController.OverviewRow.allCases.count + 1
+         case .homepageBanners:
+             return HomepageBannerRow.allCases.count
+         case .wallpaper:
+@@ -129,7 +131,11 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
+             return cell
+         case .includeOnHomepage:
+             guard HomepageSectionPreferencesViewController.OverviewRow.allCases.indices.contains(indexPath.row) else {
+-                return UITableViewCell()
++                let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
++                cell.selectionStyle = .none
++                cell.textLabel?.text = NSLocalizedString("Feed", comment: "Homepage information panel title")
++                cell.accessoryView = feedSwitch
++                return cell
+             }
+             
+             let row = HomepageSectionPreferencesViewController.OverviewRow.allCases[indexPath.row]
+@@ -215,17 +221,23 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
+     }
+     
+     private func configureSwitches() {
++        feedSwitch.addTarget(self, action: #selector(feedSwitchDidChange(_:)), for: .valueChanged)
+         recommendationsSwitch.addTarget(self, action: #selector(recommendationsSwitchDidChange(_:)), for: .valueChanged)
+         newUpdatesSwitch.addTarget(self, action: #selector(newUpdatesSwitchDidChange(_:)), for: .valueChanged)
+         showWallpaperSwitch.addTarget(self, action: #selector(showWallpaperSwitchDidChange(_:)), for: .valueChanged)
+     }
+     
+     private func refreshDisplayedState() {
++        feedSwitch.isOn = Prefs.HomepageSettings.showsFeed
+         recommendationsSwitch.isOn = Prefs.HomepageSettings.showsRecommendations
+         newUpdatesSwitch.isOn = Prefs.HomepageSettings.showsNewUpdates
+         showWallpaperSwitch.isOn = Prefs.HomepageSettings.showsWallpaper
+     }
+     
++    @objc private func feedSwitchDidChange(_ sender: UISwitch) {
++        Prefs.HomepageSettings.showsFeed = sender.isOn
++    }
++    
+     @objc private func recommendationsSwitchDidChange(_ sender: UISwitch) {
+         Prefs.HomepageSettings.showsRecommendations = sender.isOn
+     }
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift
 new file mode 100644
 index 0000000..a89be3f
@@ -10606,7 +10964,7 @@ index 586eb5a..859bd5b 100644
          transitionView.transform = webpagePreviewTransitionTransform(
              contentFrame: finalContentFrame,
 diff --git a/browser/Reynard/Client/Preferences/BrowserPreferences.swift b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
-index d4e93c2..db7eeda 100644
+index d4e93c2..355981b 100644
 --- a/browser/Reynard/Client/Preferences/BrowserPreferences.swift
 +++ b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
 @@ -38,9 +38,9 @@ final class BrowserPreferences {
@@ -10621,7 +10979,15 @@ index d4e93c2..db7eeda 100644
              key("SearchSettings", "showSearchSuggestions"): true,
              key("SearchSettings", "showSearchSuggestionsInPrivateBrowsing"): true,
              key("SearchSettings", "searchBrowsingHistory"): true,
-@@ -205,8 +205,8 @@ final class BrowserPreferences {
+@@ -93,6 +93,7 @@ final class BrowserPreferences {
+             key("HomepageSettings", "showsRecommendations"): true,
+             key("HomepageSettings", "showsNewUpdates"): true,
+             key("HomepageSettings", "showsWallpaper"): false,
++            key("HomepageSettings", "showsFeed"): true,
+             key("HomepageSettings", "donationRecommendationMultiplier"): 1,
+             
+             // Appearance
+@@ -205,8 +206,8 @@ final class BrowserPreferences {
      struct SearchSettings {
          static var searchEngine: SearchEngine {
              get {
@@ -10632,7 +10998,7 @@ index d4e93c2..db7eeda 100644
              }
              set {
                  prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchEngine")
-@@ -224,8 +224,8 @@ final class BrowserPreferences {
+@@ -224,8 +225,8 @@ final class BrowserPreferences {
          
          static var searchSuggestionProvider: SearchCompletion.Provider {
              get {
@@ -10643,6 +11009,24 @@ index d4e93c2..db7eeda 100644
              }
              set {
                  prefs.set(newValue.rawValue, forSetting: "SearchSettings", key: "searchSuggestionProvider")
+@@ -672,6 +673,17 @@ final class BrowserPreferences {
+             }
+         }
+         
++        /// The MSN feed page at the end of the Edge start page.
++        static var showsFeed: Bool {
++            get {
++                return prefs.bool(forSetting: "HomepageSettings", key: "showsFeed")
++            }
++            set {
++                prefs.set(newValue, forSetting: "HomepageSettings", key: "showsFeed")
++                NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
++            }
++        }
++        
+         static var showsFrequentlyVisited: Bool {
+             get {
+                 return prefs.bool(forSetting: "HomepageSettings", key: "showsFrequentlyVisited")
 diff --git a/browser/Reynard/Client/Search/SearchCompletion.swift b/browser/Reynard/Client/Search/SearchCompletion.swift
 index 854b671..1f912b2 100644
 --- a/browser/Reynard/Client/Search/SearchCompletion.swift
@@ -10710,7 +11094,7 @@ index 854b671..1f912b2 100644
      }
  }
 diff --git a/browser/Reynard/Client/Search/SearchEngines.swift b/browser/Reynard/Client/Search/SearchEngines.swift
-index b169af8..8adc285 100644
+index b169af8..bc591f5 100644
 --- a/browser/Reynard/Client/Search/SearchEngines.swift
 +++ b/browser/Reynard/Client/Search/SearchEngines.swift
 @@ -9,6 +9,7 @@ import Foundation
@@ -10735,7 +11119,7 @@ index b169af8..8adc285 100644
          case .google:
              return "https://www.google.com/search?q=%s"
 +        case .baidu:
-+            return "https://www.baidu.com/s?wd=%s"
++            return "https://www.baidu.com/s?ie=utf-8&wd=%s"
          case .yahoo:
              return "https://search.yahoo.com/search?p=%s"
          case .bing:
@@ -11486,10 +11870,21 @@ index 68792ff..ff4d3eb 100644
                  sqlite3_close(database)
              }
 diff --git a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-index c23eb59..5e7f1d5 100644
+index c23eb59..bc39f3b 100644
 --- a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
 +++ b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-@@ -669,6 +669,15 @@ final class TabManagerImplementation: NSObject, TabManager {
+@@ -65,6 +65,10 @@ final class TabManagerImplementation: NSObject, TabManager {
+     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
+     private var selectionCounter = 0
+     
++    private static let invisibleInputScalars: Set<UInt32> = [
++        0x2005, 0x2006, 0x2009, 0x200A, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF,
++    ]
++    
+     private lazy var lenientURLExpression: NSRegularExpression = {
+         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
+         return try! NSRegularExpression(pattern: pattern)
+@@ -669,6 +673,15 @@ final class TabManagerImplementation: NSObject, TabManager {
          regularTabs[index].state.showsStartupHomepage = true
      }
      
@@ -11505,6 +11900,20 @@ index c23eb59..5e7f1d5 100644
      @discardableResult
      func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
          let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
+@@ -935,7 +948,12 @@ final class TabManagerImplementation: NSObject, TabManager {
+     }
+     
+     func browse(to term: String, in tab: Tab) {
+-        let navigationInput = term.trimmingCharacters(in: .whitespacesAndNewlines)
++        // Chinese/Japanese keyboards separate un-committed syllables with
++        // U+2006 (six-per-em space) and similar invisible characters; drop them
++        // so "mai\u{2006}l\u{2006}qq" is searched as "mailqq".
++        let navigationInput = String(String.UnicodeScalarView(term.unicodeScalars.filter { scalar in
++            !Self.invisibleInputScalars.contains(scalar.value)
++        })).trimmingCharacters(in: .whitespacesAndNewlines)
+         guard !navigationInput.isEmpty else {
+             return
+         }
 diff --git a/browser/Reynard/Resources/Info.plist b/browser/Reynard/Resources/Info.plist
 index 7af267b..bd44990 100644
 --- a/browser/Reynard/Resources/Info.plist
