@@ -3062,10 +3062,10 @@ index 0000000..7920af8
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
 new file mode 100644
-index 0000000..6d11e65
+index 0000000..fa452b3
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,73 @@
 +//
 +//  BrowserViewController+LocalFile.swift
 +//  Reynard
@@ -3077,9 +3077,9 @@ index 0000000..6d11e65
 +//  pdf.js viewer (the same one that already serves web PDFs; its download
 +//  button goes through TabManager.onSavePdf).
 +//
-+//  The picked file is copied into the app's own caches folder first, because
-+//  a security-scoped Files URL is only readable while the picker grant is held
-+//  and Gecko loads the page asynchronously.
++//  The file is opened in place (no copy, so the app does not grow) and served
++//  to Gecko by LocalFileServer over 127.0.0.1, because Gecko's content
++//  processes cannot read files outside their sandbox.
 +//
 +
 +import ObjectiveC
@@ -3094,12 +3094,9 @@ index 0000000..6d11e65
 +            if let xhtml = UTType("public.xhtml") {
 +                types.append(xhtml)
 +            }
-+            if let webArchive = UTType("com.apple.webarchive") {
-+                types.append(webArchive)
-+            }
-+            picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
++            picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
 +        } else {
-+            picker = UIDocumentPickerViewController(documentTypes: ["public.html", "com.adobe.pdf"], in: .import)
++            picker = UIDocumentPickerViewController(documentTypes: ["public.html", "com.adobe.pdf"], in: .open)
 +        }
 +        picker.allowsMultipleSelection = false
 +
@@ -3112,15 +3109,17 @@ index 0000000..6d11e65
 +    }
 +
 +    private func openLocalFile(_ pickedURL: URL) {
-+        guard let localURL = LocalFilePickerCoordinator.copyIntoSandbox(pickedURL) else {
-+            return
++        LocalFileServer.shared.publish(pickedURL) { [weak self] servedURL in
++            guard let self, let servedURL else {
++                return
++            }
++            _ = self.tabManager.createRegularTab(
++                selecting: true,
++                target: .end,
++                url: servedURL.absoluteString,
++                loadImmediately: true
++            )
 +        }
-+        _ = tabManager.createRegularTab(
-+            selecting: true,
-+            target: .end,
-+            url: localURL.absoluteString,
-+            loadImmediately: true
-+        )
 +    }
 +}
 +
@@ -3138,32 +3137,6 @@ index 0000000..6d11e65
 +            return
 +        }
 +        onPick(url)
-+    }
-+
-+    /// Copies the picked file to Caches/LocalFiles/<uuid>/<name> and returns it.
-+    static func copyIntoSandbox(_ url: URL) -> URL? {
-+        let isScoped = url.startAccessingSecurityScopedResource()
-+        defer {
-+            if isScoped {
-+                url.stopAccessingSecurityScopedResource()
-+            }
-+        }
-+
-+        let fileManager = FileManager.default
-+        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-+            return nil
-+        }
-+        let folder = caches
-+            .appendingPathComponent("LocalFiles", isDirectory: true)
-+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-+        let destination = folder.appendingPathComponent(url.lastPathComponent)
-+        do {
-+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-+            try fileManager.copyItem(at: url, to: destination)
-+            return destination
-+        } catch {
-+            return nil
-+        }
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
@@ -4775,6 +4748,214 @@ index 0000000..6fe8761
 +        present(activity, animated: true)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift b/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift
+new file mode 100644
+index 0000000..6f4f393
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift
+@@ -0,0 +1,202 @@
++//
++//  LocalFileServer.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Gecko's content processes cannot read files outside their own sandbox, so
++//  a file:// URL for a document picked in Files (or copied into the app) fails
++//  to load. Instead of copying files into the app, the app process keeps the
++//  security-scoped grant for the picked file and serves it to Gecko over a
++//  loopback-only HTTP listener (127.0.0.1, random port, random token per file).
++//  Nothing is stored, so the app does not grow.
++//
++
++import Foundation
++import Network
++import UniformTypeIdentifiers
++
++final class LocalFileServer {
++    static let shared = LocalFileServer()
++
++    private let queue = DispatchQueue(label: "Reynard.LocalFileServer")
++    private var listener: NWListener?
++    private var port: UInt16?
++    private var pendingStarts: [(UInt16?) -> Void] = []
++    /// token -> security-scoped file URL (access stays open while registered).
++    private var files: [String: URL] = [:]
++
++    /// Registers a picked file and returns its loopback URL via `completion`
++    /// (on the main queue), or nil if the server could not start.
++    func publish(_ fileURL: URL, completion: @escaping (URL?) -> Void) {
++        // Keep the grant for the rest of the session so reloads still work.
++        _ = fileURL.startAccessingSecurityScopedResource()
++        queue.async {
++            let token = UUID().uuidString.lowercased()
++            self.files[token] = fileURL
++            self.startIfNeeded { port in
++                let url = port.flatMap { port -> URL? in
++                    var components = URLComponents()
++                    components.scheme = "http"
++                    components.host = "127.0.0.1"
++                    components.port = Int(port)
++                    components.path = "/\(token)/\(fileURL.lastPathComponent)"
++                    return components.url
++                }
++                DispatchQueue.main.async {
++                    completion(url)
++                }
++            }
++        }
++    }
++
++    // MARK: - Listener
++
++    private func startIfNeeded(_ completion: @escaping (UInt16?) -> Void) {
++        if let port {
++            completion(port)
++            return
++        }
++        pendingStarts.append(completion)
++        guard listener == nil else {
++            return
++        }
++
++        let parameters = NWParameters.tcp
++        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
++        parameters.acceptLocalOnly = true
++        guard let listener = try? NWListener(using: parameters) else {
++            finishStart(nil)
++            return
++        }
++        self.listener = listener
++        listener.newConnectionHandler = { [weak self] connection in
++            self?.handle(connection)
++        }
++        listener.stateUpdateHandler = { [weak self] state in
++            guard let self else { return }
++            switch state {
++            case .ready:
++                self.port = listener.port?.rawValue
++                self.finishStart(self.port)
++            case .failed, .cancelled:
++                self.listener = nil
++                self.port = nil
++                self.finishStart(nil)
++            default:
++                break
++            }
++        }
++        listener.start(queue: queue)
++    }
++
++    private func finishStart(_ port: UInt16?) {
++        let completions = pendingStarts
++        pendingStarts = []
++        completions.forEach { $0(port) }
++    }
++
++    // MARK: - HTTP
++
++    private func handle(_ connection: NWConnection) {
++        connection.start(queue: queue)
++        receiveRequest(on: connection, buffer: Data())
++    }
++
++    private func receiveRequest(on connection: NWConnection, buffer: Data) {
++        connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { [weak self] data, _, isComplete, error in
++            guard let self else { return }
++            var buffer = buffer
++            if let data {
++                buffer.append(data)
++            }
++            if let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) {
++                let header = String(decoding: buffer[..<headerEnd.lowerBound], as: UTF8.self)
++                self.respond(to: header, on: connection)
++            } else if error != nil || isComplete || buffer.count > 64 * 1024 {
++                connection.cancel()
++            } else {
++                self.receiveRequest(on: connection, buffer: buffer)
++            }
++        }
++    }
++
++    private func respond(to header: String, on connection: NWConnection) {
++        let requestLine = header.components(separatedBy: "\r\n").first ?? ""
++        let parts = requestLine.split(separator: " ")
++        guard parts.count >= 2, parts[0] == "GET" || parts[0] == "HEAD" else {
++            sendStatus(405, "Method Not Allowed", on: connection)
++            return
++        }
++        let isHead = parts[0] == "HEAD"
++        let path = String(parts[1]).split(separator: "?").first.map(String.init) ?? ""
++        let token = path.split(separator: "/").first.map(String.init) ?? ""
++        guard let fileURL = files[token],
++              let handle = try? FileHandle(forReadingFrom: fileURL) else {
++            sendStatus(404, "Not Found", on: connection)
++            return
++        }
++
++        let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { $0 } ?? 0
++        let head = [
++            "HTTP/1.1 200 OK",
++            "Content-Type: \(Self.mimeType(for: fileURL))",
++            "Content-Length: \(size)",
++            "Cache-Control: no-store",
++            "Connection: close",
++            "", "",
++        ].joined(separator: "\r\n")
++        connection.send(content: Data(head.utf8), completion: .contentProcessed { [weak self] error in
++            guard error == nil, !isHead else {
++                try? handle.close()
++                connection.cancel()
++                return
++            }
++            self?.streamBody(handle, on: connection)
++        })
++    }
++
++    private func streamBody(_ handle: FileHandle, on connection: NWConnection) {
++        let chunk = handle.readData(ofLength: 256 * 1024)
++        guard !chunk.isEmpty else {
++            try? handle.close()
++            connection.send(content: nil, isComplete: true, completion: .contentProcessed { _ in
++                connection.cancel()
++            })
++            return
++        }
++        connection.send(content: chunk, completion: .contentProcessed { [weak self] error in
++            guard error == nil else {
++                try? handle.close()
++                connection.cancel()
++                return
++            }
++            self?.streamBody(handle, on: connection)
++        })
++    }
++
++    private func sendStatus(_ code: Int, _ reason: String, on connection: NWConnection) {
++        let response = "HTTP/1.1 \(code) \(reason)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
++        connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in
++            connection.cancel()
++        })
++    }
++
++    private static func mimeType(for url: URL) -> String {
++        switch url.pathExtension.lowercased() {
++        case "pdf":
++            return "application/pdf"
++        case "htm", "html":
++            return "text/html"
++        case "xhtml", "xht":
++            return "application/xhtml+xml"
++        default:
++            if #available(iOS 14.0, *),
++               let type = UTType(filenameExtension: url.pathExtension),
++               let mime = type.preferredMIMEType {
++                return mime
++            }
++            return "application/octet-stream"
++        }
++    }
++}
 diff --git a/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
 new file mode 100644
 index 0000000..9343811
@@ -4961,10 +5142,10 @@ index 0000000..53fa2a6
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..33be1a2
+index 0000000..e5acdf8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1148 @@
+@@ -0,0 +1,1162 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -5082,6 +5263,7 @@ index 0000000..33be1a2
 +    private var lastPagerSize: CGSize = .zero
 +    private var isResizing = false
 +    private var lastSettledPageIndex = 0
++    private var lastDisappearDate: Date?
 +    private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
 +    
 +    private let wallpaperImageView: UIImageView = {
@@ -5222,6 +5404,7 @@ index 0000000..33be1a2
 +        headerContainerView.isHidden = folder != nil
 +        topBarView.isHidden = folder != nil
 +        pagerScrollView.delegate = self
++        updateSectionContentMode()
 +        rebuildPanels()
 +        reloadWeather(force: false)
 +    }
@@ -5229,12 +5412,20 @@ index 0000000..33be1a2
 +    override func viewWillAppear(_ animated: Bool) {
 +        super.viewWillAppear(animated)
 +        reloadWeather(force: true)
-+        // Every time the start page is shown it opens on the first page
-+        // (Favorites), with each page scrolled back to its top.
-+        if folder == nil {
++        // Opening the start page (new tab, switching back to it) starts on the
++        // first page (Favorites). Resizing the window can briefly hide and
++        // re-show this view; that must keep the current page, so only reset
++        // when it was really gone for a moment.
++        let wasAwayLongEnough = lastDisappearDate.map { Date().timeIntervalSince($0) > 1.0 } ?? true
++        if folder == nil, wasAwayLongEnough {
 +            resetToFirstPage()
 +        }
 +        showHintForCurrentPage()
++    }
++    
++    override func viewDidDisappear(_ animated: Bool) {
++        super.viewDidDisappear(animated)
++        lastDisappearDate = Date()
 +    }
 +    
 +    override func viewDidLayoutSubviews() {
@@ -5310,14 +5501,14 @@ index 0000000..33be1a2
 +    }
 +    
 +    private func updateSectionContentMode() {
-+        let width = isViewLoaded ? view.bounds.width : 0
-+        var mode = contentMode
-+        if width > 0 {
-+            if width < 540 {
-+                mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
-+            } else if width < 820, contentMode == .embeddedExpanded {
-+                mode = .embeddedWide
-+            }
++        // Column counts no longer change with the window width: on iPad every
++        // section keeps the wide layout and its tiles/cards shrink to fit the
++        // width instead (text keeps its size).
++        let mode: HomepageContentMode
++        if traitCollection.userInterfaceIdiom == .pad {
++            mode = contentMode.isDetached ? .detachedWide : .embeddedWide
++        } else {
++            mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
 +        }
 +        guard mode != sectionContentMode else {
 +            return
@@ -5692,7 +5883,10 @@ index 0000000..33be1a2
 +            viewController.setContentMode(sectionContentMode)
 +            if folder == nil {
 +                viewController.showsAddTile = true
-+                viewController.centersRows = true
++                // The grid block is centred on the page (the page itself is
++                // centred); the tiles inside it start from the left.
++                viewController.centersRows = false
++                viewController.showsAllFavorites = true
 +                viewController.onAddFavorite = { [weak self] in
 +                    self?.presentAddFavorite()
 +                }
@@ -5702,6 +5896,7 @@ index 0000000..33be1a2
 +        case .frequentlyVisited:
 +            let viewController = FrequentlyVisitedSectionViewController()
 +            viewController.delegate = self
++            viewController.scalesCardsToWidth = true
 +            viewController.setContentMode(sectionContentMode)
 +            return viewController
 +            
@@ -8907,10 +9102,10 @@ index 455c732..0ed577c 100644
          return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
      }
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-index bf26062..a4ba51c 100644
+index bf26062..46d5680 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-@@ -75,6 +75,28 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -75,6 +75,36 @@ final class FavoritesSectionViewController: UIViewController {
      
      private let collectionLayout = FavoritesCollectionViewLayout()
      
@@ -8923,6 +9118,14 @@ index bf26062..a4ba51c 100644
 +        }
 +    }
 +    var onAddFavorite: (() -> Void)?
++    /// Edge start page only: show every favorite, ignoring the "Number of
++    /// Rows" setting (which keeps applying to upstream's homepage).
++    var showsAllFavorites = false {
++        didSet {
++            guard oldValue != showsAllFavorites, isViewLoaded else { return }
++            applyFavoriteItemLimit()
++        }
++    }
 +    var centersRows: Bool {
 +        get { collectionLayout.centersRows }
 +        set { collectionLayout.centersRows = newValue }
@@ -8939,7 +9142,7 @@ index bf26062..a4ba51c 100644
      private lazy var collectionView: UICollectionView = {
          let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionLayout)
          collectionView.translatesAutoresizingMaskIntoConstraints = false
-@@ -91,6 +113,10 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -91,6 +121,10 @@ final class FavoritesSectionViewController: UIViewController {
              FavoriteFolderCollectionViewCell.self,
              forCellWithReuseIdentifier: FavoriteFolderCollectionViewCell.reuseIdentifier
          )
@@ -8950,7 +9153,7 @@ index bf26062..a4ba51c 100644
          return collectionView
      }()
      
-@@ -246,7 +272,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -246,13 +280,14 @@ final class FavoritesSectionViewController: UIViewController {
          displayedFavoriteItems = currentFavoriteItems()
          updateShowAllButton()
          collectionView.reloadData()
@@ -8959,7 +9162,24 @@ index bf26062..a4ba51c 100644
          invalidateFavoriteLayout()
      }
      
-@@ -363,7 +389,7 @@ final class FavoritesSectionViewController: UIViewController {
+     private func currentFavoriteItems() -> [BookmarkContentSnapshot] {
+         guard folder == nil,
+-              !showsExpandedFavorites else {
++              !showsExpandedFavorites,
++              !showsAllFavorites else {
+             return allFavoriteItems
+         }
+         
+@@ -264,7 +299,7 @@ final class FavoritesSectionViewController: UIViewController {
+     }
+     
+     private var hasExpandableFavorites: Bool {
+-        guard folder == nil else {
++        guard folder == nil, !showsAllFavorites else {
+             return false
+         }
+         
+@@ -363,7 +398,7 @@ final class FavoritesSectionViewController: UIViewController {
              collectionLayout.metrics = metrics
          }
          
@@ -8968,7 +9188,7 @@ index bf26062..a4ba51c 100644
          let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
          let contentHeight = metrics.contentHeight(rowCount: rowCount)
          guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
-@@ -426,7 +452,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -426,7 +461,7 @@ final class FavoritesSectionViewController: UIViewController {
          let viewController = EditBookmarkViewController(bookmark: bookmark, store: bookmarkStore)
          let navigationController = UINavigationController(rootViewController: viewController)
          navigationController.modalPresentationStyle = .pageSheet
@@ -8977,7 +9197,7 @@ index bf26062..a4ba51c 100644
      }
      
      func deleteFavoriteBookmark(_ bookmark: BookmarkSnapshot) {
-@@ -456,6 +482,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -456,6 +491,7 @@ final class FavoritesSectionViewController: UIViewController {
              let translation = gestureRecognizer.translation(in: collectionView)
              let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
              guard let indexPath = collectionView.indexPathForItem(at: startLocation),
@@ -8985,7 +9205,7 @@ index bf26062..a4ba51c 100644
                    let cell = collectionView.cellForItem(at: indexPath),
                    collectionView.beginInteractiveMovementForItem(at: indexPath) else {
                  return
-@@ -481,6 +508,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -481,6 +517,7 @@ final class FavoritesSectionViewController: UIViewController {
      @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
          let location = gestureRecognizer.location(in: collectionView)
          guard let indexPath = collectionView.indexPathForItem(at: location),
@@ -8993,7 +9213,7 @@ index bf26062..a4ba51c 100644
                let cell = collectionView.cellForItem(at: indexPath) else {
              return
          }
-@@ -494,6 +522,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -494,6 +531,7 @@ final class FavoritesSectionViewController: UIViewController {
          switch gestureRecognizer.state {
          case .began:
              guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
@@ -9001,7 +9221,7 @@ index bf26062..a4ba51c 100644
                    let cell = collectionView.cellForItem(at: indexPath) else {
                  return
              }
-@@ -624,10 +653,19 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -624,10 +662,19 @@ final class FavoritesSectionViewController: UIViewController {
  
  extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
      func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -9022,7 +9242,7 @@ index bf26062..a4ba51c 100644
          switch displayedFavoriteItems[indexPath.item] {
          case let .bookmark(bookmark):
              let cell = collectionView.dequeueReusableCell(
-@@ -655,6 +693,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -655,6 +702,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
      }
      
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -9033,7 +9253,7 @@ index bf26062..a4ba51c 100644
          guard displayedFavoriteItems.indices.contains(indexPath.item) else {
              return
          }
-@@ -671,6 +713,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -671,6 +722,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
          return displayedFavoriteItems.indices.contains(indexPath.item)
      }
      
@@ -9054,13 +9274,66 @@ index bf26062..a4ba51c 100644
          guard displayedFavoriteItems.indices.contains(sourceIndexPath.item) else {
              reloadFavorites()
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
-index 28377e6..5a3a80f 100644
+index 28377e6..2c67ebb 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
-@@ -103,6 +103,15 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+@@ -103,6 +103,68 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
          super.viewWillAppear(animated)
      }
      
++    /// Edge start page only: cards shrink with the available width (down to
++    /// 60%) instead of keeping a fixed 150pt; titles keep their font size.
++    /// Off by default so upstream's homepage is unchanged.
++    var scalesCardsToWidth = false {
++        didSet {
++            guard oldValue != scalesCardsToWidth, isViewLoaded else { return }
++            view.setNeedsLayout()
++        }
++    }
++    private var cardScale: CGFloat = 1
++    private var cardSizeConstraints: [NSLayoutConstraint] = []
++    private lazy var scrollViewHeightConstraint = scrollView.heightAnchor.constraint(
++        equalToConstant: UX.cardHeight + (UX.shadowMargin * 2)
++    )
++    
++    override func viewDidLayoutSubviews() {
++        super.viewDidLayoutSubviews()
++        updateCardScale()
++    }
++    
++    private func updateCardScale() {
++        // ~4 cards across at the full iPad page width (720pt minus margins).
++        let referenceWidth: CGFloat = 664
++        let width = view.bounds.width
++        let scale = scalesCardsToWidth && width > 0 ? min(1, max(0.6, width / referenceWidth)) : 1
++        guard abs(scale - cardScale) > 0.005 else {
++            return
++        }
++        cardScale = scale
++        applyCardSize()
++    }
++    
++    private var cardSize: CGSize {
++        let width = (UX.cardWidth * cardScale).rounded()
++        // Only the 16:9 preview shrinks; the title row keeps its height.
++        let previewLoss = (UX.cardWidth - width) * 9.0 / 16.0
++        return CGSize(width: width, height: (UX.cardHeight - previewLoss).rounded())
++    }
++    
++    private func applyCardSize() {
++        NSLayoutConstraint.deactivate(cardSizeConstraints)
++        let size = cardSize
++        cardSizeConstraints = cardViews.flatMap { cardView in
++            [
++                cardView.widthAnchor.constraint(equalToConstant: size.width),
++                cardView.heightAnchor.constraint(equalToConstant: size.height),
++            ]
++        }
++        NSLayoutConstraint.activate(cardSizeConstraints)
++        cardStackView.spacing = (UX.cardSpacing * cardScale).rounded()
++        scrollViewHeightConstraint.constant = size.height + (UX.shadowMargin * 2)
++    }
++    
 +    /// Scrolls the site row back to its first (left-most) card.
 +    func scrollToStart(animated: Bool) {
 +        guard isViewLoaded else {
@@ -9073,6 +9346,31 @@ index 28377e6..5a3a80f 100644
      func setContentMode(_ contentMode: HomepageContentMode) {
          guard self.contentMode != contentMode else {
              return
+@@ -135,7 +197,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -UX.shadowMargin),
+             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: UX.shadowMargin),
+             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+-            scrollView.heightAnchor.constraint(equalToConstant: UX.cardHeight + (UX.shadowMargin * 2)),
++            scrollViewHeightConstraint,
+             
+             cardStackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: UX.shadowMargin),
+             cardStackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -UX.shadowMargin),
+@@ -265,14 +327,9 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+             cardView.addTarget(self, action: #selector(handleCardTap(_:)), for: .touchUpInside)
+             cardView.addInteraction(UIContextMenuInteraction(delegate: self))
+             cardStackView.addArrangedSubview(cardView)
+-            
+-            NSLayoutConstraint.activate([
+-                cardView.widthAnchor.constraint(equalToConstant: UX.cardWidth),
+-                cardView.heightAnchor.constraint(equalToConstant: UX.cardHeight),
+-            ])
+-            
+             return cardView
+         }
++        applyCardSize()
+     }
+     
+     // MARK: - Actions
 diff --git a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
 index 7f723fd..0ca560e 100644
 --- a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift

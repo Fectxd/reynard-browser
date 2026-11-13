@@ -115,6 +115,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     private var lastPagerSize: CGSize = .zero
     private var isResizing = false
     private var lastSettledPageIndex = 0
+    private var lastDisappearDate: Date?
     private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
     
     private let wallpaperImageView: UIImageView = {
@@ -255,6 +256,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         headerContainerView.isHidden = folder != nil
         topBarView.isHidden = folder != nil
         pagerScrollView.delegate = self
+        updateSectionContentMode()
         rebuildPanels()
         reloadWeather(force: false)
     }
@@ -262,12 +264,20 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         reloadWeather(force: true)
-        // Every time the start page is shown it opens on the first page
-        // (Favorites), with each page scrolled back to its top.
-        if folder == nil {
+        // Opening the start page (new tab, switching back to it) starts on the
+        // first page (Favorites). Resizing the window can briefly hide and
+        // re-show this view; that must keep the current page, so only reset
+        // when it was really gone for a moment.
+        let wasAwayLongEnough = lastDisappearDate.map { Date().timeIntervalSince($0) > 1.0 } ?? true
+        if folder == nil, wasAwayLongEnough {
             resetToFirstPage()
         }
         showHintForCurrentPage()
+    }
+    
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        lastDisappearDate = Date()
     }
     
     override func viewDidLayoutSubviews() {
@@ -343,14 +353,14 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     }
     
     private func updateSectionContentMode() {
-        let width = isViewLoaded ? view.bounds.width : 0
-        var mode = contentMode
-        if width > 0 {
-            if width < 540 {
-                mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
-            } else if width < 820, contentMode == .embeddedExpanded {
-                mode = .embeddedWide
-            }
+        // Column counts no longer change with the window width: on iPad every
+        // section keeps the wide layout and its tiles/cards shrink to fit the
+        // width instead (text keeps its size).
+        let mode: HomepageContentMode
+        if traitCollection.userInterfaceIdiom == .pad {
+            mode = contentMode.isDetached ? .detachedWide : .embeddedWide
+        } else {
+            mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
         }
         guard mode != sectionContentMode else {
             return
@@ -725,7 +735,10 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             viewController.setContentMode(sectionContentMode)
             if folder == nil {
                 viewController.showsAddTile = true
-                viewController.centersRows = true
+                // The grid block is centred on the page (the page itself is
+                // centred); the tiles inside it start from the left.
+                viewController.centersRows = false
+                viewController.showsAllFavorites = true
                 viewController.onAddFavorite = { [weak self] in
                     self?.presentAddFavorite()
                 }
@@ -735,6 +748,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         case .frequentlyVisited:
             let viewController = FrequentlyVisitedSectionViewController()
             viewController.delegate = self
+            viewController.scalesCardsToWidth = true
             viewController.setContentMode(sectionContentMode)
             return viewController
             

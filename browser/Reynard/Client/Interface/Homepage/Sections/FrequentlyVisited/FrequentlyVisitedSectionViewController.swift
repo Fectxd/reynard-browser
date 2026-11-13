@@ -103,6 +103,59 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
         super.viewWillAppear(animated)
     }
     
+    /// Edge start page only: cards shrink with the available width (down to
+    /// 60%) instead of keeping a fixed 150pt; titles keep their font size.
+    /// Off by default so upstream's homepage is unchanged.
+    var scalesCardsToWidth = false {
+        didSet {
+            guard oldValue != scalesCardsToWidth, isViewLoaded else { return }
+            view.setNeedsLayout()
+        }
+    }
+    private var cardScale: CGFloat = 1
+    private var cardSizeConstraints: [NSLayoutConstraint] = []
+    private lazy var scrollViewHeightConstraint = scrollView.heightAnchor.constraint(
+        equalToConstant: UX.cardHeight + (UX.shadowMargin * 2)
+    )
+    
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateCardScale()
+    }
+    
+    private func updateCardScale() {
+        // ~4 cards across at the full iPad page width (720pt minus margins).
+        let referenceWidth: CGFloat = 664
+        let width = view.bounds.width
+        let scale = scalesCardsToWidth && width > 0 ? min(1, max(0.6, width / referenceWidth)) : 1
+        guard abs(scale - cardScale) > 0.005 else {
+            return
+        }
+        cardScale = scale
+        applyCardSize()
+    }
+    
+    private var cardSize: CGSize {
+        let width = (UX.cardWidth * cardScale).rounded()
+        // Only the 16:9 preview shrinks; the title row keeps its height.
+        let previewLoss = (UX.cardWidth - width) * 9.0 / 16.0
+        return CGSize(width: width, height: (UX.cardHeight - previewLoss).rounded())
+    }
+    
+    private func applyCardSize() {
+        NSLayoutConstraint.deactivate(cardSizeConstraints)
+        let size = cardSize
+        cardSizeConstraints = cardViews.flatMap { cardView in
+            [
+                cardView.widthAnchor.constraint(equalToConstant: size.width),
+                cardView.heightAnchor.constraint(equalToConstant: size.height),
+            ]
+        }
+        NSLayoutConstraint.activate(cardSizeConstraints)
+        cardStackView.spacing = (UX.cardSpacing * cardScale).rounded()
+        scrollViewHeightConstraint.constant = size.height + (UX.shadowMargin * 2)
+    }
+    
     /// Scrolls the site row back to its first (left-most) card.
     func scrollToStart(animated: Bool) {
         guard isViewLoaded else {
@@ -144,7 +197,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -UX.shadowMargin),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: UX.shadowMargin),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scrollView.heightAnchor.constraint(equalToConstant: UX.cardHeight + (UX.shadowMargin * 2)),
+            scrollViewHeightConstraint,
             
             cardStackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: UX.shadowMargin),
             cardStackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -UX.shadowMargin),
@@ -274,14 +327,9 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
             cardView.addTarget(self, action: #selector(handleCardTap(_:)), for: .touchUpInside)
             cardView.addInteraction(UIContextMenuInteraction(delegate: self))
             cardStackView.addArrangedSubview(cardView)
-            
-            NSLayoutConstraint.activate([
-                cardView.widthAnchor.constraint(equalToConstant: UX.cardWidth),
-                cardView.heightAnchor.constraint(equalToConstant: UX.cardHeight),
-            ])
-            
             return cardView
         }
+        applyCardSize()
     }
     
     // MARK: - Actions

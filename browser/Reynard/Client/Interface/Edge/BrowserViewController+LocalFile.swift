@@ -9,9 +9,9 @@
 //  pdf.js viewer (the same one that already serves web PDFs; its download
 //  button goes through TabManager.onSavePdf).
 //
-//  The picked file is copied into the app's own caches folder first, because
-//  a security-scoped Files URL is only readable while the picker grant is held
-//  and Gecko loads the page asynchronously.
+//  The file is opened in place (no copy, so the app does not grow) and served
+//  to Gecko by LocalFileServer over 127.0.0.1, because Gecko's content
+//  processes cannot read files outside their sandbox.
 //
 
 import ObjectiveC
@@ -26,12 +26,9 @@ extension BrowserViewController {
             if let xhtml = UTType("public.xhtml") {
                 types.append(xhtml)
             }
-            if let webArchive = UTType("com.apple.webarchive") {
-                types.append(webArchive)
-            }
-            picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+            picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
         } else {
-            picker = UIDocumentPickerViewController(documentTypes: ["public.html", "com.adobe.pdf"], in: .import)
+            picker = UIDocumentPickerViewController(documentTypes: ["public.html", "com.adobe.pdf"], in: .open)
         }
         picker.allowsMultipleSelection = false
 
@@ -44,15 +41,17 @@ extension BrowserViewController {
     }
 
     private func openLocalFile(_ pickedURL: URL) {
-        guard let localURL = LocalFilePickerCoordinator.copyIntoSandbox(pickedURL) else {
-            return
+        LocalFileServer.shared.publish(pickedURL) { [weak self] servedURL in
+            guard let self, let servedURL else {
+                return
+            }
+            _ = self.tabManager.createRegularTab(
+                selecting: true,
+                target: .end,
+                url: servedURL.absoluteString,
+                loadImmediately: true
+            )
         }
-        _ = tabManager.createRegularTab(
-            selecting: true,
-            target: .end,
-            url: localURL.absoluteString,
-            loadImmediately: true
-        )
     }
 }
 
@@ -70,31 +69,5 @@ private final class LocalFilePickerCoordinator: NSObject, UIDocumentPickerDelega
             return
         }
         onPick(url)
-    }
-
-    /// Copies the picked file to Caches/LocalFiles/<uuid>/<name> and returns it.
-    static func copyIntoSandbox(_ url: URL) -> URL? {
-        let isScoped = url.startAccessingSecurityScopedResource()
-        defer {
-            if isScoped {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let fileManager = FileManager.default
-        guard let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        let folder = caches
-            .appendingPathComponent("LocalFiles", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let destination = folder.appendingPathComponent(url.lastPathComponent)
-        do {
-            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-            try fileManager.copyItem(at: url, to: destination)
-            return destination
-        } catch {
-            return nil
-        }
     }
 }

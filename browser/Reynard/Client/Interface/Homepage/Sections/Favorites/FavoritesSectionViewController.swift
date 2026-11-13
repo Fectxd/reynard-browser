@@ -84,6 +84,14 @@ final class FavoritesSectionViewController: UIViewController {
         }
     }
     var onAddFavorite: (() -> Void)?
+    /// Edge start page only: show every favorite, ignoring the "Number of
+    /// Rows" setting (which keeps applying to upstream's homepage).
+    var showsAllFavorites = false {
+        didSet {
+            guard oldValue != showsAllFavorites, isViewLoaded else { return }
+            applyFavoriteItemLimit()
+        }
+    }
     var centersRows: Bool {
         get { collectionLayout.centersRows }
         set { collectionLayout.centersRows = newValue }
@@ -278,7 +286,8 @@ final class FavoritesSectionViewController: UIViewController {
     
     private func currentFavoriteItems() -> [BookmarkContentSnapshot] {
         guard folder == nil,
-              !showsExpandedFavorites else {
+              !showsExpandedFavorites,
+              !showsAllFavorites else {
             return allFavoriteItems
         }
         
@@ -290,7 +299,7 @@ final class FavoritesSectionViewController: UIViewController {
     }
     
     private var hasExpandableFavorites: Bool {
-        guard folder == nil else {
+        guard folder == nil, !showsAllFavorites else {
             return false
         }
         
