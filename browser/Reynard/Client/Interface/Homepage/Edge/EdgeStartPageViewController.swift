@@ -44,8 +44,11 @@ final class HomepagePanelScrollView: UIScrollView {
         // Every page starts at the same top offset (so Favorites, Frequently
         // Visited and Recently Closed line up), follows the page width so
         // narrow windows reflow, and is capped on very wide screens.
+        // 999, not .defaultHigh (750): at 750 the page width tied with the
+        // labels' compression resistance, so a long single-line title could
+        // widen the whole page past the window and push everything off-screen.
         let fillWidth = stackView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor)
-        fillWidth.priority = .defaultHigh
+        fillWidth.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
             contentLayoutGuide.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor),
             stackView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Self.topPadding),
@@ -353,11 +356,14 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     }
     
     private func updateSectionContentMode() {
-        // Column counts no longer change with the window width: on iPad every
-        // section keeps the wide layout and its tiles/cards shrink to fit the
-        // width instead (text keeps its size).
+        // One breakpoint instead of continuous reflow: wide windows keep the
+        // wide layout (6 favourites per row, 2 closed-tab columns) and the
+        // tiles shrink with the width; below 560pt (Slide Over, 1/3 split,
+        // narrow Stage Manager windows) switch once to the narrow layout
+        // (4 per row, 1 column) so tiles never get too small for their text.
+        let pageWidth = pagerScrollView.bounds.width > 0 ? pagerScrollView.bounds.width : view.bounds.width
         let mode: HomepageContentMode
-        if traitCollection.userInterfaceIdiom == .pad {
+        if traitCollection.userInterfaceIdiom == .pad, pageWidth == 0 || pageWidth >= 560 {
             mode = contentMode.isDetached ? .detachedWide : .embeddedWide
         } else {
             mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
@@ -477,8 +483,10 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         )
         headerWidth.priority = .defaultHigh
         
+        // See HomepagePanelScrollView: the pages must never be wider than the
+        // pager, whatever their content wants.
         let pagesWidth = pagesStackView.widthAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.widthAnchor)
-        pagesWidth.priority = .defaultHigh
+        pagesWidth.priority = UILayoutPriority(999)
         pagesWidthConstraint = pagesWidth
         
         let hintBottom = hintView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.bottomInset)
@@ -521,6 +529,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             pagesStackView.bottomAnchor.constraint(equalTo: pagerScrollView.contentLayoutGuide.bottomAnchor),
             pagesStackView.centerXAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.centerXAnchor),
             pagesStackView.widthAnchor.constraint(lessThanOrEqualToConstant: UX.maximumContentWidth),
+            pagesStackView.widthAnchor.constraint(lessThanOrEqualTo: pagerScrollView.frameLayoutGuide.widthAnchor),
             pagesWidth,
             
             panelRailView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),

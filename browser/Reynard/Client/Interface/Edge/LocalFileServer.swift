@@ -50,6 +50,16 @@ final class LocalFileServer {
         }
     }
 
+    /// The original (security-scoped) file behind a URL this server handed
+    /// out, e.g. so a PDF edited in pdf.js can be saved back in place.
+    func originalFileURL(forServedURL url: URL) -> URL? {
+        guard url.host == "127.0.0.1",
+              let token = url.path.split(separator: "/").first.map(String.init) else {
+            return nil
+        }
+        return queue.sync { files[token] }
+    }
+
     // MARK: - Listener
 
     private func startIfNeeded(_ completion: @escaping (UInt16?) -> Void) {

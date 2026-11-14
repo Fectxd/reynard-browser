@@ -458,6 +458,30 @@ final class DownloadStore: NSObject {
         }
     }
     
+    /// Starts a failed or cancelled download again from its source URL. The
+    /// old entry (and any partial file) is replaced by the new download.
+    func retry(id: UUID) {
+        stateQueue.async {
+            guard let index = self.persistedDownloads.firstIndex(where: { $0.id == id }),
+                  let sourceURL = URL(string: self.persistedDownloads[index].sourceURLString) else {
+                return
+            }
+            let entry = self.persistedDownloads.remove(at: index)
+            let partialURL = self.storage.downloadsDirectoryURL.appendingPathComponent(entry.relativePath, isDirectory: false)
+            if self.fileManager.fileExists(atPath: partialURL.path) {
+                try? self.fileManager.removeItem(at: partialURL)
+            }
+            self.savePersistedDownloadsLocked()
+            self.postDidChange()
+            self.enqueueDownload(
+                sourceURL: sourceURL,
+                originalURL: entry.originalURLString.flatMap(URL.init(string:)),
+                suggestedFileName: entry.fileName,
+                mimeType: entry.mimeType
+            )
+        }
+    }
+    
     func removeDownload(id: UUID) {
         stateQueue.async {
             guard let index = self.persistedDownloads.firstIndex(where: { $0.id == id }) else {

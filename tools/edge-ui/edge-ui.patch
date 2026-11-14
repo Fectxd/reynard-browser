@@ -4750,10 +4750,10 @@ index 0000000..6fe8761
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift b/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift
 new file mode 100644
-index 0000000..6f4f393
+index 0000000..798f748
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/LocalFileServer.swift
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,212 @@
 +//
 +//  LocalFileServer.swift
 +//  Reynard
@@ -4804,6 +4804,16 @@ index 0000000..6f4f393
 +                }
 +            }
 +        }
++    }
++
++    /// The original (security-scoped) file behind a URL this server handed
++    /// out, e.g. so a PDF edited in pdf.js can be saved back in place.
++    func originalFileURL(forServedURL url: URL) -> URL? {
++        guard url.host == "127.0.0.1",
++              let token = url.path.split(separator: "/").first.map(String.init) else {
++            return nil
++        }
++        return queue.sync { files[token] }
 +    }
 +
 +    // MARK: - Listener
@@ -4954,6 +4964,168 @@ index 0000000..6f4f393
 +            }
 +            return "application/octet-stream"
 +        }
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift b/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift
+new file mode 100644
+index 0000000..977401f
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift
+@@ -0,0 +1,156 @@
++//
++//  PdfSaveCoordinator.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  Saving from Gecko's pdf.js viewer (download button / Ctrl-S) arrives as
++//  "GeckoView:SavePdf" with a blob: URL holding the PDF *including* the user's
++//  annotations and form edits. The stock handling re-downloaded the original
++//  URL, which drops every edit (and fails for files opened via
++//  LocalFileServer). Here the blob is read from the page itself and:
++//
++//    - for a PDF opened from Files: "保存" writes it back over the original
++//      file (coordinated write through the kept security-scoped grant);
++//    - always: "另存为…" exports it to a location the user picks in Files.
++//
++
++import GeckoView
++import UIKit
++
++@MainActor
++enum PdfSaveCoordinator {
++    /// Returns false when the edited PDF could not be read, so the caller can
++    /// fall back to the old download behaviour.
++    static func handle(session: GeckoSession, request: SavePdfInfo, window: UIWindow?) async -> Bool {
++        guard let blobURL = URL(string: request.url),
++              let data = try? await session.fetchImageData(from: blobURL),
++              !data.isEmpty,
++              let presenter = UIApplication.shared.topViewController(for: window) else {
++            return false
++        }
++
++        let originalURL = request.originalUrl.flatMap(URL.init(string:))
++        let localFile = originalURL.flatMap { LocalFileServer.shared.originalFileURL(forServedURL: $0) }
++        let fileName = suggestedFileName(request: request, originalURL: originalURL, localFile: localFile)
++
++        let sheet = UIAlertController(title: fileName, message: nil, preferredStyle: .actionSheet)
++        if let localFile {
++            sheet.addAction(UIAlertAction(title: "保存", style: .default) { _ in
++                if writeInPlace(data, to: localFile) {
++                    showResult("已保存", in: presenter)
++                } else {
++                    // The location refused the write (read-only provider…):
++                    // offer Save As instead of losing the edits.
++                    presentSaveAs(data: data, fileName: fileName, from: presenter, message: "无法写回原文件，请选择保存位置")
++                }
++            })
++        }
++        sheet.addAction(UIAlertAction(title: "另存为…", style: .default) { _ in
++            presentSaveAs(data: data, fileName: fileName, from: presenter, message: nil)
++        })
++        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
++        if let popover = sheet.popoverPresentationController {
++            popover.sourceView = presenter.view
++            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
++            popover.permittedArrowDirections = []
++        }
++        presenter.present(sheet, animated: true)
++        return true
++    }
++
++    private static func suggestedFileName(request: SavePdfInfo, originalURL: URL?, localFile: URL?) -> String {
++        var name = localFile?.lastPathComponent
++            ?? request.filename
++            ?? originalURL?.lastPathComponent
++            ?? "document.pdf"
++        name = name.removingPercentEncoding ?? name
++        if name.isEmpty || name == "/" {
++            name = "document.pdf"
++        }
++        if URL(fileURLWithPath: name).pathExtension.lowercased() != "pdf" {
++            name += ".pdf"
++        }
++        return name
++    }
++
++    private static func writeInPlace(_ data: Data, to fileURL: URL) -> Bool {
++        _ = fileURL.startAccessingSecurityScopedResource()
++        var coordinationError: NSError?
++        var writeSucceeded = false
++        NSFileCoordinator(filePresenter: nil).coordinate(
++            writingItemAt: fileURL,
++            options: .forReplacing,
++            error: &coordinationError
++        ) { url in
++            writeSucceeded = (try? data.write(to: url, options: .atomic)) != nil
++        }
++        return coordinationError == nil && writeSucceeded
++    }
++
++    private static func presentSaveAs(data: Data, fileName: String, from presenter: UIViewController, message: String?) {
++        let folder = FileManager.default.temporaryDirectory
++            .appendingPathComponent("PdfSaveAs", isDirectory: true)
++            .appendingPathComponent(UUID().uuidString, isDirectory: true)
++        let tempURL = folder.appendingPathComponent(fileName)
++        do {
++            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
++            try data.write(to: tempURL, options: .atomic)
++        } catch {
++            showResult("保存失败", in: presenter)
++            return
++        }
++
++        let picker: UIDocumentPickerViewController
++        if #available(iOS 14.0, *) {
++            picker = UIDocumentPickerViewController(forExporting: [tempURL], asCopy: true)
++        } else {
++            picker = UIDocumentPickerViewController(url: tempURL, in: .exportToService)
++        }
++        // The temporary copy only lives until the picker is done with it.
++        let cleaner = TemporaryFileCleaner(folder: folder) { exported in
++            if exported {
++                showResult("已保存", in: presenter)
++            }
++        }
++        picker.delegate = cleaner
++        objc_setAssociatedObject(picker, &TemporaryFileCleaner.associationKey, cleaner, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
++        if let message {
++            showResult(message, in: presenter) {
++                presenter.present(picker, animated: true)
++            }
++        } else {
++            presenter.present(picker, animated: true)
++        }
++    }
++
++    private static func showResult(_ text: String, in presenter: UIViewController, then: (() -> Void)? = nil) {
++        let alert = UIAlertController(title: text, message: nil, preferredStyle: .alert)
++        presenter.present(alert, animated: true)
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
++            alert.dismiss(animated: true, completion: then)
++        }
++    }
++}
++
++private final class TemporaryFileCleaner: NSObject, UIDocumentPickerDelegate {
++    static var associationKey: UInt8 = 0
++
++    private let folder: URL
++    private let completion: (Bool) -> Void
++
++    init(folder: URL, completion: @escaping (Bool) -> Void) {
++        self.folder = folder
++        self.completion = completion
++    }
++
++    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
++        try? FileManager.default.removeItem(at: folder)
++        completion(true)
++    }
++
++    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
++        try? FileManager.default.removeItem(at: folder)
++        completion(false)
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
@@ -5142,10 +5314,10 @@ index 0000000..53fa2a6
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..e5acdf8
+index 0000000..98797e3
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1162 @@
+@@ -0,0 +1,1171 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -5192,8 +5364,11 @@ index 0000000..e5acdf8
 +        // Every page starts at the same top offset (so Favorites, Frequently
 +        // Visited and Recently Closed line up), follows the page width so
 +        // narrow windows reflow, and is capped on very wide screens.
++        // 999, not .defaultHigh (750): at 750 the page width tied with the
++        // labels' compression resistance, so a long single-line title could
++        // widen the whole page past the window and push everything off-screen.
 +        let fillWidth = stackView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor)
-+        fillWidth.priority = .defaultHigh
++        fillWidth.priority = UILayoutPriority(999)
 +        NSLayoutConstraint.activate([
 +            contentLayoutGuide.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor),
 +            stackView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Self.topPadding),
@@ -5501,11 +5676,14 @@ index 0000000..e5acdf8
 +    }
 +    
 +    private func updateSectionContentMode() {
-+        // Column counts no longer change with the window width: on iPad every
-+        // section keeps the wide layout and its tiles/cards shrink to fit the
-+        // width instead (text keeps its size).
++        // One breakpoint instead of continuous reflow: wide windows keep the
++        // wide layout (6 favourites per row, 2 closed-tab columns) and the
++        // tiles shrink with the width; below 560pt (Slide Over, 1/3 split,
++        // narrow Stage Manager windows) switch once to the narrow layout
++        // (4 per row, 1 column) so tiles never get too small for their text.
++        let pageWidth = pagerScrollView.bounds.width > 0 ? pagerScrollView.bounds.width : view.bounds.width
 +        let mode: HomepageContentMode
-+        if traitCollection.userInterfaceIdiom == .pad {
++        if traitCollection.userInterfaceIdiom == .pad, pageWidth == 0 || pageWidth >= 560 {
 +            mode = contentMode.isDetached ? .detachedWide : .embeddedWide
 +        } else {
 +            mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
@@ -5625,8 +5803,10 @@ index 0000000..e5acdf8
 +        )
 +        headerWidth.priority = .defaultHigh
 +        
++        // See HomepagePanelScrollView: the pages must never be wider than the
++        // pager, whatever their content wants.
 +        let pagesWidth = pagesStackView.widthAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.widthAnchor)
-+        pagesWidth.priority = .defaultHigh
++        pagesWidth.priority = UILayoutPriority(999)
 +        pagesWidthConstraint = pagesWidth
 +        
 +        let hintBottom = hintView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.bottomInset)
@@ -5669,6 +5849,7 @@ index 0000000..e5acdf8
 +            pagesStackView.bottomAnchor.constraint(equalTo: pagerScrollView.contentLayoutGuide.bottomAnchor),
 +            pagesStackView.centerXAnchor.constraint(equalTo: pagerScrollView.frameLayoutGuide.centerXAnchor),
 +            pagesStackView.widthAnchor.constraint(lessThanOrEqualToConstant: UX.maximumContentWidth),
++            pagesStackView.widthAnchor.constraint(lessThanOrEqualTo: pagerScrollView.frameLayoutGuide.widthAnchor),
 +            pagesWidth,
 +            
 +            panelRailView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
@@ -9384,7 +9565,7 @@ index 7f723fd..0ca560e 100644
          if navigationController?.presentingViewController is BrowserViewController {
              navigationController?.dismiss(animated: true)
 diff --git a/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift b/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
-index 514685b..cf080b0 100644
+index 514685b..003d9e8 100644
 --- a/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
 +++ b/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
 @@ -147,11 +147,23 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
@@ -9414,6 +9595,65 @@ index 514685b..cf080b0 100644
          }
      }
      
+@@ -484,6 +496,17 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
+                 completion(true)
+             }
+             
++            if item.state == .failed || item.state == .cancelled {
++                let retryAction = UIContextualAction(style: .normal, title: "重试") { _, _, completion in
++                    DownloadStore.shared.retry(id: item.id)
++                    completion(true)
++                }
++                retryAction.backgroundColor = .systemBlue
++                let configuration = UISwipeActionsConfiguration(actions: [deleteAction, retryAction])
++                configuration.performsFirstActionWithFullSwipe = false
++                return configuration
++            }
++            
+             guard item.state == .completed, item.fileExists else {
+                 let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
+                 configuration.performsFirstActionWithFullSwipe = true
+@@ -525,6 +548,12 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
+         
+         tableView.deselectRow(at: indexPath, animated: true)
+         
++        if item.state == .failed || item.state == .cancelled {
++            // Tapping a failed download offers to retry it.
++            confirmRetryDownload(item, from: indexPath)
++            return
++        }
++        
+         guard item.state == .completed, item.fileExists else {
+             return
+         }
+@@ -581,6 +610,27 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
+         shareDownload(item, from: indexPath)
+     }
+     
++    private func confirmRetryDownload(_ item: DownloadItemSnapshot, from indexPath: IndexPath) {
++        let alert = UIAlertController(
++            title: item.state == .failed ? "下载失败" : "下载已取消",
++            message: item.fileName,
++            preferredStyle: .actionSheet
++        )
++        alert.addAction(UIAlertAction(title: "重试", style: .default) { _ in
++            DownloadStore.shared.retry(id: item.id)
++        })
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { _ in
++            DownloadStore.shared.removeDownload(id: item.id)
++        })
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
++        if let popover = alert.popoverPresentationController,
++           let cell = tableView.cellForRow(at: indexPath) {
++            popover.sourceView = cell
++            popover.sourceRect = cell.bounds
++        }
++        present(alert, animated: true)
++    }
++    
+     private func isHTMLDownload(_ item: DownloadItemSnapshot) -> Bool {
+         let pathExtension = (item.fileURL?.pathExtension ?? URL(fileURLWithPath: item.fileName).pathExtension).lowercased()
+         if pathExtension == "html" || pathExtension == "htm" || pathExtension == "xhtml" {
 diff --git a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift b/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
 index 1897494..0f189e2 100644
 --- a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
@@ -10883,10 +11123,64 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..4bf54f6 100644
+index 6da82ce..0fb3d41 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-@@ -127,6 +127,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+@@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+             return attributes
+         }
+         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
+-        guard tabCount > 1 else {
++        guard tabCount > 0 else {
+             return attributes
+         }
+         
+-        for index in 0..<(tabCount - 1) {
++        // Separators sit between tabs and after the last (right-most) tab;
++        // none before the first one.
++        for index in 0..<tabCount {
+             guard showsSeparator(after: index),
+                   let separatorAttributes = separatorAttributes(after: index, in: rect) else {
+                 continue
+@@ -83,12 +85,12 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+             return false
+         }
+         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
+-        guard tabCount > 1,
+-              index >= 0,
+-              index < tabCount - 1 else {
++        guard index >= 0, index < tabCount else {
+             return false
+         }
+-        
++        if index == tabCount - 1 {
++            return !tabBar.isTabSelected(at: index)
++        }
+         return !tabBar.isTabSelected(at: index) && !tabBar.isTabSelected(at: index + 1)
+     }
+     
+@@ -96,12 +98,16 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
+         after index: Int,
+         in rect: CGRect?
+     ) -> UICollectionViewLayoutAttributes? {
+-        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)),
+-              let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) else {
++        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)) else {
+             return nil
+         }
+-        
+-        let centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
++        let centerX: CGFloat
++        if let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) {
++            centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
++        } else {
++            // After the last tab: same gap as between two tabs.
++            centerX = leftAttributes.frame.maxX + max(minimumInteritemSpacing, minimumLineSpacing) / 2
++        }
+         let frame = CGRect(
+             x: centerX - (UX.separatorWidth / 2),
+             y: leftAttributes.frame.midY - (UX.separatorHeight / 2),
+@@ -127,6 +133,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
  final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private enum UX {
          static let tabReorderMinimumPressDuration: TimeInterval = 0.35
@@ -10895,7 +11189,7 @@ index 6da82ce..4bf54f6 100644
          static let tabReorderStartDelay: TimeInterval = 0.06
          static let tabReorderDirectionThreshold: CGFloat = 1
          static let tabReorderTargetHysteresis: CGFloat = 8
-@@ -140,6 +142,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -140,6 +148,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private weak var tabBar: TabBar?
@@ -10906,7 +11200,7 @@ index 6da82ce..4bf54f6 100644
      private let layout: TabBarCollectionLayout
      private var lastLayoutWidth: CGFloat = 0
      private var isUpdatingTabs = false
-@@ -194,6 +200,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -194,6 +206,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          guard !isUpdatingTabs else {
              return
          }
@@ -10916,7 +11210,7 @@ index 6da82ce..4bf54f6 100644
          updateScrollability()
          refreshVisibleTabs()
          revealSelectedTab()
-@@ -246,29 +255,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -246,29 +261,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
          isUpdatingTabs = true
@@ -10972,7 +11266,7 @@ index 6da82ce..4bf54f6 100644
          }
      }
      
-@@ -313,40 +326,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -313,40 +332,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private func updateScrollability() {
@@ -11037,7 +11331,7 @@ index 6da82ce..4bf54f6 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -395,8 +399,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -395,8 +405,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
@@ -11058,7 +11352,7 @@ index 6da82ce..4bf54f6 100644
          contentInsetAdjustmentBehavior = .never
      }
      
-@@ -404,7 +419,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -404,7 +425,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.scrollDirection = .horizontal
          layout.minimumLineSpacing = 0
          layout.minimumInteritemSpacing = 0
@@ -11072,7 +11366,7 @@ index 6da82ce..4bf54f6 100644
      }
      
      private func configureCollection() {
-@@ -418,6 +438,11 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -418,6 +444,11 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          )
      }
      
@@ -11084,7 +11378,7 @@ index 6da82ce..4bf54f6 100644
      private func configureGestures() {
          let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
          longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -431,13 +456,142 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -431,13 +462,233 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          let location = gestureRecognizer.location(in: self)
          switch gestureRecognizer.state {
          case .began:
@@ -11177,39 +11471,130 @@ index 6da82ce..4bf54f6 100644
 +    
 +    // MARK: - Tab Menu
 +    
++    /// Invisible anchor whose menu is opened programmatically, so a held tab
++    /// gets the same native menu as the address bar (icons, grouped sections,
++    /// red destructive items) instead of an action sheet.
++    private lazy var tabMenuAnchor: UIButton = {
++        let button = UIButton(type: .custom)
++        button.backgroundColor = .clear
++        button.isAccessibilityElement = false
++        return button
++    }()
++    
 +    private func presentTabMenu(forItemAt indexPath: IndexPath) {
 +        guard let tabBar,
 +              let dataSource = tabBar.dataSource,
-+              dataSource.tabs.indices.contains(indexPath.item),
-+              let presenter = UIApplication.shared.topViewController(for: window) else {
++              dataSource.tabs.indices.contains(indexPath.item) else {
 +            return
 +        }
-+        
 +        let index = indexPath.item
 +        let mode = dataSource.selectedMode
-+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
++        let tabCount = dataSource.tabs.count
 +        
++        if #available(iOS 17.4, *), let cell = cellForItem(at: indexPath) {
++            if tabMenuAnchor.superview !== self {
++                addSubview(tabMenuAnchor)
++            }
++            // A 1pt anchor under the tab: the menu drops down from the tab like
++            // the address bar's, and the anchor never covers the tab itself.
++            tabMenuAnchor.frame = CGRect(x: cell.frame.midX, y: cell.frame.maxY - 1, width: 1, height: 1)
++            tabMenuAnchor.menu = makeTabMenu(index: index, tabCount: tabCount, mode: mode)
++            tabMenuAnchor.showsMenuAsPrimaryAction = true
++            tabMenuAnchor.performPrimaryAction()
++            return
++        }
++        presentTabActionSheet(forItemAt: indexPath, index: index, tabCount: tabCount, mode: mode)
++    }
++    
++    private func makeTabMenu(index: Int, tabCount: Int, mode: TabMode) -> UIMenu {
++        let duplicate = UIAction(
++            title: "复制标签页",
++            image: UIImage(named: "reynard.document.on.document")
++        ) { [weak self] _ in
++            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
++        }
++        
++        var closeActions: [UIMenuElement] = []
++        if tabCount > 1 {
++            closeActions.append(UIAction(
++                title: "关闭其他标签页",
++                image: UIImage(named: "reynard.xmark"),
++                attributes: .destructive
++            ) { [weak self] _ in
++                self?.closeOtherTabs(keeping: index, mode: mode)
++            })
++        }
++        if index > 0 {
++            closeActions.append(UIAction(
++                title: "关闭左侧标签页",
++                image: UIImage(named: "reynard.xmark"),
++                attributes: .destructive
++            ) { [weak self] _ in
++                self?.closeTabs(before: index, mode: mode)
++            })
++        }
++        if index < tabCount - 1 {
++            closeActions.append(UIAction(
++                title: "关闭右侧标签页",
++                image: UIImage(named: "reynard.xmark"),
++                attributes: .destructive
++            ) { [weak self] _ in
++                self?.closeTabs(after: index, mode: mode)
++            })
++        }
++        closeActions.append(UIAction(
++            title: NSLocalizedString("Close This Tab", comment: ""),
++            image: UIImage(named: "reynard.xmark"),
++            attributes: .destructive
++        ) { [weak self] _ in
++            self?.tabBar?.dataSource?.closeTab(at: index, mode: mode)
++        })
++        
++        return UIMenu(title: "", children: [
++            duplicate,
++            UIMenu(title: "", options: .displayInline, children: closeActions),
++        ])
++    }
++    
++    private func presentTabActionSheet(forItemAt indexPath: IndexPath, index: Int, tabCount: Int, mode: TabMode) {
++        guard let presenter = UIApplication.shared.topViewController(for: window) else {
++            return
++        }
++        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
++        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
++            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
++        })
++        if tabCount > 1 {
++            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
++                self?.closeOtherTabs(keeping: index, mode: mode)
++            })
++        }
 +        if index > 0 {
 +            sheet.addAction(UIAlertAction(title: "关闭左侧标签页", style: .destructive) { [weak self] _ in
 +                self?.closeTabs(before: index, mode: mode)
 +            })
 +        }
-+        if dataSource.tabs.count > 1 {
-+            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
-+                self?.closeOtherTabs(keeping: index, mode: mode)
++        if index < tabCount - 1 {
++            sheet.addAction(UIAlertAction(title: "关闭右侧标签页", style: .destructive) { [weak self] _ in
++                self?.closeTabs(after: index, mode: mode)
 +            })
 +        }
-+        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
-+            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
-+        })
 +        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
-+        
 +        if let popover = sheet.popoverPresentationController,
 +           let cell = cellForItem(at: indexPath) {
 +            popover.sourceView = cell
 +            popover.sourceRect = cell.bounds
 +        }
 +        presenter.present(sheet, animated: true)
++    }
++    
++    private func closeTabs(after index: Int, mode: TabMode) {
++        guard let count = tabBar?.dataSource?.tabs.count, index < count - 1 else {
++            return
++        }
++        for position in stride(from: count - 1, to: index, by: -1) {
++            tabBar?.dataSource?.closeTab(at: position, mode: mode)
++        }
 +    }
 +    
 +    private func closeTabs(before index: Int, mode: TabMode) {
@@ -11466,6 +11851,41 @@ index e387c64..adfd9e9 100644
                  return
              }
              
+diff --git a/browser/Reynard/Client/Stores/DownloadStore.swift b/browser/Reynard/Client/Stores/DownloadStore.swift
+index 117c74b..c07b483 100644
+--- a/browser/Reynard/Client/Stores/DownloadStore.swift
++++ b/browser/Reynard/Client/Stores/DownloadStore.swift
+@@ -458,6 +458,30 @@ final class DownloadStore: NSObject {
+         }
+     }
+     
++    /// Starts a failed or cancelled download again from its source URL. The
++    /// old entry (and any partial file) is replaced by the new download.
++    func retry(id: UUID) {
++        stateQueue.async {
++            guard let index = self.persistedDownloads.firstIndex(where: { $0.id == id }),
++                  let sourceURL = URL(string: self.persistedDownloads[index].sourceURLString) else {
++                return
++            }
++            let entry = self.persistedDownloads.remove(at: index)
++            let partialURL = self.storage.downloadsDirectoryURL.appendingPathComponent(entry.relativePath, isDirectory: false)
++            if self.fileManager.fileExists(atPath: partialURL.path) {
++                try? self.fileManager.removeItem(at: partialURL)
++            }
++            self.savePersistedDownloadsLocked()
++            self.postDidChange()
++            self.enqueueDownload(
++                sourceURL: sourceURL,
++                originalURL: entry.originalURLString.flatMap(URL.init(string:)),
++                suggestedFileName: entry.fileName,
++                mimeType: entry.mimeType
++            )
++        }
++    }
++    
+     func removeDownload(id: UUID) {
+         stateQueue.async {
+             guard let index = self.persistedDownloads.firstIndex(where: { $0.id == id }) else {
 diff --git a/browser/Reynard/Client/Stores/LoginStore.swift b/browser/Reynard/Client/Stores/LoginStore.swift
 new file mode 100644
 index 0000000..d47ae19
@@ -12168,7 +12588,7 @@ index 68792ff..ff4d3eb 100644
                  sqlite3_close(database)
              }
 diff --git a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-index c23eb59..bc39f3b 100644
+index c23eb59..68dd5fd 100644
 --- a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
 +++ b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
 @@ -65,6 +65,10 @@ final class TabManagerImplementation: NSObject, TabManager {
@@ -12212,6 +12632,30 @@ index c23eb59..bc39f3b 100644
          guard !navigationInput.isEmpty else {
              return
          }
+@@ -1465,11 +1483,19 @@ extension TabManagerImplementation: ContentDelegate {
+     }
+     
+     func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
+-        guard let download = DownloadStore.shared.pendingDownload(from: request) else {
+-            return
++        // Keep pdf.js edits/annotations: read the edited PDF from the page and
++        // offer Save (back to a file opened from Files) / Save As. Only if
++        // that fails, fall back to re-downloading the original URL.
++        Task { @MainActor [weak self] in
++            if await PdfSaveCoordinator.handle(session: session, request: request, window: nil) {
++                return
++            }
++            guard let self,
++                  let download = DownloadStore.shared.pendingDownload(from: request) else {
++                return
++            }
++            self.delegate?.tabManager(self, didRequestDownload: download)
+         }
+-        
+-        delegate?.tabManager(self, didRequestDownload: download)
+     }
+ }
+ 
 diff --git a/browser/Reynard/Resources/Info.plist b/browser/Reynard/Resources/Info.plist
 index 7af267b..bd44990 100644
 --- a/browser/Reynard/Resources/Info.plist

@@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
             return attributes
         }
         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
-        guard tabCount > 1 else {
+        guard tabCount > 0 else {
             return attributes
         }
         
-        for index in 0..<(tabCount - 1) {
+        // Separators sit between tabs and after the last (right-most) tab;
+        // none before the first one.
+        for index in 0..<tabCount {
             guard showsSeparator(after: index),
                   let separatorAttributes = separatorAttributes(after: index, in: rect) else {
                 continue
@@ -83,12 +85,12 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
             return false
         }
         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
-        guard tabCount > 1,
-              index >= 0,
-              index < tabCount - 1 else {
+        guard index >= 0, index < tabCount else {
             return false
         }
-        
+        if index == tabCount - 1 {
+            return !tabBar.isTabSelected(at: index)
+        }
         return !tabBar.isTabSelected(at: index) && !tabBar.isTabSelected(at: index + 1)
     }
     
@@ -96,12 +98,16 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
         after index: Int,
         in rect: CGRect?
     ) -> UICollectionViewLayoutAttributes? {
-        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)),
-              let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) else {
+        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)) else {
             return nil
         }
-        
-        let centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
+        let centerX: CGFloat
+        if let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) {
+            centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
+        } else {
+            // After the last tab: same gap as between two tabs.
+            centerX = leftAttributes.frame.maxX + max(minimumInteritemSpacing, minimumLineSpacing) / 2
+        }
         let frame = CGRect(
             x: centerX - (UX.separatorWidth / 2),
             y: leftAttributes.frame.midY - (UX.separatorHeight / 2),
@@ -542,39 +548,130 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     
     // MARK: - Tab Menu
     
+    /// Invisible anchor whose menu is opened programmatically, so a held tab
+    /// gets the same native menu as the address bar (icons, grouped sections,
+    /// red destructive items) instead of an action sheet.
+    private lazy var tabMenuAnchor: UIButton = {
+        let button = UIButton(type: .custom)
+        button.backgroundColor = .clear
+        button.isAccessibilityElement = false
+        return button
+    }()
+    
     private func presentTabMenu(forItemAt indexPath: IndexPath) {
         guard let tabBar,
               let dataSource = tabBar.dataSource,
-              dataSource.tabs.indices.contains(indexPath.item),
-              let presenter = UIApplication.shared.topViewController(for: window) else {
+              dataSource.tabs.indices.contains(indexPath.item) else {
             return
         }
-        
         let index = indexPath.item
         let mode = dataSource.selectedMode
-        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let tabCount = dataSource.tabs.count
         
+        if #available(iOS 17.4, *), let cell = cellForItem(at: indexPath) {
+            if tabMenuAnchor.superview !== self {
+                addSubview(tabMenuAnchor)
+            }
+            // A 1pt anchor under the tab: the menu drops down from the tab like
+            // the address bar's, and the anchor never covers the tab itself.
+            tabMenuAnchor.frame = CGRect(x: cell.frame.midX, y: cell.frame.maxY - 1, width: 1, height: 1)
+            tabMenuAnchor.menu = makeTabMenu(index: index, tabCount: tabCount, mode: mode)
+            tabMenuAnchor.showsMenuAsPrimaryAction = true
+            tabMenuAnchor.performPrimaryAction()
+            return
+        }
+        presentTabActionSheet(forItemAt: indexPath, index: index, tabCount: tabCount, mode: mode)
+    }
+    
+    private func makeTabMenu(index: Int, tabCount: Int, mode: TabMode) -> UIMenu {
+        let duplicate = UIAction(
+            title: "复制标签页",
+            image: UIImage(named: "reynard.document.on.document")
+        ) { [weak self] _ in
+            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
+        }
+        
+        var closeActions: [UIMenuElement] = []
+        if tabCount > 1 {
+            closeActions.append(UIAction(
+                title: "关闭其他标签页",
+                image: UIImage(named: "reynard.xmark"),
+                attributes: .destructive
+            ) { [weak self] _ in
+                self?.closeOtherTabs(keeping: index, mode: mode)
+            })
+        }
+        if index > 0 {
+            closeActions.append(UIAction(
+                title: "关闭左侧标签页",
+                image: UIImage(named: "reynard.xmark"),
+                attributes: .destructive
+            ) { [weak self] _ in
+                self?.closeTabs(before: index, mode: mode)
+            })
+        }
+        if index < tabCount - 1 {
+            closeActions.append(UIAction(
+                title: "关闭右侧标签页",
+                image: UIImage(named: "reynard.xmark"),
+                attributes: .destructive
+            ) { [weak self] _ in
+                self?.closeTabs(after: index, mode: mode)
+            })
+        }
+        closeActions.append(UIAction(
+            title: NSLocalizedString("Close This Tab", comment: ""),
+            image: UIImage(named: "reynard.xmark"),
+            attributes: .destructive
+        ) { [weak self] _ in
+            self?.tabBar?.dataSource?.closeTab(at: index, mode: mode)
+        })
+        
+        return UIMenu(title: "", children: [
+            duplicate,
+            UIMenu(title: "", options: .displayInline, children: closeActions),
+        ])
+    }
+    
+    private func presentTabActionSheet(forItemAt indexPath: IndexPath, index: Int, tabCount: Int, mode: TabMode) {
+        guard let presenter = UIApplication.shared.topViewController(for: window) else {
+            return
+        }
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
+            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
+        })
+        if tabCount > 1 {
+            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
+                self?.closeOtherTabs(keeping: index, mode: mode)
+            })
+        }
         if index > 0 {
             sheet.addAction(UIAlertAction(title: "关闭左侧标签页", style: .destructive) { [weak self] _ in
                 self?.closeTabs(before: index, mode: mode)
             })
         }
-        if dataSource.tabs.count > 1 {
-            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
-                self?.closeOtherTabs(keeping: index, mode: mode)
+        if index < tabCount - 1 {
+            sheet.addAction(UIAlertAction(title: "关闭右侧标签页", style: .destructive) { [weak self] _ in
+                self?.closeTabs(after: index, mode: mode)
             })
         }
-        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
-            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
-        })
         sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
-        
         if let popover = sheet.popoverPresentationController,
            let cell = cellForItem(at: indexPath) {
             popover.sourceView = cell
             popover.sourceRect = cell.bounds
         }
         presenter.present(sheet, animated: true)
+    }
+    
+    private func closeTabs(after index: Int, mode: TabMode) {
+        guard let count = tabBar?.dataSource?.tabs.count, index < count - 1 else {
+            return
+        }
+        for position in stride(from: count - 1, to: index, by: -1) {
+            tabBar?.dataSource?.closeTab(at: position, mode: mode)
+        }
     }
     
     private func closeTabs(before index: Int, mode: TabMode) {

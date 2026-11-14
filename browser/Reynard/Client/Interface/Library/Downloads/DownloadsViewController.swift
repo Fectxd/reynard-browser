@@ -496,6 +496,17 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
                 completion(true)
             }
             
+            if item.state == .failed || item.state == .cancelled {
+                let retryAction = UIContextualAction(style: .normal, title: "重试") { _, _, completion in
+                    DownloadStore.shared.retry(id: item.id)
+                    completion(true)
+                }
+                retryAction.backgroundColor = .systemBlue
+                let configuration = UISwipeActionsConfiguration(actions: [deleteAction, retryAction])
+                configuration.performsFirstActionWithFullSwipe = false
+                return configuration
+            }
+            
             guard item.state == .completed, item.fileExists else {
                 let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
                 configuration.performsFirstActionWithFullSwipe = true
@@ -536,6 +547,12 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         }
         
         tableView.deselectRow(at: indexPath, animated: true)
+        
+        if item.state == .failed || item.state == .cancelled {
+            // Tapping a failed download offers to retry it.
+            confirmRetryDownload(item, from: indexPath)
+            return
+        }
         
         guard item.state == .completed, item.fileExists else {
             return
@@ -591,6 +608,27 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         }
         
         shareDownload(item, from: indexPath)
+    }
+    
+    private func confirmRetryDownload(_ item: DownloadItemSnapshot, from indexPath: IndexPath) {
+        let alert = UIAlertController(
+            title: item.state == .failed ? "下载失败" : "下载已取消",
+            message: item.fileName,
+            preferredStyle: .actionSheet
+        )
+        alert.addAction(UIAlertAction(title: "重试", style: .default) { _ in
+            DownloadStore.shared.retry(id: item.id)
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: ""), style: .destructive) { _ in
+            DownloadStore.shared.removeDownload(id: item.id)
+        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        if let popover = alert.popoverPresentationController,
+           let cell = tableView.cellForRow(at: indexPath) {
+            popover.sourceView = cell
+            popover.sourceRect = cell.bounds
+        }
+        present(alert, animated: true)
     }
     
     private func isHTMLDownload(_ item: DownloadItemSnapshot) -> Bool {

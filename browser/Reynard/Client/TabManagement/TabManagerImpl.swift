@@ -1483,11 +1483,19 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
-        guard let download = DownloadStore.shared.pendingDownload(from: request) else {
-            return
+        // Keep pdf.js edits/annotations: read the edited PDF from the page and
+        // offer Save (back to a file opened from Files) / Save As. Only if
+        // that fails, fall back to re-downloading the original URL.
+        Task { @MainActor [weak self] in
+            if await PdfSaveCoordinator.handle(session: session, request: request, window: nil) {
+                return
+            }
+            guard let self,
+                  let download = DownloadStore.shared.pendingDownload(from: request) else {
+                return
+            }
+            self.delegate?.tabManager(self, didRequestDownload: download)
         }
-        
-        delegate?.tabManager(self, didRequestDownload: download)
     }
 }
 
