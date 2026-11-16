@@ -11228,7 +11228,7 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..8975c59 100644
+index 6da82ce..d4116de 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -11448,7 +11448,7 @@ index 6da82ce..8975c59 100644
          contentInsetAdjustmentBehavior = .never
      }
      
-@@ -404,7 +423,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -404,12 +423,24 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.scrollDirection = .horizontal
          layout.minimumLineSpacing = 0
          layout.minimumInteritemSpacing = 0
@@ -11462,7 +11462,19 @@ index 6da82ce..8975c59 100644
      }
      
      private func configureCollection() {
-@@ -418,6 +442,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         dataSource = self
+         delegate = self
++        // System drag & drop for reordering: a tab lifted by its context menu
++        // can be dragged straight away (the custom reorder press is cancelled
++        // once the menu takes over the touch).
++        dragDelegate = self
++        dropDelegate = self
++        dragInteractionEnabled = true
++        reorderingCadence = .immediate
+         scrollsToTop = false
+         register(TabBarCell.self, forCellWithReuseIdentifier: TabBarCell.reuseIdentifier)
+         layout.register(
+@@ -418,6 +449,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          )
      }
      
@@ -11473,7 +11485,7 @@ index 6da82ce..8975c59 100644
      private func configureGestures() {
          let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
          longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -425,19 +453,140 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -425,19 +460,140 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          addGestureRecognizer(longPressGesture)
      }
      
@@ -11617,7 +11629,7 @@ index 6da82ce..8975c59 100644
          }
      }
      
-@@ -759,6 +908,59 @@ extension TabBarCollection: UICollectionViewDelegate {
+@@ -759,6 +915,59 @@ extension TabBarCollection: UICollectionViewDelegate {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
      
@@ -11677,6 +11689,83 @@ index 6da82ce..8975c59 100644
      func collectionView(
          _ collectionView: UICollectionView,
          targetIndexPathForMoveFromItemAt originalIndexPath: IndexPath,
+@@ -796,3 +1005,76 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
+         return CGSize(width: cellLayout.width, height: bounds.height)
+     }
+ }
++
++// MARK: - Drag & drop reordering (continues from the context menu lift)
++
++extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
++    func collectionView(
++        _ collectionView: UICollectionView,
++        itemsForBeginning session: UIDragSession,
++        at indexPath: IndexPath
++    ) -> [UIDragItem] {
++        guard !isReordering,
++              let dataSource = tabBar?.dataSource,
++              dataSource.tabs.indices.contains(indexPath.item) else {
++            return []
++        }
++        let item = UIDragItem(itemProvider: NSItemProvider())
++        item.localObject = indexPath.item
++        return [item]
++    }
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        dragPreviewParametersForItemAt indexPath: IndexPath
++    ) -> UIDragPreviewParameters? {
++        guard let cell = cellForItem(at: indexPath) else {
++            return nil
++        }
++        let parameters = UIDragPreviewParameters()
++        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
++        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
++        return parameters
++    }
++    
++    func collectionView(_ collectionView: UICollectionView, dragSessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool {
++        return true
++    }
++    
++    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
++        return session.localDragSession != nil
++    }
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        dropSessionDidUpdate session: UIDropSession,
++        withDestinationIndexPath destinationIndexPath: IndexPath?
++    ) -> UICollectionViewDropProposal {
++        guard session.localDragSession != nil, collectionView.hasActiveDrag else {
++            return UICollectionViewDropProposal(operation: .forbidden)
++        }
++        return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
++    }
++    
++    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
++        guard let dropItem = coordinator.items.first,
++              let sourceIndexPath = dropItem.sourceIndexPath,
++              let count = tabBar?.dataSource?.tabs.count, count > 0 else {
++            return
++        }
++        var destination = coordinator.destinationIndexPath ?? IndexPath(item: count - 1, section: 0)
++        destination.item = min(max(destination.item, 0), count - 1)
++        guard destination != sourceIndexPath else {
++            coordinator.drop(dropItem.dragItem, toItemAt: sourceIndexPath)
++            return
++        }
++        performBatchUpdates({
++            // Same model path as the interactive reorder (moveItemAt).
++            self.tabBar?.requestMoveTab(from: sourceIndexPath.item, to: destination.item)
++            self.moveItem(at: sourceIndexPath, to: destination)
++        }, completion: { [weak self] _ in
++            self?.collectionViewLayout.invalidateLayout()
++        })
++        coordinator.drop(dropItem.dragItem, toItemAt: destination)
++    }
++}
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 index 586eb5a..859bd5b 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift

@@ -434,6 +434,13 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
     private func configureCollection() {
         dataSource = self
         delegate = self
+        // System drag & drop for reordering: a tab lifted by its context menu
+        // can be dragged straight away (the custom reorder press is cancelled
+        // once the menu takes over the touch).
+        dragDelegate = self
+        dropDelegate = self
+        dragInteractionEnabled = true
+        reorderingCadence = .immediate
         scrollsToTop = false
         register(TabBarCell.self, forCellWithReuseIdentifier: TabBarCell.reuseIdentifier)
         layout.register(
@@ -996,5 +1003,78 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
         
         let cellLayout = tabBar.cellLayout(at: indexPath.item)
         return CGSize(width: cellLayout.width, height: bounds.height)
+    }
+}
+
+// MARK: - Drag & drop reordering (continues from the context menu lift)
+
+extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
+    func collectionView(
+        _ collectionView: UICollectionView,
+        itemsForBeginning session: UIDragSession,
+        at indexPath: IndexPath
+    ) -> [UIDragItem] {
+        guard !isReordering,
+              let dataSource = tabBar?.dataSource,
+              dataSource.tabs.indices.contains(indexPath.item) else {
+            return []
+        }
+        let item = UIDragItem(itemProvider: NSItemProvider())
+        item.localObject = indexPath.item
+        return [item]
+    }
+    
+    func collectionView(
+        _ collectionView: UICollectionView,
+        dragPreviewParametersForItemAt indexPath: IndexPath
+    ) -> UIDragPreviewParameters? {
+        guard let cell = cellForItem(at: indexPath) else {
+            return nil
+        }
+        let parameters = UIDragPreviewParameters()
+        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
+        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
+        return parameters
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, dragSessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool {
+        return true
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
+        return session.localDragSession != nil
+    }
+    
+    func collectionView(
+        _ collectionView: UICollectionView,
+        dropSessionDidUpdate session: UIDropSession,
+        withDestinationIndexPath destinationIndexPath: IndexPath?
+    ) -> UICollectionViewDropProposal {
+        guard session.localDragSession != nil, collectionView.hasActiveDrag else {
+            return UICollectionViewDropProposal(operation: .forbidden)
+        }
+        return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+        guard let dropItem = coordinator.items.first,
+              let sourceIndexPath = dropItem.sourceIndexPath,
+              let count = tabBar?.dataSource?.tabs.count, count > 0 else {
+            return
+        }
+        var destination = coordinator.destinationIndexPath ?? IndexPath(item: count - 1, section: 0)
+        destination.item = min(max(destination.item, 0), count - 1)
+        guard destination != sourceIndexPath else {
+            coordinator.drop(dropItem.dragItem, toItemAt: sourceIndexPath)
+            return
+        }
+        performBatchUpdates({
+            // Same model path as the interactive reorder (moveItemAt).
+            self.tabBar?.requestMoveTab(from: sourceIndexPath.item, to: destination.item)
+            self.moveItem(at: sourceIndexPath, to: destination)
+        }, completion: { [weak self] _ in
+            self?.collectionViewLayout.invalidateLayout()
+        })
+        coordinator.drop(dropItem.dragItem, toItemAt: destination)
     }
 }
