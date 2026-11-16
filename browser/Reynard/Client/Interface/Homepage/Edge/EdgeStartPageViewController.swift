@@ -119,6 +119,14 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     private var isResizing = false
     private var lastSettledPageIndex = 0
     private var lastDisappearDate: Date?
+    private var isProgrammaticPageScroll = false
+    
+    private var isUserPaging: Bool {
+        return pagerScrollView.isTracking
+            || pagerScrollView.isDragging
+            || pagerScrollView.isDecelerating
+            || isProgrammaticPageScroll
+    }
     private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
     
     private let wallpaperImageView: UIImageView = {
@@ -311,7 +319,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     /// aligned and make every section recompute its columns for the new width.
     private func handlePagerResizeIfNeeded() {
         let size = pagerScrollView.bounds.size
-        guard size.width > 0, size.height > 0, size != lastPagerSize else {
+        guard size.width > 0, size.height > 0 else {
             return
         }
         let widthChanged = abs(size.width - lastPagerSize.width) > 0.5
@@ -329,7 +337,10 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             pagesStackView.layoutIfNeeded()
         }
         
-        guard !pagerScrollView.isDragging, !pagerScrollView.isDecelerating else {
+        guard !pagerScrollView.isTracking,
+              !pagerScrollView.isDragging,
+              !pagerScrollView.isDecelerating,
+              !isProgrammaticPageScroll else {
             return
         }
         let index = min(max(currentPageIndex, 0), max(panelScrollViews.count - 1, 0))
@@ -828,7 +839,13 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         
         let progress = pagerScrollView.contentOffset.y / pageHeight
         panelRailView.update(progress: progress)
-        currentPageIndex = min(max(Int(progress.rounded()), 0), panelTitles.count - 1)
+        // The current page only follows the user's own paging (drag, rail,
+        // scrollToPage). Offsets caused by layout -- switching between the wide
+        // and narrow homepage hosts, window resizes, the view being moved --
+        // must not change which page module is shown.
+        if isUserPaging {
+            currentPageIndex = min(max(Int(progress.rounded()), 0), panelTitles.count - 1)
+        }
         
         let index = currentPageIndex
         var hint: String?
@@ -1072,7 +1089,7 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
         }
         // A window resize changes the page height before viewDidLayoutSubviews
         // re-aligns the pager; offsets seen in between would pick a wrong page.
-        if isResizing || (lastPagerSize != .zero && scrollView.bounds.size != lastPagerSize) {
+        if isResizing {
             return
         }
         updateHintForOffset()
@@ -1100,9 +1117,11 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
         if index != currentPageIndex {
             UISelectionFeedbackGenerator().selectionChanged()
         }
+        isProgrammaticPageScroll = true
         pagerScrollView.setContentOffset(target, animated: animated)
         if !animated {
             finishPageChange()
+            isProgrammaticPageScroll = false
         }
     }
     
@@ -1111,9 +1130,17 @@ extension EdgeStartPageViewController: UIScrollViewDelegate {
             return
         }
         finishPageChange()
+        isProgrammaticPageScroll = false
     }
     
     private func finishPageChange() {
+        // Called only at the end of user/programmatic paging: settle the page
+        // from the final offset.
+        let pageHeight = pagerScrollView.bounds.height
+        if pageHeight > 0, !panelTitles.isEmpty {
+            let page = Int((pagerScrollView.contentOffset.y / pageHeight).rounded())
+            currentPageIndex = min(max(page, 0), panelTitles.count - 1)
+        }
         updateHintForOffset()
         if lastSettledPageIndex != currentPageIndex {
             // Leaving or entering a page puts Frequently Visited back at its

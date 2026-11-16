@@ -49,6 +49,9 @@ extension UIView {
     @objc fileprivate func reynard_scribbleGuardDidMoveToWindow() {
         // Calls the original didMoveToWindow (implementations are exchanged).
         reynard_scribbleGuardDidMoveToWindow()
+        if window != nil {
+            TextDirectionGuard.installIfNeeded(for: self)
+        }
 
         guard #available(iOS 14.0, *),
               window != nil,

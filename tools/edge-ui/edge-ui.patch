@@ -5130,10 +5130,10 @@ index 0000000..977401f
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
 new file mode 100644
-index 0000000..9343811
+index 0000000..9639335
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/ScribbleGuard.swift
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,64 @@
 +//
 +//  ScribbleGuard.swift
 +//  Reynard
@@ -5185,6 +5185,9 @@ index 0000000..9343811
 +    @objc fileprivate func reynard_scribbleGuardDidMoveToWindow() {
 +        // Calls the original didMoveToWindow (implementations are exchanged).
 +        reynard_scribbleGuardDidMoveToWindow()
++        if window != nil {
++            TextDirectionGuard.installIfNeeded(for: self)
++        }
 +
 +        guard #available(iOS 14.0, *),
 +              window != nil,
@@ -5193,6 +5196,56 @@ index 0000000..9343811
 +            return
 +        }
 +        addInteraction(UIScribbleInteraction(delegate: ScribbleBlocker.shared))
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/TextDirectionGuard.swift b/browser/Reynard/Client/Interface/Edge/TextDirectionGuard.swift
+new file mode 100644
+index 0000000..22560d9
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/TextDirectionGuard.swift
+@@ -0,0 +1,44 @@
++//
++//  TextDirectionGuard.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  iPadOS calls -setBaseWritingDirection:forRange: on the focused text input
++//  (keyboard/language switches, some hardware-keyboard events). Gecko's page
++//  view (ChildView) turns that into EditorBase::SwitchTextDirectionTo, which
++//  fires a beforeinput event of type "formatSetBlockTextDirection" with data
++//  "ltr". Web editors that insert `event.data` for unknown input types (Feishu
++//  Sheets/Docs) then write "ltr" / "ltrltr" into the cell.
++//
++//  Safari does not change the page's text direction here either, so the call
++//  is ignored for Gecko's view. Pages keep their own dir handling; typing RTL
++//  text still works through the normal text input path.
++//
++
++import ObjectiveC
++import UIKit
++
++enum TextDirectionGuard {
++    private static var isInstalled = false
++
++    /// Installs the override on Gecko's view class the first time an instance
++    /// of it shows up (the Gecko framework may be loaded after launch).
++    static func installIfNeeded(for view: UIView) {
++        guard !isInstalled else {
++            return
++        }
++        let viewClass: AnyClass = type(of: view)
++        guard NSStringFromClass(viewClass) == "ChildView" else {
++            return
++        }
++        isInstalled = true
++
++        let selector = NSSelectorFromString("setBaseWritingDirection:forRange:")
++        guard let method = class_getInstanceMethod(viewClass, selector) else {
++            return
++        }
++        let ignore: @convention(block) (AnyObject, Int, AnyObject?) -> Void = { _, _, _ in }
++        method_setImplementation(method, imp_implementationWithBlock(ignore))
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift
@@ -5314,10 +5367,10 @@ index 0000000..53fa2a6
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..98797e3
+index 0000000..3c4e1ae
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1171 @@
+@@ -0,0 +1,1198 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -5439,6 +5492,14 @@ index 0000000..98797e3
 +    private var isResizing = false
 +    private var lastSettledPageIndex = 0
 +    private var lastDisappearDate: Date?
++    private var isProgrammaticPageScroll = false
++    
++    private var isUserPaging: Bool {
++        return pagerScrollView.isTracking
++            || pagerScrollView.isDragging
++            || pagerScrollView.isDecelerating
++            || isProgrammaticPageScroll
++    }
 +    private weak var weatherDetailViewController: HomepageWeatherDetailViewController?
 +    
 +    private let wallpaperImageView: UIImageView = {
@@ -5631,7 +5692,7 @@ index 0000000..98797e3
 +    /// aligned and make every section recompute its columns for the new width.
 +    private func handlePagerResizeIfNeeded() {
 +        let size = pagerScrollView.bounds.size
-+        guard size.width > 0, size.height > 0, size != lastPagerSize else {
++        guard size.width > 0, size.height > 0 else {
 +            return
 +        }
 +        let widthChanged = abs(size.width - lastPagerSize.width) > 0.5
@@ -5649,7 +5710,10 @@ index 0000000..98797e3
 +            pagesStackView.layoutIfNeeded()
 +        }
 +        
-+        guard !pagerScrollView.isDragging, !pagerScrollView.isDecelerating else {
++        guard !pagerScrollView.isTracking,
++              !pagerScrollView.isDragging,
++              !pagerScrollView.isDecelerating,
++              !isProgrammaticPageScroll else {
 +            return
 +        }
 +        let index = min(max(currentPageIndex, 0), max(panelScrollViews.count - 1, 0))
@@ -6148,7 +6212,13 @@ index 0000000..98797e3
 +        
 +        let progress = pagerScrollView.contentOffset.y / pageHeight
 +        panelRailView.update(progress: progress)
-+        currentPageIndex = min(max(Int(progress.rounded()), 0), panelTitles.count - 1)
++        // The current page only follows the user's own paging (drag, rail,
++        // scrollToPage). Offsets caused by layout -- switching between the wide
++        // and narrow homepage hosts, window resizes, the view being moved --
++        // must not change which page module is shown.
++        if isUserPaging {
++            currentPageIndex = min(max(Int(progress.rounded()), 0), panelTitles.count - 1)
++        }
 +        
 +        let index = currentPageIndex
 +        var hint: String?
@@ -6392,7 +6462,7 @@ index 0000000..98797e3
 +        }
 +        // A window resize changes the page height before viewDidLayoutSubviews
 +        // re-aligns the pager; offsets seen in between would pick a wrong page.
-+        if isResizing || (lastPagerSize != .zero && scrollView.bounds.size != lastPagerSize) {
++        if isResizing {
 +            return
 +        }
 +        updateHintForOffset()
@@ -6420,9 +6490,11 @@ index 0000000..98797e3
 +        if index != currentPageIndex {
 +            UISelectionFeedbackGenerator().selectionChanged()
 +        }
++        isProgrammaticPageScroll = true
 +        pagerScrollView.setContentOffset(target, animated: animated)
 +        if !animated {
 +            finishPageChange()
++            isProgrammaticPageScroll = false
 +        }
 +    }
 +    
@@ -6431,9 +6503,17 @@ index 0000000..98797e3
 +            return
 +        }
 +        finishPageChange()
++        isProgrammaticPageScroll = false
 +    }
 +    
 +    private func finishPageChange() {
++        // Called only at the end of user/programmatic paging: settle the page
++        // from the final offset.
++        let pageHeight = pagerScrollView.bounds.height
++        if pageHeight > 0, !panelTitles.isEmpty {
++            let page = Int((pagerScrollView.contentOffset.y / pageHeight).rounded())
++            currentPageIndex = min(max(page, 0), panelTitles.count - 1)
++        }
 +        updateHintForOffset()
 +        if lastSettledPageIndex != currentPageIndex {
 +            // Leaving or entering a page puts Frequently Visited back at its
@@ -9455,10 +9535,17 @@ index bf26062..46d5680 100644
          guard displayedFavoriteItems.indices.contains(sourceIndexPath.item) else {
              reloadFavorites()
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
-index 28377e6..2c67ebb 100644
+index 28377e6..d2b4a3d 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
-@@ -103,6 +103,68 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+@@ -97,12 +97,93 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+         configureConstraints()
+         observeChanges()
+         reloadSites()
++        applyHorizontalOnlyScrolling()
+     }
+     
+     override func viewWillAppear(_ animated: Bool) {
          super.viewWillAppear(animated)
      }
      
@@ -9468,8 +9555,26 @@ index 28377e6..2c67ebb 100644
 +    var scalesCardsToWidth = false {
 +        didSet {
 +            guard oldValue != scalesCardsToWidth, isViewLoaded else { return }
++            applyHorizontalOnlyScrolling()
 +            view.setNeedsLayout()
 +        }
++    }
++    
++    /// The row only scrolls sideways: its content is exactly as tall as the
++    /// row (no vertical overflow to scroll into when cards resize), and the
++    /// row's height always matches the card height (see applyCardSize).
++    private lazy var contentHeightLock = scrollView.contentLayoutGuide.heightAnchor.constraint(
++        equalTo: scrollView.frameLayoutGuide.heightAnchor
++    )
++    
++    private func applyHorizontalOnlyScrolling() {
++        guard scalesCardsToWidth else {
++            return
++        }
++        scrollView.alwaysBounceVertical = false
++        scrollView.showsVerticalScrollIndicator = false
++        scrollView.isDirectionalLockEnabled = true
++        contentHeightLock.isActive = true
 +    }
 +    private var cardScale: CGFloat = 1
 +    private var cardSizeConstraints: [NSLayoutConstraint] = []
@@ -9527,7 +9632,7 @@ index 28377e6..2c67ebb 100644
      func setContentMode(_ contentMode: HomepageContentMode) {
          guard self.contentMode != contentMode else {
              return
-@@ -135,7 +197,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+@@ -135,7 +216,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
              scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -UX.shadowMargin),
              scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: UX.shadowMargin),
              scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -9536,7 +9641,7 @@ index 28377e6..2c67ebb 100644
              
              cardStackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: UX.shadowMargin),
              cardStackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -UX.shadowMargin),
-@@ -265,14 +327,9 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+@@ -265,14 +346,9 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
              cardView.addTarget(self, action: #selector(handleCardTap(_:)), for: .touchUpInside)
              cardView.addInteraction(UIContextMenuInteraction(delegate: self))
              cardStackView.addArrangedSubview(cardView)
@@ -11123,7 +11228,7 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..0fb3d41 100644
+index 6da82ce..8975c59 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -11180,16 +11285,7 @@ index 6da82ce..0fb3d41 100644
          let frame = CGRect(
              x: centerX - (UX.separatorWidth / 2),
              y: leftAttributes.frame.midY - (UX.separatorHeight / 2),
-@@ -127,6 +133,8 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
- final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-     private enum UX {
-         static let tabReorderMinimumPressDuration: TimeInterval = 0.35
-+        /// How long the tab must be held before its menu appears.
-+        static let tabMenuDelay: TimeInterval = 0.45
-         static let tabReorderStartDelay: TimeInterval = 0.06
-         static let tabReorderDirectionThreshold: CGFloat = 1
-         static let tabReorderTargetHysteresis: CGFloat = 8
-@@ -140,6 +148,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -140,6 +146,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private weak var tabBar: TabBar?
@@ -11200,7 +11296,7 @@ index 6da82ce..0fb3d41 100644
      private let layout: TabBarCollectionLayout
      private var lastLayoutWidth: CGFloat = 0
      private var isUpdatingTabs = false
-@@ -194,6 +206,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -194,6 +204,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          guard !isUpdatingTabs else {
              return
          }
@@ -11210,7 +11306,7 @@ index 6da82ce..0fb3d41 100644
          updateScrollability()
          refreshVisibleTabs()
          revealSelectedTab()
-@@ -246,29 +261,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -246,29 +259,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
          isUpdatingTabs = true
@@ -11266,7 +11362,7 @@ index 6da82ce..0fb3d41 100644
          }
      }
      
-@@ -313,40 +332,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -313,40 +330,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      }
      
      private func updateScrollability() {
@@ -11331,7 +11427,7 @@ index 6da82ce..0fb3d41 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -395,8 +405,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -395,8 +403,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
@@ -11352,7 +11448,7 @@ index 6da82ce..0fb3d41 100644
          contentInsetAdjustmentBehavior = .never
      }
      
-@@ -404,7 +425,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -404,7 +423,12 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          layout.scrollDirection = .horizontal
          layout.minimumLineSpacing = 0
          layout.minimumInteritemSpacing = 0
@@ -11366,30 +11462,45 @@ index 6da82ce..0fb3d41 100644
      }
      
      private func configureCollection() {
-@@ -418,6 +444,11 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -418,6 +442,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
          )
      }
      
 +    private var pendingPressLocation: CGPoint?
-+    private var menuWorkItem: DispatchWorkItem?
 +    private var pendingPressIndexPath: IndexPath?
 +    private var isReordering = false
 +    
      private func configureGestures() {
          let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
          longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -431,13 +462,233 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+@@ -425,19 +453,140 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+         addGestureRecognizer(longPressGesture)
+     }
+     
++    /// Let the reorder press run alongside the context menu's own press: holding
++    /// still shows the menu, moving the finger reorders (and dismisses it).
++    func gestureRecognizer(
++        _ gestureRecognizer: UIGestureRecognizer,
++        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
++    ) -> Bool {
++        return gestureRecognizer is UILongPressGestureRecognizer && gestureRecognizer.view === self
++    }
++    
+     // MARK: - Reordering
+     
+     @objc private func handleReorderLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
          let location = gestureRecognizer.location(in: self)
          switch gestureRecognizer.state {
          case .began:
 -            beginReordering(at: location)
 +            // Shrink the tab so the hold is visible, then open the menu when the
 +            // timer fires -- the user should not have to lift the finger.
++            // Holding still opens the system context menu (lift, shadow,
++            // rounded preview -- same interaction as the address bar). This
++            // gesture only turns into reordering once the finger moves.
 +            pendingPressLocation = location
 +            pendingPressIndexPath = indexPathForItem(at: location)
 +            isReordering = false
-+            setPressed(true, at: pendingPressIndexPath)
-+            scheduleMenu(at: pendingPressIndexPath)
          case .changed:
 +            if !isReordering {
 +                guard let start = pendingPressLocation else {
@@ -11399,67 +11510,25 @@ index 6da82ce..0fb3d41 100644
 +                guard distance > 6 else {
 +                    return
 +                }
-+                cancelMenu()
-+                setPressed(false)
 +                isReordering = true
++                if #available(iOS 14.0, *) {
++                    contextMenuInteraction?.dismissMenu()
++                }
 +                beginReordering(at: location)
 +            }
              updateReordering(at: location)
          case .ended:
 -            finishReordering(cancelled: false)
-+            cancelMenu()
-+            setPressed(false)
 +            if isReordering {
 +                finishReordering(cancelled: false)
 +            }
 +            clearPendingPress()
          default:
 -            finishReordering(cancelled: true)
-+            cancelMenu()
-+            setPressed(false)
 +            if isReordering {
 +                finishReordering(cancelled: true)
 +            }
 +            clearPendingPress()
-+        }
-+    }
-+    
-+    private func scheduleMenu(at indexPath: IndexPath?) {
-+        menuWorkItem?.cancel()
-+        guard let indexPath else {
-+            return
-+        }
-+        let workItem = DispatchWorkItem { [weak self] in
-+            guard let self, !self.isReordering else {
-+                return
-+            }
-+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-+            self.setPressed(false)
-+            self.presentTabMenu(forItemAt: indexPath)
-+            self.pendingPressIndexPath = nil
-+        }
-+        menuWorkItem = workItem
-+        DispatchQueue.main.asyncAfter(deadline: .now() + UX.tabMenuDelay, execute: workItem)
-+    }
-+    
-+    private func cancelMenu() {
-+        menuWorkItem?.cancel()
-+        menuWorkItem = nil
-+    }
-+    
-+    private func setPressed(_ pressed: Bool, at indexPath: IndexPath? = nil) {
-+        if pressed, let indexPath, let cell = cellForItem(at: indexPath) {
-+            UIView.animate(withDuration: 0.12) {
-+                cell.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
-+                cell.alpha = 0.85
-+            }
-+            return
-+        }
-+        UIView.animate(withDuration: 0.12) {
-+            for case let cell as TabBarCell in self.visibleCells {
-+                cell.transform = .identity
-+                cell.alpha = 1
-+            }
 +        }
 +    }
 +    
@@ -11470,41 +11539,6 @@ index 6da82ce..0fb3d41 100644
 +    }
 +    
 +    // MARK: - Tab Menu
-+    
-+    /// Invisible anchor whose menu is opened programmatically, so a held tab
-+    /// gets the same native menu as the address bar (icons, grouped sections,
-+    /// red destructive items) instead of an action sheet.
-+    private lazy var tabMenuAnchor: UIButton = {
-+        let button = UIButton(type: .custom)
-+        button.backgroundColor = .clear
-+        button.isAccessibilityElement = false
-+        return button
-+    }()
-+    
-+    private func presentTabMenu(forItemAt indexPath: IndexPath) {
-+        guard let tabBar,
-+              let dataSource = tabBar.dataSource,
-+              dataSource.tabs.indices.contains(indexPath.item) else {
-+            return
-+        }
-+        let index = indexPath.item
-+        let mode = dataSource.selectedMode
-+        let tabCount = dataSource.tabs.count
-+        
-+        if #available(iOS 17.4, *), let cell = cellForItem(at: indexPath) {
-+            if tabMenuAnchor.superview !== self {
-+                addSubview(tabMenuAnchor)
-+            }
-+            // A 1pt anchor under the tab: the menu drops down from the tab like
-+            // the address bar's, and the anchor never covers the tab itself.
-+            tabMenuAnchor.frame = CGRect(x: cell.frame.midX, y: cell.frame.maxY - 1, width: 1, height: 1)
-+            tabMenuAnchor.menu = makeTabMenu(index: index, tabCount: tabCount, mode: mode)
-+            tabMenuAnchor.showsMenuAsPrimaryAction = true
-+            tabMenuAnchor.performPrimaryAction()
-+            return
-+        }
-+        presentTabActionSheet(forItemAt: indexPath, index: index, tabCount: tabCount, mode: mode)
-+    }
 +    
 +    private func makeTabMenu(index: Int, tabCount: Int, mode: TabMode) -> UIMenu {
 +        let duplicate = UIAction(
@@ -11556,38 +11590,6 @@ index 6da82ce..0fb3d41 100644
 +        ])
 +    }
 +    
-+    private func presentTabActionSheet(forItemAt indexPath: IndexPath, index: Int, tabCount: Int, mode: TabMode) {
-+        guard let presenter = UIApplication.shared.topViewController(for: window) else {
-+            return
-+        }
-+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-+        sheet.addAction(UIAlertAction(title: "复制标签页", style: .default) { [weak self] _ in
-+            self?.tabBar?.dataSource?.duplicateTab(at: index, mode: mode)
-+        })
-+        if tabCount > 1 {
-+            sheet.addAction(UIAlertAction(title: "关闭其他标签页", style: .destructive) { [weak self] _ in
-+                self?.closeOtherTabs(keeping: index, mode: mode)
-+            })
-+        }
-+        if index > 0 {
-+            sheet.addAction(UIAlertAction(title: "关闭左侧标签页", style: .destructive) { [weak self] _ in
-+                self?.closeTabs(before: index, mode: mode)
-+            })
-+        }
-+        if index < tabCount - 1 {
-+            sheet.addAction(UIAlertAction(title: "关闭右侧标签页", style: .destructive) { [weak self] _ in
-+                self?.closeTabs(after: index, mode: mode)
-+            })
-+        }
-+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
-+        if let popover = sheet.popoverPresentationController,
-+           let cell = cellForItem(at: indexPath) {
-+            popover.sourceView = cell
-+            popover.sourceRect = cell.bounds
-+        }
-+        presenter.present(sheet, animated: true)
-+    }
-+    
 +    private func closeTabs(after index: Int, mode: TabMode) {
 +        guard let count = tabBar?.dataSource?.tabs.count, index < count - 1 else {
 +            return
@@ -11615,6 +11617,66 @@ index 6da82ce..0fb3d41 100644
          }
      }
      
+@@ -759,6 +908,59 @@ extension TabBarCollection: UICollectionViewDelegate {
+         tabBar?.requestSelectTab(at: indexPath.item)
+     }
+     
++    // MARK: Context menu (same system interaction as the address bar)
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        contextMenuConfigurationForItemAt indexPath: IndexPath,
++        point: CGPoint
++    ) -> UIContextMenuConfiguration? {
++        guard !isReordering,
++              let dataSource = tabBar?.dataSource,
++              dataSource.tabs.indices.contains(indexPath.item) else {
++            return nil
++        }
++        if let cell = cellForItem(at: indexPath) as? TabBarCell,
++           cell.containsCloseButton(at: convert(point, to: cell)) {
++            return nil
++        }
++        let index = indexPath.item
++        let mode = dataSource.selectedMode
++        let tabCount = dataSource.tabs.count
++        return UIContextMenuConfiguration(identifier: NSNumber(value: index), previewProvider: nil) { [weak self] _ in
++            self?.makeTabMenu(index: index, tabCount: tabCount, mode: mode)
++        }
++    }
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        previewForHighlightingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
++    ) -> UITargetedPreview? {
++        return tabPreview(for: configuration)
++    }
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        previewForDismissingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
++    ) -> UITargetedPreview? {
++        return tabPreview(for: configuration)
++    }
++    
++    /// Lifts the tab itself with rounded corners, like the address bar pill.
++    private func tabPreview(for configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
++        guard let index = (configuration.identifier as? NSNumber)?.intValue,
++              let cell = cellForItem(at: IndexPath(item: index, section: 0)) else {
++            return nil
++        }
++        let parameters = UIPreviewParameters()
++        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
++        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
++        parameters.backgroundColor = traitCollection.userInterfaceStyle == .dark
++            ? UIColor.secondarySystemBackground
++            : UIColor.systemBackground
++        return UITargetedPreview(view: cell, parameters: parameters)
++    }
++    
+     func collectionView(
+         _ collectionView: UICollectionView,
+         targetIndexPathForMoveFromItemAt originalIndexPath: IndexPath,
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 index 586eb5a..859bd5b 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift

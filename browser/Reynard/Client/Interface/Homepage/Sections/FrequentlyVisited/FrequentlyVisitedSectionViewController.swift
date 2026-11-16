@@ -97,6 +97,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
         configureConstraints()
         observeChanges()
         reloadSites()
+        applyHorizontalOnlyScrolling()
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -109,8 +110,26 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
     var scalesCardsToWidth = false {
         didSet {
             guard oldValue != scalesCardsToWidth, isViewLoaded else { return }
+            applyHorizontalOnlyScrolling()
             view.setNeedsLayout()
         }
+    }
+    
+    /// The row only scrolls sideways: its content is exactly as tall as the
+    /// row (no vertical overflow to scroll into when cards resize), and the
+    /// row's height always matches the card height (see applyCardSize).
+    private lazy var contentHeightLock = scrollView.contentLayoutGuide.heightAnchor.constraint(
+        equalTo: scrollView.frameLayoutGuide.heightAnchor
+    )
+    
+    private func applyHorizontalOnlyScrolling() {
+        guard scalesCardsToWidth else {
+            return
+        }
+        scrollView.alwaysBounceVertical = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.isDirectionalLockEnabled = true
+        contentHeightLock.isActive = true
     }
     private var cardScale: CGFloat = 1
     private var cardSizeConstraints: [NSLayoutConstraint] = []
