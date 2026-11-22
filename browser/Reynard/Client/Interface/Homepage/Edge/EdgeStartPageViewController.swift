@@ -388,6 +388,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         favoritesSectionViewController?.setContentMode(mode)
         frequentlyVisitedSectionViewController?.setContentMode(mode)
         recentlyClosedTabsSectionViewController?.setContentMode(mode)
+        feedPanelViewController?.setContentMode(mode)
     }
     
     override func viewSafeAreaInsetsDidChange() {
@@ -589,6 +590,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             if definition.isFeed {
                 let feedViewController = HomepageFeedPanelViewController()
                 feedViewController.delegate = self
+                feedViewController.setContentMode(sectionContentMode)
                 addChild(feedViewController)
                 feedViewController.view.translatesAutoresizingMaskIntoConstraints = false
                 panel.stackView.addArrangedSubview(feedViewController.view)
@@ -783,6 +785,10 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     // MARK: - Layout
     
     private func updateBackground() {
+        // The gear follows the same light/dark rule as the section titles.
+        settingsButton.tintColor = folder == nil
+            ? HomepageWallpaper.foregroundColor(for: contentMode)
+            : EdgeHomepagePalette.secondaryText
         let showsWallpaper = folder == nil
         && Prefs.HomepageSettings.showsWallpaper
         && !contentMode.isDetached

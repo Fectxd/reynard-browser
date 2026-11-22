@@ -109,3 +109,41 @@ enum EdgeHomepagePalette {
         }
     }
 }
+
+/// Label for text that sits directly on the page / wallpaper (not inside a
+/// chip, card or button). It carries a soft, diffuse shadow in the inverse of
+/// its own text colour, so it stays readable over busy wallpapers in both light
+/// and dark appearance.
+class HomepageLegibleLabel: UILabel {
+    override var textColor: UIColor! {
+        didSet { updateLegibilityShadow() }
+    }
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        layer.shadowOffset = .zero
+        layer.shadowRadius = 3
+        layer.shadowOpacity = 0.55
+        layer.masksToBounds = false
+        updateLegibilityShadow()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        updateLegibilityShadow()
+    }
+    
+    private func updateLegibilityShadow() {
+        let resolved = (textColor ?? .label).resolvedColor(with: traitCollection)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            layer.shadowColor = UIColor.systemBackground.resolvedColor(with: traitCollection).cgColor
+            return
+        }
+        layer.shadowColor = UIColor(red: 1 - red, green: 1 - green, blue: 1 - blue, alpha: 1).cgColor
+    }
+}

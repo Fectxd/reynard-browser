@@ -133,17 +133,26 @@ final class LoginAutofillPresenter {
     private weak var activeSession: GeckoSession?
     private var keyboardTop: CGFloat?
 
+    /// Supplies the session of the selected tab (set by BrowserViewController).
+    var sessionProvider: (() -> GeckoSession?)?
+    /// Page origin (scheme://host[:port]) for a session.
+    var originProvider: ((GeckoSession) -> String?)?
+
     private init() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleFocusChange(_:)),
-            name: GeckoSession.autofillFocusDidChangeNotification,
-            object: nil
-        )
+        // The engine reports the focused login field to iOS through its text
+        // input's textContentType (username / password). Check it whenever the
+        // keyboard appears or changes: that covers focusing and switching
+        // between fields.
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleKeyboardChange(_:)),
             name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleKeyboardShow(_:)),
+            name: UIResponder.keyboardDidShowNotification,
             object: nil
         )
         NotificationCenter.default.addObserver(
@@ -154,14 +163,16 @@ final class LoginAutofillPresenter {
         )
     }
 
-    @objc private func handleFocusChange(_ notification: Notification) {
-        guard let session = notification.object as? GeckoSession else {
-            return
-        }
+    @objc private func handleKeyboardShow(_ notification: Notification) {
+        refreshForFocusedField()
+    }
 
-        let origin = notification.userInfo?["origin"] as? String ?? ""
-        let accepts = notification.userInfo?["accepts"] as? Bool ?? false
-        guard accepts, !origin.isEmpty else {
+    private func refreshForFocusedField() {
+        guard let session = sessionProvider?(),
+              let contentType = session.focusedAutofillContentType,
+              contentType == .username || contentType == .password,
+              let origin = originProvider?(session),
+              !origin.isEmpty else {
             hide()
             return
         }
@@ -224,6 +235,10 @@ final class LoginAutofillPresenter {
     }
 
     @objc private func handleKeyboardChange(_ notification: Notification) {
+        // Focus may have moved to another field while the keyboard stayed up.
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshForFocusedField()
+        }
         guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
               let window else {
             return

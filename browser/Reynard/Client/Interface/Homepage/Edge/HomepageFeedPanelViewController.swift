@@ -29,7 +29,7 @@ final class HomepageFeedRowView: UIControl {
     }()
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = EdgeHomepagePalette.scaledFont(size: 14, weight: .medium)
         label.textColor = EdgeHomepagePalette.primaryText
@@ -38,7 +38,7 @@ final class HomepageFeedRowView: UIControl {
     }()
     
     private let metaLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = EdgeHomepagePalette.scaledFont(size: 11)
         label.textColor = EdgeHomepagePalette.secondaryText
@@ -99,6 +99,12 @@ final class HomepageFeedRowView: UIControl {
         }
     }
     
+    /// Follows the wallpaper like the other homepage section titles.
+    func setForegroundColor(_ color: UIColor) {
+        titleLabel.textColor = color
+        metaLabel.textColor = color.withAlphaComponent(0.7)
+    }
+    
     func configure(article: HomepageFeedArticle) {
         self.article = article
         titleLabel.text = article.title
@@ -135,7 +141,7 @@ final class HomepageFeedPanelViewController: UIViewController {
     weak var delegate: HomepageFeedPanelViewControllerDelegate?
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = UIFontMetrics(forTextStyle: .title2).scaledFont(
             for: .systemFont(ofSize: 22, weight: .bold)
@@ -146,7 +152,7 @@ final class HomepageFeedPanelViewController: UIViewController {
     }()
     
     private let statusLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = EdgeHomepagePalette.scaledFont(size: 12)
         label.textColor = EdgeHomepagePalette.secondaryText
@@ -165,6 +171,26 @@ final class HomepageFeedPanelViewController: UIViewController {
     
     private var articles: [HomepageFeedArticle] = []
     private var isLoading = false
+    private var contentMode: HomepageContentMode = .embeddedNarrow
+    
+    /// Same light/dark foreground rule as Favorites / Frequently Visited /
+    /// Recently Closed (HomepageWallpaper.foregroundColor).
+    func setContentMode(_ contentMode: HomepageContentMode) {
+        self.contentMode = contentMode
+        guard isViewLoaded else {
+            return
+        }
+        applyForegroundColor()
+    }
+    
+    private func applyForegroundColor() {
+        let foreground = HomepageWallpaper.foregroundColor(for: contentMode)
+        titleLabel.textColor = foreground
+        statusLabel.textColor = foreground.withAlphaComponent(0.7)
+        for case let row as HomepageFeedRowView in rowsStackView.arrangedSubviews {
+            row.setForegroundColor(foreground)
+        }
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -172,6 +198,7 @@ final class HomepageFeedPanelViewController: UIViewController {
         configureHierarchy()
         configureConstraints()
         reset()
+        applyForegroundColor()
     }
     
     func reset() {
@@ -218,6 +245,7 @@ final class HomepageFeedPanelViewController: UIViewController {
         for article in visible {
             let row = HomepageFeedRowView(frame: .zero)
             row.configure(article: article)
+            row.setForegroundColor(HomepageWallpaper.foregroundColor(for: contentMode))
             row.addTarget(self, action: #selector(handleRowTap(_:)), for: .touchUpInside)
             rowsStackView.addArrangedSubview(row)
         }

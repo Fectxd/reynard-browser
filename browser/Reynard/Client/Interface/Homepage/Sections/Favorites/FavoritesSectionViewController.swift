@@ -55,7 +55,7 @@ final class FavoritesSectionViewController: UIViewController {
     }()
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FavoritesSectionViewController.titleFont
         label.textColor = .label
@@ -386,9 +386,14 @@ final class FavoritesSectionViewController: UIViewController {
             return
         }
         
+        // Icons never shrink below a readable size: in very narrow windows
+        // drop columns instead (and get them back as the window widens).
+        let minimumIconSize: CGFloat = 44
+        let fittingColumns = Int((width - UX.horizontalInset * 2 + 15) / (minimumIconSize + 15))
+        let columnCount = max(1, min(contentMode.favoriteColumnCount, fittingColumns))
         let metrics = FavoritesLayoutMetrics(
             width: width,
-            columnCount: contentMode.favoriteColumnCount,
+            columnCount: columnCount,
             horizontalInset: UX.horizontalInset,
             lineSpacing: UX.rowSpacing
         )
@@ -396,6 +401,11 @@ final class FavoritesSectionViewController: UIViewController {
             || collectionLayout.metrics != metrics {
             lastLaidOutWidth = width
             collectionLayout.metrics = metrics
+            // Cells size their icon from their own bounds; make every visible
+            // cell re-measure so icons grow back after an extreme shrink.
+            for cell in collectionView.visibleCells {
+                cell.setNeedsLayout()
+            }
         }
         
         let displayedItemCount = (itemCount ?? displayedFavoriteItems.count) + addTileCount

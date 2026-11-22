@@ -188,7 +188,17 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        _ = LoginAutofillPresenter.shared
+        LoginAutofillPresenter.shared.sessionProvider = { [weak self] in
+            self?.tabManager.selectedTab?.session
+        }
+        LoginAutofillPresenter.shared.originProvider = { [weak self] session in
+            guard let tab = self?.tabManager.selectedTab, tab.session === session,
+                  let url = tab.url.flatMap(URL.init(string:)),
+                  let scheme = url.scheme, let host = url.host else {
+                return nil
+            }
+            return url.port.map { "\(scheme)://\(host):\($0)" } ?? "\(scheme)://\(host)"
+        }
         view.backgroundColor = .systemBackground
         
         if sidebarCoordinator.installHostIfNeeded() {
@@ -385,7 +395,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             self?.tabManager.goForward()
         }
         contentView.onHistorySwipeBegan = { [weak self] in
-            self?.captureOutgoingHistoryThumbnail()
+            self?.captureHistoryThumbnail(isPreparedForNavigation: true)
         }
         contentView.onErrorAction = { [weak self] action in
             self?.performErrorPageAction(action)
@@ -395,27 +405,26 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         }
         browserChrome.onBack = { [weak self] in
             self?.toolbarController.reset(preserveManualCollapse: true)
-            self?.prepareThumbnailForNavigation()
+            self?.captureHistoryThumbnail(isPreparedForNavigation: true)
             self?.tabManager.goBack()
         }
         browserChrome.onForward = { [weak self] in
             self?.toolbarController.reset(preserveManualCollapse: true)
-            self?.prepareThumbnailForNavigation()
+            self?.captureHistoryThumbnail(isPreparedForNavigation: true)
             self?.tabManager.goForward()
         }
         browserChrome.configureNavigationMenus(
             itemsProvider: { [weak self] direction in
-                guard let self,
-                      let tab = self.tabManager.selectedTab else {
+                guard let tab = self?.tabManager.selectedTab,
+                      let sessionState = self?.tabManager.displayedSessionState(for: tab) else {
                     return []
                 }
                 
-                let snapshot = self.tabManager.navigationHistory(for: tab)
                 switch direction {
                 case .back:
-                    return snapshot.backHistory
+                    return sessionState.backHistory
                 case .forward:
-                    return snapshot.forwardHistory
+                    return sessionState.forwardHistory
                 }
             },
             onSelect: { [weak self] direction, index in
@@ -424,7 +433,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
                 }
                 
                 self.toolbarController.reset(preserveManualCollapse: true)
-                self.prepareThumbnailForNavigation()
+                self.captureHistoryThumbnail(isPreparedForNavigation: true)
                 switch direction {
                 case .back:
                     self.tabManager.goBack(to: index)

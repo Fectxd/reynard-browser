@@ -41,6 +41,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
         case findInPage
         case fontSize
         case openLocalFile
+        case developerTools
         case exitBrowser
 
         var title: String {
@@ -83,6 +84,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
                 return "字体大小"
             case .openLocalFile:
                 return "本地网页/PDF"
+            case .developerTools:
+                return "开发者面板"
             case .exitBrowser:
                 return "退出浏览器"
             }
@@ -128,6 +131,8 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
                 return "reynard.textformat.size"
             case .openLocalFile:
                 return "reynard.document"
+            case .developerTools:
+                return "hammer"
             case .exitBrowser:
                 return "reynard.xmark"
             }
@@ -528,7 +533,7 @@ final class EdgeMenuViewController: UIViewController, UICollectionViewDelegate, 
             return [
                 .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
                 .appearance, .clearData, .shareExtension, .share, .translate,
-                .addToPhone, .findInPage, .fontSize, .openLocalFile, .exitBrowser,
+                .addToPhone, .findInPage, .fontSize, .openLocalFile, .developerTools, .exitBrowser,
             ]
         }
     }
@@ -705,6 +710,7 @@ final class EdgeMenuCell: UICollectionViewCell {
 
         let configuration = UIImage.SymbolConfiguration(pointSize: symbolPointSize, weight: usesPrimaryTint ? .medium : .regular)
         symbolView.image = UIImage(named: symbolName, in: .main, with: configuration)
+            ?? UIImage(systemName: symbolName, withConfiguration: configuration)
         symbolView.tintColor = tint
 
         let alpha: CGFloat = isPlaceholder ? 0.4 : 1

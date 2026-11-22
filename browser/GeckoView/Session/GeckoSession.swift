@@ -149,7 +149,6 @@ public class GeckoSession {
         set { mediaSessionHandler.setDelegate(newValue) }
     }
     public lazy var mediaSession = MediaSession(session: self)
-    private lazy var autofillHandler = GeckoAutofillHandler(session: self)
     
     public func notifyScreenOrientationChanged(to orientation: UIInterfaceOrientation) {
         window?.updateScreenOrientation(orientation.rawValue)
@@ -170,7 +169,6 @@ public class GeckoSession {
         printHandler,
         selectionActionHandler,
         mediaSessionHandler,
-        autofillHandler,
     ]
     
     // MARK: - Lifecycle
@@ -242,10 +240,6 @@ public class GeckoSession {
             ],
             isPrivateMode
         )
-        guard let engineView = window?.view() else {
-            fatalError("GeckoView window has no view")
-        }
-        autofillHandler.attach(to: engineView)
     }
     
     public func isOpen() -> Bool { window != nil }
@@ -257,8 +251,48 @@ public class GeckoSession {
     
     /// Fills the focused login form with a credential the app stores itself.
     /// Used by the app's credential bar, which reads `LoginStore` directly.
+    ///
+    /// Goes through the same entry point iOS uses for an iCloud Passwords
+    /// suggestion (`insertTextSuggestion:` with a `UITextAutofillSuggestion`),
+    /// which the engine's text input turns into a credential fill.
     public func autofillLogin(username: String, password: String) {
-        autofillHandler.didSelectAutofillUsername(username, password: password)
+        guard let target = focusedTextInputView,
+              let suggestionClass = NSClassFromString("UITextAutofillSuggestion").flatMap({ ($0 as AnyObject) as? NSObjectProtocol }) else {
+            return
+        }
+        let makeSelector = NSSelectorFromString("autofillSuggestionWithUsername:password:")
+        let insertSelector = NSSelectorFromString("insertTextSuggestion:")
+        guard suggestionClass.responds(to: makeSelector),
+              target.responds(to: insertSelector),
+              let suggestion = suggestionClass.perform(makeSelector, with: username, with: password)?.takeUnretainedValue() else {
+            return
+        }
+        _ = target.perform(insertSelector, with: suggestion)
+    }
+    
+    /// Content type of the focused web text field ("username", "password",
+    /// one-time code), as the engine reports it to iOS for autofill; nil when
+    /// no login-related field has focus.
+    public var focusedAutofillContentType: UITextContentType? {
+        return (focusedTextInputView as? UITextInputTraits)?.textContentType ?? nil
+    }
+    
+    private var focusedTextInputView: UIView? {
+        guard let engineView else {
+            return nil
+        }
+        func firstResponder(in view: UIView) -> UIView? {
+            if view.isFirstResponder {
+                return view
+            }
+            for subview in view.subviews {
+                if let found = firstResponder(in: subview) {
+                    return found
+                }
+            }
+            return nil
+        }
+        return firstResponder(in: engineView)
     }
     
     public var engineView: UIView? {
@@ -283,10 +317,6 @@ public class GeckoSession {
             return
         }
         
-        if let engineView = window.view() {
-            autofillHandler.detach(from: engineView)
-        }
-        autofillHandler.close()
         window.close()
         self.window = nil
         id = nil
@@ -309,6 +339,23 @@ public class GeckoSession {
             type: "GeckoView:Reload",
             message: [
                 "flags": flags
+            ])
+    }
+    
+    /// Runs a `javascript:` bookmarklet in the current page. The load names
+    /// this session as its referrer, so the script runs with the page's own
+    /// principal (like a desktop bookmarklet) instead of the system principal.
+    public func runBookmarklet(_ script: String) {
+        guard let id else {
+            return
+        }
+        dispatcher.dispatch(
+            type: "GeckoView:LoadUri",
+            message: [
+                "uri": "javascript:" + script,
+                "flags": GeckoSessionLoadFlags.none,
+                "referrerSessionId": id,
+                "headerFilter": 1,
             ])
     }
     
@@ -339,6 +386,13 @@ public class GeckoSession {
     public func purgeHistory() {
         awaitsPurgedHistoryState = stateCache.history.count > 1
         dispatcher.dispatch(type: "GeckoView:PurgeHistory")
+    }
+    
+    public func adoptPreview(_ preview: GeckoSession) async throws {
+        _ = try await dispatcher.query(
+            type: "GeckoView:AdoptPreview",
+            message: ["previewSessionId": preview.id]
+        )
     }
     
     // MARK: - Full screen

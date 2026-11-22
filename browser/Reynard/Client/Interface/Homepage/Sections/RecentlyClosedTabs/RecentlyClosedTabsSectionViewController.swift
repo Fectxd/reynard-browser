@@ -32,7 +32,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
     private var lastLaidOutWidth: CGFloat = -1
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = RecentlyClosedTabsSectionViewController.titleFont
         label.textColor = .label

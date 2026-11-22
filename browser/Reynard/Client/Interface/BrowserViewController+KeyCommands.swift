@@ -77,10 +77,11 @@ extension BrowserViewController {
         
         toolbarController.reset()
         let mode = tabManager.selectedTabMode
+        let wasLastTab = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
         tabManager.removeTab(at: tabManager.selectedTabIndex, mode: mode, behavior: .adjacent)
         
-        if mode == .regular && tabManager.regularTabs.isEmpty {
-            createNewTab(mode: .regular)
+        if wasLastTab {
+            presentTabOverviewAfterClosingLastTab(mode: mode)
         }
     }
     

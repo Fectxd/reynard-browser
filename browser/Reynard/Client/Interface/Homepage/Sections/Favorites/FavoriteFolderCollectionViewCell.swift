@@ -62,7 +62,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
     }()
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FavoriteFolderCollectionViewCell.titleFont
         label.textAlignment = .center
@@ -104,6 +104,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
 
     override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
         super.apply(layoutAttributes)
+        setNeedsLayout()
         alpha = 1
         emptyIconView.alpha = layoutAttributes.alpha
         previewGridView.alpha = layoutAttributes.alpha

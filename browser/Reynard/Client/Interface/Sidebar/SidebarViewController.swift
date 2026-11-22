@@ -115,7 +115,8 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     }
     
     func collapse(from sourceView: UIView?) {
-        guard let sourceView,
+        guard !UIAccessibility.isReduceMotionEnabled,
+              let sourceView,
               contentController.sidebarContentViewController.isViewLoaded,
               let containerView = viewIfLoaded,
               let snapshot = sourceView.snapshotView(afterScreenUpdates: false) else {

@@ -34,7 +34,9 @@ enum PdfSaveCoordinator {
         let localFile = originalURL.flatMap { LocalFileServer.shared.originalFileURL(forServedURL: $0) }
         let fileName = suggestedFileName(request: request, originalURL: originalURL, localFile: localFile)
 
-        let sheet = UIAlertController(title: fileName, message: nil, preferredStyle: .actionSheet)
+        // A plain alert, not a popover: it is modal only while it is up and
+        // always has 取消, so it can never be left covering the pdf.js viewer.
+        let sheet = UIAlertController(title: fileName, message: "保存带标注的 PDF", preferredStyle: .alert)
         if let localFile {
             sheet.addAction(UIAlertAction(title: "保存", style: .default) { _ in
                 if writeInPlace(data, to: localFile) {
@@ -50,11 +52,6 @@ enum PdfSaveCoordinator {
             presentSaveAs(data: data, fileName: fileName, from: presenter, message: nil)
         })
         sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
-        if let popover = sheet.popoverPresentationController {
-            popover.sourceView = presenter.view
-            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
-            popover.permittedArrowDirections = []
-        }
         presenter.present(sheet, animated: true)
         return true
     }

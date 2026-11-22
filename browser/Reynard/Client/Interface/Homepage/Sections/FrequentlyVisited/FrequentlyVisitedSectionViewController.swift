@@ -46,7 +46,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
     private var cardViews: [FrequentlyVisitedSiteCardView] = []
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FrequentlyVisitedSectionViewController.titleFont
         label.textColor = .label

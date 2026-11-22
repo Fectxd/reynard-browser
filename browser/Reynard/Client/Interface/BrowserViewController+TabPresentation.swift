@@ -33,9 +33,8 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
                 return
             }
             
-            captureThumbnail(forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode) { [weak self] _ in
-                self?.tabManager.selectTab(at: index, mode: mode)
-            }
+            captureThumbnail(forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
+            tabManager.selectTab(at: index, mode: mode)
             return
         }
         tabManager.selectTab(at: index, mode: mode)
@@ -57,19 +56,33 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     func closeTab(at index: Int, mode: TabMode) {
         toolbarController.reset()
         let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
-        if isTabOverviewActive,
-           tabOverview.mode == .regularTabs,
-           mode == .regular,
-           tabManager.regularTabs.count == 1 {
+        let isClosingLastTabOfMode = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
+        if isTabOverviewActive, isClosingLastTabOfMode {
+            // Keep the overview open on its empty state ("打开新标签页").
             tabOverview.prepareNextTabChangesWithoutAnimation()
             tabManager.removeTab(at: index, mode: mode, behavior: .none)
-            tabOverview.prepareNextTabChangesWithoutAnimation()
-            createTabFromOverview(mode: .regular)
             return
         }
         
         let behavior: TabRemovalBehavior = isTabOverviewActive ? .none : .recent
         tabManager.removeTab(at: index, mode: mode, behavior: behavior)
+        if isClosingLastTabOfMode {
+            presentTabOverviewAfterClosingLastTab(mode: mode)
+        }
+    }
+    
+    /// Closing the last tab of a mode opens the tab overview on that mode
+    /// (its empty state offers "打开新标签页") instead of making a new tab.
+    func presentTabOverviewAfterClosingLastTab(mode: TabMode) {
+        guard !tabOverview.isPresented else {
+            return
+        }
+        // The zoom-out animation starts from the selected tab's card; with no
+        // tab left at all there is none, so appear without it.
+        setTabOverviewVisible(true, animated: tabManager.selectedTab != nil)
+        // Presenting picks the selected tab's mode; show the mode that just
+        // became empty instead (e.g. the last private tab was closed).
+        tabOverview.setMode(TabOverview.Mode(tabMode: mode), animated: false)
     }
     
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode) {
@@ -251,35 +264,15 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     }
     
     func createTabFromOverview(mode: TabMode) {
-        homepageOverlayCoordinator.prepareHomepageForNewTab(mode: mode)
         let createdIndex = tabManager.createTab(
             selecting: true,
             target: .end,
             mode: mode
         )
-        
-        switch Prefs.NewTabSettings.newTabDisplayOption {
-        case .homepage, .blankPage:
-            let createdTabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
-            let createdTabID = createdTabs[createdIndex].id
-            
-            captureThumbnail(forTabAt: createdIndex, mode: mode) { [weak self] previewImage in
-                guard let self,
-                      (mode == .private ? self.tabManager.privateTabs : self.tabManager.regularTabs)[safe: createdIndex]?.id == createdTabID else {
-                    return
-                }
-                
-                self.tabOverview.prepareDismissSelection(to: createdIndex, mode: mode, previewImage: previewImage)
-                self.scrollTabOverviewToTab(at: createdIndex)
-                self.tabBar.setPendingExpansion(at: createdIndex)
-                self.setTabOverviewVisible(false, animated: true)
-            }
-        case .customURL:
-            applyNewTabDisplayOption(toTabAt: createdIndex)
-            tabOverview.prepareDismissSelection(to: createdIndex, mode: mode, previewImage: nil)
-            scrollTabOverviewToTab(at: createdIndex)
-            tabBar.setPendingExpansion(at: createdIndex)
-            setTabOverviewVisible(false, animated: true)
-        }
+        let previewImage = applyNewTabDisplayOption(toTabAt: createdIndex, mode: mode)
+        tabOverview.prepareDismissSelection(to: createdIndex, mode: mode, previewImage: previewImage)
+        scrollTabOverviewToTab(at: createdIndex)
+        tabBar.setPendingExpansion(at: createdIndex)
+        setTabOverviewVisible(false, animated: true)
     }
 }

@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 10/6/26.
 //
 
+import GeckoView
 import UIKit
 
 final class TopToolbar: UIView {
@@ -295,7 +296,7 @@ final class TopToolbar: UIView {
     }
     
     func configureNavigationMenus(
-        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [GeckoSessionHistoryItem],
         onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
     ) {
         buttonMenus.installNavigationMenus(

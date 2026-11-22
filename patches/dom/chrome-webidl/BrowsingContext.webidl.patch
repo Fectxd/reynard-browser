@@ -1,8 +1,8 @@
 diff --git a/dom/chrome-webidl/BrowsingContext.webidl b/dom/chrome-webidl/BrowsingContext.webidl
-index 38fd39f06618..ce72abc0f215 100644
+index f400fbc28978..b9f89f90d541 100644
 --- a/dom/chrome-webidl/BrowsingContext.webidl
 +++ b/dom/chrome-webidl/BrowsingContext.webidl
-@@ -122,6 +122,12 @@ interface BrowsingContext {
+@@ -133,6 +133,12 @@ interface BrowsingContext {
  
    [SetterThrows] attribute [LegacyNullToEmptyString] DOMString customPlatform;
  
@@ -15,3 +15,13 @@ index 38fd39f06618..ce72abc0f215 100644
    [SetterThrows] attribute [LegacyNullToEmptyString] UTF8String customUserAgent;
  
    readonly attribute DOMString embedderElementType;
+@@ -429,6 +435,9 @@ interface CanonicalBrowsingContext : BrowsingContext {
+   undefined reload(unsigned long aReloadFlags);
+   undefined stop(unsigned long aStopFlags);
+ 
++  [Throws]
++  undefined adoptPreview(CanonicalBrowsingContext preview);
++
+   readonly attribute nsISHistory? sessionHistory;
+   readonly attribute nsISHEntry? activeSessionHistoryEntry;
+ 

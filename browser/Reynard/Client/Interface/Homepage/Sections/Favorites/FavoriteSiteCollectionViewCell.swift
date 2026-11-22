@@ -64,7 +64,7 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
     }()
     
     private let titleLabel: UILabel = {
-        let label = UILabel()
+        let label = HomepageLegibleLabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FavoriteSiteCollectionViewCell.titleFont
         label.textAlignment = .center
@@ -97,10 +97,16 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
         setReorderState(.resting, animated: false)
     }
     
+    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
+        super.apply(layoutAttributes)
+        setNeedsLayout()
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         updateIconSize()
         updateShadowColor()
+        contentView.layoutIfNeeded()
     }
     
     func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {

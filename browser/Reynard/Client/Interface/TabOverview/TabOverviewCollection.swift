@@ -60,7 +60,60 @@ final class TabOverviewCollection: NSObject {
     private var swipeState: SwipeState = .idle
     private(set) var mode: TabOverview.Mode = .regularTabs
     
-    lazy var regularTabsCollectionView = makeTabCollectionView()
+    lazy var regularTabsCollectionView: UICollectionView = {
+        let view = makeTabCollectionView()
+        view.backgroundView = regularEmptyView
+        return view
+    }()
+    
+    /// No regular tabs at all: a single "open new tab" button in the centre.
+    private lazy var regularEmptyView: UIView = {
+        let container = UIView()
+        container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        let button = makeOpenNewTabButton()
+        container.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+        container.isHidden = true
+        return container
+    }()
+    
+    /// Shown under the private-mode picture and hint when there are no
+    /// private tabs.
+    private lazy var privateOpenNewTabButton = makeOpenNewTabButton()
+    
+    private func makeOpenNewTabButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle("打开新标签页", for: .normal)
+        button.setImage(UIImage(systemName: "plus"), for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.tintColor = .white
+        button.backgroundColor = .systemBlue
+        button.layer.cornerRadius = 22
+        button.layer.cornerCurve = .continuous
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 22, bottom: 0, right: 26)
+        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
+        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        button.addTarget(self, action: #selector(handleOpenNewTabButton), for: .touchUpInside)
+        return button
+    }
+    
+    @objc private func handleOpenNewTabButton() {
+        guard let tabOverview else {
+            return
+        }
+        tabOverview.delegate?.tabOverviewDidRequestNewTab(tabOverview)
+    }
+    
+    /// Empty-state buttons only appear when that mode has no tabs.
+    func updateEmptyStates() {
+        regularEmptyView.isHidden = !tabs(for: .regularTabs).isEmpty
+        privateOpenNewTabButton.isHidden = !tabs(for: .privateTabs).isEmpty
+    }
     
     lazy var privateTabsCollectionView: UICollectionView = {
         let view = makeTabCollectionView()
@@ -158,6 +211,7 @@ final class TabOverviewCollection: NSObject {
     func reloadTabCards() {
         tabChangeAnimationState.insertionPlaceholderMode = nil
         allCollectionViews.forEach { $0.reloadData() }
+        updateEmptyStates()
         restoreActiveTabCardCloseSwipeIfNeeded()
         refreshTabIdentitySnapshot()
     }
@@ -286,6 +340,7 @@ final class TabOverviewCollection: NSObject {
             return
         }
         
+        updateEmptyStates()
         insertTabCards(regularInsertions, in: regularTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .regularTabs, previousCount: previousRegularCount)
         deleteTabCards(regularDeletions, in: regularTabsCollectionView)
         insertTabCards(privateInsertions, in: privateTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .privateTabs, previousCount: previousPrivateCount)
@@ -321,7 +376,6 @@ final class TabOverviewCollection: NSObject {
     private func makePrivateModeIntroView() -> UIView {
         let container = UIView()
         container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        container.isUserInteractionEnabled = false
         let imageView = UIImageView(image: UIImage(named: "private.mode.icon")?.withRenderingMode(.alwaysTemplate))
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.contentMode = .scaleAspectFit
@@ -339,11 +393,12 @@ final class TabOverviewCollection: NSObject {
         subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
         subtitleLabel.adjustsFontForContentSizeCategory = true
         subtitleLabel.numberOfLines = 0
-        let stackView = UIStackView(arrangedSubviews: [imageView, titleLabel, subtitleLabel])
+        let stackView = UIStackView(arrangedSubviews: [imageView, titleLabel, subtitleLabel, privateOpenNewTabButton])
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .vertical
         stackView.alignment = .center
         stackView.spacing = UX.privateModeIntroItemSpacing
+        stackView.setCustomSpacing(20, after: subtitleLabel)
         container.addSubview(stackView)
         NSLayoutConstraint.activate([
             imageView.widthAnchor.constraint(equalToConstant: UX.privateModeIntroIconSideLength),

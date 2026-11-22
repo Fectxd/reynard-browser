@@ -1,23 +1,24 @@
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 02112b03875a..c83167de6cad 100644
+index 0bee67c5fb22..0a3659bdd438 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
-@@ -836,9 +836,12 @@ void CompositorBridgeParent::SetConfirmedTargetAPZC(
+@@ -849,10 +849,12 @@ void CompositorBridgeParent::SetConfirmedTargetAPZC(
+   mApzUpdater->RunOnUpdaterThread(aLayersId, task.forget());
  }
  
- void CompositorBridgeParent::SetFixedLayerMargins(ScreenIntCoord aTop,
+-void CompositorBridgeParent::SetFixedLayerMargins(ScreenIntCoord aTop,
 -                                                  ScreenIntCoord aBottom) {
-+                                                  ScreenIntCoord aBottom,
-+                                                  ScreenIntCoord aTopInset,
-+                                                  ScreenIntCoord aBottomInset) {
++void CompositorBridgeParent::SetFixedLayerMargins(
++    ScreenIntCoord aTop, ScreenIntCoord aBottom, ScreenIntCoord aTopInset,
++    ScreenIntCoord aBottomInset, ScreenIntCoord aObscuredBottomInset) {
    if (mApzcTreeManager) {
 -    mApzcTreeManager->SetFixedLayerMargins(aTop, aBottom);
 +    mApzcTreeManager->SetFixedLayerMargins(aTop, aBottom, aTopInset,
-+                                           aBottomInset);
++                                           aBottomInset, aObscuredBottomInset);
    }
  
    ScheduleComposition(wr::RenderReasons::RESIZE);
-@@ -1544,7 +1547,7 @@ CompositorBridgeParent::AllocPCompositorWidgetParent(
+@@ -1623,7 +1625,7 @@ CompositorBridgeParent::AllocPCompositorWidgetParent(
  #endif
  }
  

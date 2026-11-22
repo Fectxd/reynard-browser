@@ -129,63 +129,11 @@ index 30e447a..5c8ddee 100644
 +        return PromptResponse(geckoMessage: ["selection": login.payload])
 +    }
  }
-diff --git a/browser/GeckoView/Session/GeckoAutofillHandler.swift b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-index 00bf4e7..d3e2872 100644
---- a/browser/GeckoView/Session/GeckoAutofillHandler.swift
-+++ b/browser/GeckoView/Session/GeckoAutofillHandler.swift
-@@ -111,6 +111,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-                 if focusedField?.formUuid == form.uuid {
-                     refreshAutofillSuggestions()
-                 }
-+                postFocusChange()
-             }
-         case .focus:
-             let hadActiveAutofillFocus = hasActiveAutofillFocus()
-@@ -142,6 +143,9 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-                     refreshAutofillSuggestions()
-                 }
-             }
-+            // Announce every focus change so the app's own credential bar can
-+            // react even when none of the reload paths above ran.
-+            postFocusChange()
-             return nil
-         }
-     }
-@@ -277,6 +281,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-         }
-         credentialForms.removeAll()
-         focusedField = nil
-+        postFocusChange()
-         if shouldRefresh && hadActiveAutofillFocus {
-             refreshAutofillSuggestions()
-         }
-@@ -288,6 +293,21 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
-     
-     private func refreshAutofillSuggestions() {
-         session?.engineView?.reloadInputViews()
-+        postFocusChange()
-+    }
-+    
-+    private func postFocusChange() {
-+        guard let session else {
-+            return
-+        }
-+        NotificationCenter.default.post(
-+            name: GeckoSession.autofillFocusDidChangeNotification,
-+            object: session,
-+            userInfo: [
-+                "origin": autofillOrigin() ?? "",
-+                "accepts": acceptsLoginCredentials(),
-+            ]
-+        )
-     }
-     
-     
 diff --git a/browser/GeckoView/Session/GeckoSession.swift b/browser/GeckoView/Session/GeckoSession.swift
-index 5478ee3..8c6998b 100644
+index bcc8ffe..1e4bfb1 100644
 --- a/browser/GeckoView/Session/GeckoSession.swift
 +++ b/browser/GeckoView/Session/GeckoSession.swift
-@@ -250,6 +250,17 @@ public class GeckoSession {
+@@ -244,6 +244,57 @@ public class GeckoSession {
      
      public func isOpen() -> Bool { window != nil }
      
@@ -196,12 +144,76 @@ index 5478ee3..8c6998b 100644
 +    
 +    /// Fills the focused login form with a credential the app stores itself.
 +    /// Used by the app's credential bar, which reads `LoginStore` directly.
++    ///
++    /// Goes through the same entry point iOS uses for an iCloud Passwords
++    /// suggestion (`insertTextSuggestion:` with a `UITextAutofillSuggestion`),
++    /// which the engine's text input turns into a credential fill.
 +    public func autofillLogin(username: String, password: String) {
-+        autofillHandler.didSelectAutofillUsername(username, password: password)
++        guard let target = focusedTextInputView,
++              let suggestionClass = NSClassFromString("UITextAutofillSuggestion").flatMap({ ($0 as AnyObject) as? NSObjectProtocol }) else {
++            return
++        }
++        let makeSelector = NSSelectorFromString("autofillSuggestionWithUsername:password:")
++        let insertSelector = NSSelectorFromString("insertTextSuggestion:")
++        guard suggestionClass.responds(to: makeSelector),
++              target.responds(to: insertSelector),
++              let suggestion = suggestionClass.perform(makeSelector, with: username, with: password)?.takeUnretainedValue() else {
++            return
++        }
++        _ = target.perform(insertSelector, with: suggestion)
++    }
++    
++    /// Content type of the focused web text field ("username", "password",
++    /// one-time code), as the engine reports it to iOS for autofill; nil when
++    /// no login-related field has focus.
++    public var focusedAutofillContentType: UITextContentType? {
++        return (focusedTextInputView as? UITextInputTraits)?.textContentType ?? nil
++    }
++    
++    private var focusedTextInputView: UIView? {
++        guard let engineView else {
++            return nil
++        }
++        func firstResponder(in view: UIView) -> UIView? {
++            if view.isFirstResponder {
++                return view
++            }
++            for subview in view.subviews {
++                if let found = firstResponder(in: subview) {
++                    return found
++                }
++            }
++            return nil
++        }
++        return firstResponder(in: engineView)
 +    }
 +    
      public var engineView: UIView? {
          return window?.view()
+     }
+@@ -291,6 +342,23 @@ public class GeckoSession {
+             ])
+     }
+     
++    /// Runs a `javascript:` bookmarklet in the current page. The load names
++    /// this session as its referrer, so the script runs with the page's own
++    /// principal (like a desktop bookmarklet) instead of the system principal.
++    public func runBookmarklet(_ script: String) {
++        guard let id else {
++            return
++        }
++        dispatcher.dispatch(
++            type: "GeckoView:LoadUri",
++            message: [
++                "uri": "javascript:" + script,
++                "flags": GeckoSessionLoadFlags.none,
++                "referrerSessionId": id,
++                "headerFilter": 1,
++            ])
++    }
++    
+     public func stop() {
+         dispatcher.dispatch(type: "GeckoView:Stop")
      }
 diff --git a/browser/GeckoView/Support/ContentPermission.swift b/browser/GeckoView/Support/ContentPermission.swift
 index 8ddcda7..69de0a3 100644
@@ -307,7 +319,7 @@ index 445c269..cacdb02 100644
      
      func dismissAddonModal(_ coordinator: AddonCoordinator, completion: (() -> Void)?) -> Bool {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift b/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
-index 0cefda1..4be2563 100644
+index 5b696f1..0e35763 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
 @@ -54,15 +54,10 @@ extension BrowserViewController {
@@ -343,11 +355,21 @@ index 0cefda1..4be2563 100644
          guard let navigationController = presentedViewController as? ContentModalNavigationController,
                let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
              presentLibrary(initialSection: section)
+@@ -161,9 +150,6 @@ extension BrowserViewController {
+         
+         let mode = tabManager.selectedTabMode
+         closeTab(at: tabManager.selectedTabIndex, mode: mode)
+-        if mode == .regular && tabManager.regularTabs.isEmpty {
+-            createNewTab(mode: .regular)
+-        }
+     }
+     
+     func createNewTabAnimated(mode: TabMode) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
-index 3f71c0b..bb23be1 100644
+index 2c1210e..acdc89b 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
-@@ -157,11 +157,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
+@@ -152,11 +152,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
      }
      
      func openSettingsFromHomepage() {
@@ -377,7 +399,7 @@ index d2dd68c..df0921a 100644
          browserChrome.updateDownload(summary)
      }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-index e2a4f99..4e6935f 100644
+index e2a4f99..f431aa5 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
 @@ -46,6 +46,18 @@ extension BrowserViewController {
@@ -399,7 +421,21 @@ index e2a4f99..4e6935f 100644
      @objc func focusAddressBarKeyCommand(_ sender: UIKeyCommand) {
          if tabOverview.isPresented || tabOverview.isTransitionRunning {
              setTabOverviewVisible(false, animated: false)
-@@ -82,10 +94,11 @@ extension BrowserViewController {
+@@ -65,10 +77,11 @@ extension BrowserViewController {
+         
+         toolbarController.reset()
+         let mode = tabManager.selectedTabMode
++        let wasLastTab = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
+         tabManager.removeTab(at: tabManager.selectedTabIndex, mode: mode, behavior: .adjacent)
+         
+-        if mode == .regular && tabManager.regularTabs.isEmpty {
+-            createNewTab(mode: .regular)
++        if wasLastTab {
++            presentTabOverviewAfterClosingLastTab(mode: mode)
+         }
+     }
+     
+@@ -82,10 +95,11 @@ extension BrowserViewController {
          
          Task { @MainActor in
              do {
@@ -414,7 +450,7 @@ index e2a4f99..4e6935f 100644
                  return
              }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
-index e350195..6b19ab4 100644
+index 00c5033..fcf9ca4 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 @@ -34,6 +34,7 @@ extension BrowserViewController: TabManagerDelegate {
@@ -433,9 +469,9 @@ index e350195..6b19ab4 100644
      }
      
      func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
-@@ -442,4 +444,12 @@ extension BrowserViewController {
-             isPreparedForNavigation: isPreparedForNavigation
-         )
+@@ -348,4 +350,12 @@ extension BrowserViewController {
+             return nil
+         }
      }
 +
 +    /// Updates the tab-overview button's count badge to reflect the current
@@ -447,7 +483,7 @@ index e350195..6b19ab4 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-index 0de845c..8193ffb 100644
+index 494d447..0cd5fb9 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 @@ -5,6 +5,7 @@
@@ -458,7 +494,7 @@ index 0de845c..8193ffb 100644
  import UIKit
  
  extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOverviewDelegate, TabOverviewPresentationContext {
-@@ -40,6 +41,19 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+@@ -39,22 +40,49 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
          tabManager.selectTab(at: index, mode: mode)
      }
      
@@ -478,7 +514,43 @@ index 0de845c..8193ffb 100644
      func closeTab(at index: Int, mode: TabMode) {
          toolbarController.reset()
          let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
-@@ -135,6 +149,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+-        if isTabOverviewActive,
+-           tabOverview.mode == .regularTabs,
+-           mode == .regular,
+-           tabManager.regularTabs.count == 1 {
++        let isClosingLastTabOfMode = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
++        if isTabOverviewActive, isClosingLastTabOfMode {
++            // Keep the overview open on its empty state ("打开新标签页").
+             tabOverview.prepareNextTabChangesWithoutAnimation()
+             tabManager.removeTab(at: index, mode: mode, behavior: .none)
+-            tabOverview.prepareNextTabChangesWithoutAnimation()
+-            createTabFromOverview(mode: .regular)
+             return
+         }
+         
+         let behavior: TabRemovalBehavior = isTabOverviewActive ? .none : .recent
+         tabManager.removeTab(at: index, mode: mode, behavior: behavior)
++        if isClosingLastTabOfMode {
++            presentTabOverviewAfterClosingLastTab(mode: mode)
++        }
++    }
++    
++    /// Closing the last tab of a mode opens the tab overview on that mode
++    /// (its empty state offers "打开新标签页") instead of making a new tab.
++    func presentTabOverviewAfterClosingLastTab(mode: TabMode) {
++        guard !tabOverview.isPresented else {
++            return
++        }
++        // The zoom-out animation starts from the selected tab's card; with no
++        // tab left at all there is none, so appear without it.
++        setTabOverviewVisible(true, animated: tabManager.selectedTab != nil)
++        // Presenting picks the selected tab's mode; show the mode that just
++        // became empty instead (e.g. the last private tab was closed).
++        tabOverview.setMode(TabOverview.Mode(tabMode: mode), animated: false)
+     }
+     
+     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode) {
+@@ -134,6 +162,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
      func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
          if visible {
              toolbarController.lock(for: .tabOverview)
@@ -487,7 +559,7 @@ index 0de845c..8193ffb 100644
                  self?.setTabOverviewVisible(true, animated: animated)
              }) {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 9041c53..bf6e8d9 100644
+index 12e0ee8..76b5568 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
 @@ -24,10 +24,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
@@ -545,7 +617,7 @@ index 9041c53..bf6e8d9 100644
          super.init(nibName: nil, bundle: nil)
      }
      
-@@ -144,11 +169,26 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -144,11 +169,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      
      deinit {
          stopScreenOrientationHandling()
@@ -568,11 +640,21 @@ index 9041c53..bf6e8d9 100644
      
      override func viewDidLoad() {
          super.viewDidLoad()
-+        _ = LoginAutofillPresenter.shared
++        LoginAutofillPresenter.shared.sessionProvider = { [weak self] in
++            self?.tabManager.selectedTab?.session
++        }
++        LoginAutofillPresenter.shared.originProvider = { [weak self] session in
++            guard let tab = self?.tabManager.selectedTab, tab.session === session,
++                  let url = tab.url.flatMap(URL.init(string:)),
++                  let scheme = url.scheme, let host = url.host else {
++                return nil
++            }
++            return url.port.map { "\(scheme)://\(host):\($0)" } ?? "\(scheme)://\(host)"
++        }
          view.backgroundColor = .systemBackground
          
          if sidebarCoordinator.installHostIfNeeded() {
-@@ -162,13 +202,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -162,13 +212,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          contextMenuCoordinator.configure()
          downloadsCoordinator.startObservingStore()
          downloadsCoordinator.syncToolbarButtonState()
@@ -594,7 +676,7 @@ index 9041c53..bf6e8d9 100644
          homepageOverlayCoordinator.updatePresentation(animated: false)
          
          Task { @MainActor [weak self] in
-@@ -230,10 +276,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -230,10 +286,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          )
          homepageOverlayCoordinator.updateVisibleContentInsets()
          invalidateNavigationThumbnailsIfNeeded()
@@ -607,7 +689,7 @@ index 9041c53..bf6e8d9 100644
          DispatchQueue.main.async { [weak self] in
              guard let self,
                    self.isViewLoaded,
-@@ -256,6 +304,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -256,6 +314,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          if let readerSettings = presentedViewController as? ReaderSettingsViewController {
              readerSettings.dismiss(animated: false)
          }
@@ -615,7 +697,7 @@ index 9041c53..bf6e8d9 100644
          performContentLifecycle {
              toolbarController.reset(animated: false)
              coordinator.animate { _ in
-@@ -305,8 +354,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -305,8 +364,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          
          NSLayoutConstraint.activate([
              contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -631,7 +713,7 @@ index 9041c53..bf6e8d9 100644
              contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
              browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
              browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-@@ -318,6 +372,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -318,6 +382,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              tabOverview.topAnchor.constraint(equalTo: view.topAnchor),
              tabOverview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
          ])
@@ -641,7 +723,7 @@ index 9041c53..bf6e8d9 100644
      }
      
      private func configureBrowserChromeActions() {
-@@ -453,10 +510,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -452,10 +519,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              )
          }
          browserChrome.onLibrary = { [weak self] in
@@ -654,7 +736,7 @@ index 9041c53..bf6e8d9 100644
          }
          browserChrome.onNewTab = { [weak self] in
              self?.createNewTab()
-@@ -464,6 +521,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -463,6 +530,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          browserChrome.onTabOverview = { [weak self] in
              self?.setTabOverviewVisible(true, animated: true)
          }
@@ -667,7 +749,7 @@ index 9041c53..bf6e8d9 100644
          browserChrome.onOverlayDismiss = { [weak self] in
              self?.toolbarController.reset()
              self?.dismissAddressBarEditingAndChromeOverlay()
-@@ -543,6 +606,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -542,6 +615,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          animated
          ? UIView.animate(withDuration: duration, animations: layoutBlock)
          : layoutBlock()
@@ -677,7 +759,7 @@ index 9041c53..bf6e8d9 100644
      }
      
      func dismissAddressBarEditingAndOverlays() {
-@@ -574,6 +640,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -573,6 +649,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          updateBrowserLayout(animated: animated, duration: duration)
      }
      
@@ -703,7 +785,7 @@ index 9041c53..bf6e8d9 100644
      func applyBrowserLayout(animated: Bool = false) {
          if isShowingFullscreenMedia {
              applyFullscreenLayout()
-@@ -607,12 +692,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -606,12 +701,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          let isSearchFocused = searchOverlayCoordinator.isFocused && !tabOverview.isPresented
          contentView.applyLayout(
              ContentView.LayoutState(mode: isSearchFocused ? .searchFocused : .standard),
@@ -721,7 +803,7 @@ index 9041c53..bf6e8d9 100644
      }
      
      private func applyCompactLayout() {
-@@ -627,11 +715,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -626,11 +724,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      private func applyPadLayout(animated: Bool) {
          contentView.applyLayout(
              ContentView.LayoutState(mode: .standard),
@@ -752,7 +834,7 @@ index 9041c53..bf6e8d9 100644
      
      private var visibleTabCount: Int {
          let tabs = tabManager.selectedTabMode == .private
-@@ -640,17 +746,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -639,17 +755,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          return tabs.count
      }
      
@@ -782,7 +864,7 @@ index 9041c53..bf6e8d9 100644
          return tabOverview.isPresented ? .layoutReserved : .visible
      }
      
-@@ -672,7 +784,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -671,7 +793,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
              ? .fullscreenMedia
              : (tabOverview.isPresented ? .tabOverview : .browsing),
              search: searchState,
@@ -791,7 +873,7 @@ index 9041c53..bf6e8d9 100644
              interfaceIdiom: browserLayout.interfaceIdiom,
              orientation: browserLayout.orientation,
              isTwoThirdSplitScreenOrSmaller: isSidebarOverlayLayout,
-@@ -682,22 +794,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -681,22 +803,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      }
      
      private func resolveBrowserLayout() -> BrowserLayout {
@@ -842,7 +924,7 @@ index 9041c53..bf6e8d9 100644
      }
      
      private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
-@@ -753,34 +879,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -752,34 +888,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
      }
      
      private func browserWindowWidth(fallback: CGFloat) -> CGFloat {
@@ -886,7 +968,7 @@ index 9041c53..bf6e8d9 100644
              tabOverviewToolbarPosition: .bottom,
              overlayHost: .embedded
          )
-@@ -800,10 +913,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -799,10 +922,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
          )
      }
      
@@ -957,10 +1039,10 @@ index 0e2b6c6..4f0c45b 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 34f37a5..c521692 100644
+index 522dc7e..ba76ed4 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -65,6 +65,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -66,6 +66,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      var onDownloads: (() -> Void)?
      var onNewTab: (() -> Void)?
      var onTabOverview: (() -> Void)?
@@ -969,7 +1051,7 @@ index 34f37a5..c521692 100644
      var onOverlayDismiss: (() -> Void)?
      var onPageZoomOut: (() -> Void)?
      var onPageZoomIn: (() -> Void)?
-@@ -102,6 +104,18 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -103,6 +105,18 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          view.isHidden = true
          return view
      }()
@@ -988,7 +1070,7 @@ index 34f37a5..c521692 100644
      
      private let overlayContentView = ChromeOverlayContentView()
      private let actionBar = ActionBar()
-@@ -198,6 +212,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -199,6 +213,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          ? bottomToolbar.sharePopoverSourceView()
          : topToolbar.sharePopoverSourceView()
      }
@@ -1016,7 +1098,7 @@ index 34f37a5..c521692 100644
      
      var addressBarButton: AddressBarButton {
          return addressBar.addressBarButton
-@@ -636,6 +671,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -637,6 +672,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          topToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
          bottomToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
      }
@@ -1028,7 +1110,7 @@ index 34f37a5..c521692 100644
      
      func syncSidebarButton(splitViewController: UISplitViewController?) {
          topToolbar.syncSidebarButton(splitViewController: splitViewController)
-@@ -662,6 +702,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -663,6 +703,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          topToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
          topToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
          topToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
@@ -1037,7 +1119,7 @@ index 34f37a5..c521692 100644
          
          bottomToolbar.onBack = { [weak self] in self?.onBack?() }
          bottomToolbar.onForward = { [weak self] in self?.onForward?() }
-@@ -669,6 +711,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -670,6 +712,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          bottomToolbar.onLibrary = { [weak self] in self?.onLibrary?() }
          bottomToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
          bottomToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
@@ -1048,7 +1130,7 @@ index 34f37a5..c521692 100644
          
          actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
          actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
-@@ -703,6 +749,38 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -704,6 +750,38 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          return topToolbar.convert(topToolbar.bounds, to: view)
      }
      
@@ -1087,7 +1169,7 @@ index 34f37a5..c521692 100644
      func setToolbarTransition(
          topOffset: CGFloat,
          bottomOffset: CGFloat,
-@@ -713,7 +791,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -714,7 +792,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          animatesContent: Bool
      ) {
          topToolbar.transform = CGAffineTransform(translationX: 0, y: topOffset)
@@ -1095,7 +1177,7 @@ index 34f37a5..c521692 100644
          bottomToolbar.transform = CGAffineTransform(translationX: 0, y: bottomOffset)
          actionBar.transform = actionBarKeyboardBottomConstraint == nil
          ? CGAffineTransform(translationX: 0, y: bottomOffset)
-@@ -816,6 +893,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -817,6 +894,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      }
      
      private func configureHierarchy() {
@@ -1103,7 +1185,7 @@ index 34f37a5..c521692 100644
          addSubview(topToolbar)
          addSubview(tabBar)
          addSubview(bottomToolbar)
-@@ -830,19 +908,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -831,19 +909,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          overlayWidthConstraint = overlayContentView.widthAnchor.constraint(equalToConstant: 0)
          overlayHeightConstraint = overlayContentView.heightAnchor.constraint(equalToConstant: 0)
          NSLayoutConstraint.activate([
@@ -1137,7 +1219,7 @@ index 34f37a5..c521692 100644
              overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
              overlayDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
              overlayDismissView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
-@@ -858,7 +944,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -859,7 +945,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
              actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
              actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
          ])
@@ -1146,7 +1228,7 @@ index 34f37a5..c521692 100644
          bottomToolbar.configureTopAnchor(to: safeAreaLayoutGuide.bottomAnchor)
      }
      
-@@ -884,10 +970,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -885,10 +971,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      private func attachAddressBar(for mode: BrowserChromeMode) {
          topToolbar.detachAddressBar()
          bottomToolbar.detachAddressBar()
@@ -1161,7 +1243,7 @@ index 34f37a5..c521692 100644
              topToolbar.attachAddressBar(addressBar)
          }
      }
-@@ -944,7 +1031,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -945,7 +1032,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      
      private func resolvedTopState(for state: State) -> TopToolbar.LayoutState {
          switch state.mode {
@@ -1219,10 +1301,10 @@ index 0000000..e6dd4d2
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 new file mode 100644
-index 0000000..3ad4ebb
+index 0000000..bb8d014
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,260 @@
 +//
 +//  LoginAutofillBar.swift
 +//  Reynard
@@ -1358,17 +1440,26 @@ index 0000000..3ad4ebb
 +    private weak var activeSession: GeckoSession?
 +    private var keyboardTop: CGFloat?
 +
++    /// Supplies the session of the selected tab (set by BrowserViewController).
++    var sessionProvider: (() -> GeckoSession?)?
++    /// Page origin (scheme://host[:port]) for a session.
++    var originProvider: ((GeckoSession) -> String?)?
++
 +    private init() {
-+        NotificationCenter.default.addObserver(
-+            self,
-+            selector: #selector(handleFocusChange(_:)),
-+            name: GeckoSession.autofillFocusDidChangeNotification,
-+            object: nil
-+        )
++        // The engine reports the focused login field to iOS through its text
++        // input's textContentType (username / password). Check it whenever the
++        // keyboard appears or changes: that covers focusing and switching
++        // between fields.
 +        NotificationCenter.default.addObserver(
 +            self,
 +            selector: #selector(handleKeyboardChange(_:)),
 +            name: UIResponder.keyboardWillChangeFrameNotification,
++            object: nil
++        )
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(handleKeyboardShow(_:)),
++            name: UIResponder.keyboardDidShowNotification,
 +            object: nil
 +        )
 +        NotificationCenter.default.addObserver(
@@ -1379,14 +1470,16 @@ index 0000000..3ad4ebb
 +        )
 +    }
 +
-+    @objc private func handleFocusChange(_ notification: Notification) {
-+        guard let session = notification.object as? GeckoSession else {
-+            return
-+        }
++    @objc private func handleKeyboardShow(_ notification: Notification) {
++        refreshForFocusedField()
++    }
 +
-+        let origin = notification.userInfo?["origin"] as? String ?? ""
-+        let accepts = notification.userInfo?["accepts"] as? Bool ?? false
-+        guard accepts, !origin.isEmpty else {
++    private func refreshForFocusedField() {
++        guard let session = sessionProvider?(),
++              let contentType = session.focusedAutofillContentType,
++              contentType == .username || contentType == .password,
++              let origin = originProvider?(session),
++              !origin.isEmpty else {
 +            hide()
 +            return
 +        }
@@ -1449,6 +1542,10 @@ index 0000000..3ad4ebb
 +    }
 +
 +    @objc private func handleKeyboardChange(_ notification: Notification) {
++        // Focus may have moved to another field while the keyboard stayed up.
++        DispatchQueue.main.async { [weak self] in
++            self?.refreshForFocusedField()
++        }
 +        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
 +              let window else {
 +            return
@@ -1469,10 +1566,10 @@ index 0000000..3ad4ebb
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index 8858456..d54e32b 100644
+index 0f64a0b..222c628 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-@@ -37,6 +37,7 @@ final class BottomToolbar: UIView {
+@@ -38,6 +38,7 @@ final class BottomToolbar: UIView {
      var onLibrary: (() -> Void)?
      var onDownloads: (() -> Void)?
      var onTabOverview: (() -> Void)?
@@ -1480,7 +1577,7 @@ index 8858456..d54e32b 100644
      
      private let contentView: UIView = {
          let view = UIView()
-@@ -45,15 +46,10 @@ final class BottomToolbar: UIView {
+@@ -46,15 +47,10 @@ final class BottomToolbar: UIView {
          return view
      }()
      
@@ -1499,7 +1596,7 @@ index 8858456..d54e32b 100644
          return view
      }()
      
-@@ -61,9 +57,6 @@ final class BottomToolbar: UIView {
+@@ -62,9 +58,6 @@ final class BottomToolbar: UIView {
          let view = UIView()
          view.translatesAutoresizingMaskIntoConstraints = false
          view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
@@ -1509,7 +1606,7 @@ index 8858456..d54e32b 100644
          return view
      }()
      
-@@ -77,14 +70,24 @@ final class BottomToolbar: UIView {
+@@ -78,14 +71,24 @@ final class BottomToolbar: UIView {
      
      private lazy var backButton = ToolbarButton(buttonType: .back, target: self, action: #selector(backTapped))
      private lazy var forwardButton = ToolbarButton(buttonType: .forward, target: self, action: #selector(forwardTapped))
@@ -1537,7 +1634,7 @@ index 8858456..d54e32b 100644
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
          stack.distribution = .fillEqually
-@@ -170,14 +173,22 @@ final class BottomToolbar: UIView {
+@@ -171,14 +174,22 @@ final class BottomToolbar: UIView {
      }
      
      func sharePopoverSourceView() -> UIView {
@@ -1562,7 +1659,7 @@ index 8858456..d54e32b 100644
          case .collapsed, .compact:
              contentHeight = UX.bottomToolbarCompactContentHeight
          }
-@@ -259,6 +270,10 @@ final class BottomToolbar: UIView {
+@@ -260,6 +271,10 @@ final class BottomToolbar: UIView {
              for: .normal
          )
      }
@@ -1573,7 +1670,7 @@ index 8858456..d54e32b 100644
      
      // MARK: - Action Wiring
      
-@@ -268,6 +283,7 @@ final class BottomToolbar: UIView {
+@@ -269,6 +284,7 @@ final class BottomToolbar: UIView {
      @objc private func libraryTapped() { onLibrary?() }
      @objc private func downloadsTapped() { onDownloads?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -1581,7 +1678,7 @@ index 8858456..d54e32b 100644
      
      // MARK: - View Setup
      
-@@ -326,6 +342,8 @@ final class BottomToolbar: UIView {
+@@ -327,6 +343,8 @@ final class BottomToolbar: UIView {
      
      private func configureInitialState() {
          shareButton.isEnabled = false
@@ -1780,10 +1877,10 @@ index 5383025..3904c17 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 8d40460..792aa0e 100644
+index c377d41..67e0ca1 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-@@ -9,14 +9,19 @@ import UIKit
+@@ -10,14 +10,19 @@ import UIKit
  
  final class TopToolbar: UIView {
      private enum UX {
@@ -1805,7 +1902,7 @@ index 8d40460..792aa0e 100644
          static let backgroundViewHorizontalExtension: CGFloat = 16
          static let borderWidth: CGFloat = 0.5
      }
-@@ -35,6 +40,8 @@ final class TopToolbar: UIView {
+@@ -36,6 +41,8 @@ final class TopToolbar: UIView {
      var onShare: (() -> Void)?
      var onNewTab: (() -> Void)?
      var onTabOverview: (() -> Void)?
@@ -1814,7 +1911,7 @@ index 8d40460..792aa0e 100644
      
      private let contentView: UIView = {
          let view = UIView()
-@@ -43,15 +50,16 @@ final class TopToolbar: UIView {
+@@ -44,15 +51,16 @@ final class TopToolbar: UIView {
          return view
      }()
      
@@ -1838,7 +1935,7 @@ index 8d40460..792aa0e 100644
          return view
      }()
      
-@@ -59,9 +67,6 @@ final class TopToolbar: UIView {
+@@ -60,9 +68,6 @@ final class TopToolbar: UIView {
          let view = UIView()
          view.translatesAutoresizingMaskIntoConstraints = false
          view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
@@ -1848,7 +1945,7 @@ index 8d40460..792aa0e 100644
          return view
      }()
      
-@@ -105,11 +110,20 @@ final class TopToolbar: UIView {
+@@ -106,11 +111,20 @@ final class TopToolbar: UIView {
          target: self,
          action: #selector(tabOverviewTapped)
      )
@@ -1871,7 +1968,7 @@ index 8d40460..792aa0e 100644
          stack.translatesAutoresizingMaskIntoConstraints = false
          stack.axis = .horizontal
          stack.spacing = UX.topToolbarButtonSpacing
-@@ -118,10 +132,14 @@ final class TopToolbar: UIView {
+@@ -119,10 +133,14 @@ final class TopToolbar: UIView {
      }()
      
      private lazy var trailingButtons: UIStackView = {
@@ -1888,7 +1985,7 @@ index 8d40460..792aa0e 100644
          stack.distribution = .fillEqually
          return stack
      }()
-@@ -149,12 +167,10 @@ final class TopToolbar: UIView {
+@@ -150,12 +168,10 @@ final class TopToolbar: UIView {
      private var trailingWidthConstraint: NSLayoutConstraint!
      private var standardAddressBarConstraints: [NSLayoutConstraint] = []
      private var compactAddressBarConstraints: [NSLayoutConstraint] = []
@@ -1901,7 +1998,7 @@ index 8d40460..792aa0e 100644
      
      // MARK: - Lifecycle
      
-@@ -188,14 +204,6 @@ final class TopToolbar: UIView {
+@@ -189,14 +205,6 @@ final class TopToolbar: UIView {
                  addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                  addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
              ]
@@ -1916,7 +2013,7 @@ index 8d40460..792aa0e 100644
              compactAddressBarConstraints = [
                  addressBar.leadingAnchor.constraint(
                      equalTo: contentLayoutGuide.leadingAnchor,
-@@ -212,8 +220,7 @@ final class TopToolbar: UIView {
+@@ -213,8 +221,7 @@ final class TopToolbar: UIView {
      }
      
      func detachAddressBar() {
@@ -1926,7 +2023,7 @@ index 8d40460..792aa0e 100644
      }
      
      func sharePopoverSourceView() -> UIView {
-@@ -254,18 +261,22 @@ final class TopToolbar: UIView {
+@@ -255,18 +262,22 @@ final class TopToolbar: UIView {
                  sidebarButtonVisible: sidebarButtonVisible,
                  showsDownloads: downloadButton.isShowingDownloads
              )
@@ -1953,7 +2050,7 @@ index 8d40460..792aa0e 100644
              }
              layoutIfNeeded()
          }
-@@ -344,6 +355,10 @@ final class TopToolbar: UIView {
+@@ -345,6 +356,10 @@ final class TopToolbar: UIView {
              for: .normal
          )
      }
@@ -1964,7 +2061,7 @@ index 8d40460..792aa0e 100644
      
      func syncSidebarButton(splitViewController: UISplitViewController?) {
          sidebarButton.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
-@@ -369,6 +384,8 @@ final class TopToolbar: UIView {
+@@ -370,6 +385,8 @@ final class TopToolbar: UIView {
      @objc private func shareTapped() { onShare?() }
      @objc private func newTabTapped() { onNewTab?() }
      @objc private func tabOverviewTapped() { onTabOverview?() }
@@ -1973,7 +2070,7 @@ index 8d40460..792aa0e 100644
      
      // MARK: - View Setup
      
-@@ -390,7 +407,7 @@ final class TopToolbar: UIView {
+@@ -391,7 +408,7 @@ final class TopToolbar: UIView {
          contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
          backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
          leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
@@ -1982,7 +2079,7 @@ index 8d40460..792aa0e 100644
          
          NSLayoutConstraint.activate([
              backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
-@@ -431,62 +448,35 @@ final class TopToolbar: UIView {
+@@ -432,62 +449,35 @@ final class TopToolbar: UIView {
          return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
          + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
      }
@@ -2723,10 +2820,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..7920af8
+index 0000000..1a91869
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,333 @@
+@@ -0,0 +1,354 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -2842,6 +2939,8 @@ index 0000000..7920af8
 +            presentQRCodeShare()
 +        case .openLocalFile:
 +            presentLocalFilePicker()
++        case .developerTools:
++            toggleDeveloperTools()
 +        case .exitBrowser:
 +            exitBrowserToBackground()
 +        case .findInPage:
@@ -2992,6 +3091,25 @@ index 0000000..7920af8
 +    /// Uses the same selector that the app's existing quit flow uses
 +    /// (UIApplication suspend), which references a real method so #selector
 +    /// compiles.
++    /// "开发者面板": an in-page DevTools (Eruda: console, elements, network,
++    /// resources, sources), the mobile counterpart of F12. Injected as a
++    /// bookmarklet; choosing it again shows the panel if it was closed.
++    /// Pages with a strict Content-Security-Policy may refuse the script.
++    private func toggleDeveloperTools() {
++        guard let tab = tabManager.selectedTab else {
++            return
++        }
++        let script = """
++        void(function(){if(window.eruda){try{eruda.init()}catch(e){}eruda.show();return;}\
++        var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js';\
++        s.onload=function(){eruda.init();eruda.show();};\
++        s.onerror=function(){alert('开发者面板加载失败（网络或页面安全策略限制）');};\
++        (document.head||document.documentElement).appendChild(s);})()
++        """
++        let encoded = script.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? script
++        tab.session.runBookmarklet(encoded)
++    }
++    
 +    private func exitBrowserToBackground() {
 +        UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
 +    }
@@ -3801,10 +3919,10 @@ index 0000000..75d95d3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
 new file mode 100644
-index 0000000..271e805
+index 0000000..8f853ec
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeMenuViewController.swift
-@@ -0,0 +1,759 @@
+@@ -0,0 +1,765 @@
 +//
 +//  EdgeMenuViewController.swift
 +//  Reynard
@@ -3848,6 +3966,7 @@ index 0000000..271e805
 +        case findInPage
 +        case fontSize
 +        case openLocalFile
++        case developerTools
 +        case exitBrowser
 +
 +        var title: String {
@@ -3890,6 +4009,8 @@ index 0000000..271e805
 +                return "字体大小"
 +            case .openLocalFile:
 +                return "本地网页/PDF"
++            case .developerTools:
++                return "开发者面板"
 +            case .exitBrowser:
 +                return "退出浏览器"
 +            }
@@ -3935,6 +4056,8 @@ index 0000000..271e805
 +                return "reynard.textformat.size"
 +            case .openLocalFile:
 +                return "reynard.document"
++            case .developerTools:
++                return "hammer"
 +            case .exitBrowser:
 +                return "reynard.xmark"
 +            }
@@ -4335,7 +4458,7 @@ index 0000000..271e805
 +            return [
 +                .home, .newInPrivateTab, .addToFavorites, .requestDesktopWebsite,
 +                .appearance, .clearData, .shareExtension, .share, .translate,
-+                .addToPhone, .findInPage, .fontSize, .openLocalFile, .exitBrowser,
++                .addToPhone, .findInPage, .fontSize, .openLocalFile, .developerTools, .exitBrowser,
 +            ]
 +        }
 +    }
@@ -4512,6 +4635,7 @@ index 0000000..271e805
 +
 +        let configuration = UIImage.SymbolConfiguration(pointSize: symbolPointSize, weight: usesPrimaryTint ? .medium : .regular)
 +        symbolView.image = UIImage(named: symbolName, in: .main, with: configuration)
++            ?? UIImage(systemName: symbolName, withConfiguration: configuration)
 +        symbolView.tintColor = tint
 +
 +        let alpha: CGFloat = isPlaceholder ? 0.4 : 1
@@ -4968,10 +5092,10 @@ index 0000000..798f748
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift b/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift
 new file mode 100644
-index 0000000..977401f
+index 0000000..5e31eb6
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/PdfSaveCoordinator.swift
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,153 @@
 +//
 +//  PdfSaveCoordinator.swift
 +//  Reynard
@@ -5008,7 +5132,9 @@ index 0000000..977401f
 +        let localFile = originalURL.flatMap { LocalFileServer.shared.originalFileURL(forServedURL: $0) }
 +        let fileName = suggestedFileName(request: request, originalURL: originalURL, localFile: localFile)
 +
-+        let sheet = UIAlertController(title: fileName, message: nil, preferredStyle: .actionSheet)
++        // A plain alert, not a popover: it is modal only while it is up and
++        // always has 取消, so it can never be left covering the pdf.js viewer.
++        let sheet = UIAlertController(title: fileName, message: "保存带标注的 PDF", preferredStyle: .alert)
 +        if let localFile {
 +            sheet.addAction(UIAlertAction(title: "保存", style: .default) { _ in
 +                if writeInPlace(data, to: localFile) {
@@ -5024,11 +5150,6 @@ index 0000000..977401f
 +            presentSaveAs(data: data, fileName: fileName, from: presenter, message: nil)
 +        })
 +        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
-+        if let popover = sheet.popoverPresentationController {
-+            popover.sourceView = presenter.view
-+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
-+            popover.permittedArrowDirections = []
-+        }
 +        presenter.present(sheet, animated: true)
 +        return true
 +    }
@@ -5250,10 +5371,10 @@ index 0000000..22560d9
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift
 new file mode 100644
-index 0000000..53fa2a6
+index 0000000..eacfede
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeHomepagePalette.swift
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,149 @@
 +//
 +//  EdgeHomepagePalette.swift
 +//  Reynard
@@ -5365,12 +5486,50 @@ index 0000000..53fa2a6
 +        }
 +    }
 +}
++
++/// Label for text that sits directly on the page / wallpaper (not inside a
++/// chip, card or button). It carries a soft, diffuse shadow in the inverse of
++/// its own text colour, so it stays readable over busy wallpapers in both light
++/// and dark appearance.
++class HomepageLegibleLabel: UILabel {
++    override var textColor: UIColor! {
++        didSet { updateLegibilityShadow() }
++    }
++    
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        layer.shadowOffset = .zero
++        layer.shadowRadius = 3
++        layer.shadowOpacity = 0.55
++        layer.masksToBounds = false
++        updateLegibilityShadow()
++    }
++    
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++    
++    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
++        super.traitCollectionDidChange(previousTraitCollection)
++        updateLegibilityShadow()
++    }
++    
++    private func updateLegibilityShadow() {
++        let resolved = (textColor ?? .label).resolvedColor(with: traitCollection)
++        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
++        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
++            layer.shadowColor = UIColor.systemBackground.resolvedColor(with: traitCollection).cgColor
++            return
++        }
++        layer.shadowColor = UIColor(red: 1 - red, green: 1 - green, blue: 1 - blue, alpha: 1).cgColor
++    }
++}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..3c4e1ae
+index 0000000..22e17b3
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1198 @@
+@@ -0,0 +1,1204 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -5761,6 +5920,7 @@ index 0000000..3c4e1ae
 +        favoritesSectionViewController?.setContentMode(mode)
 +        frequentlyVisitedSectionViewController?.setContentMode(mode)
 +        recentlyClosedTabsSectionViewController?.setContentMode(mode)
++        feedPanelViewController?.setContentMode(mode)
 +    }
 +    
 +    override func viewSafeAreaInsetsDidChange() {
@@ -5962,6 +6122,7 @@ index 0000000..3c4e1ae
 +            if definition.isFeed {
 +                let feedViewController = HomepageFeedPanelViewController()
 +                feedViewController.delegate = self
++                feedViewController.setContentMode(sectionContentMode)
 +                addChild(feedViewController)
 +                feedViewController.view.translatesAutoresizingMaskIntoConstraints = false
 +                panel.stackView.addArrangedSubview(feedViewController.view)
@@ -6156,6 +6317,10 @@ index 0000000..3c4e1ae
 +    // MARK: - Layout
 +    
 +    private func updateBackground() {
++        // The gear follows the same light/dark rule as the section titles.
++        settingsButton.tintColor = folder == nil
++            ? HomepageWallpaper.foregroundColor(for: contentMode)
++            : EdgeHomepagePalette.secondaryText
 +        let showsWallpaper = folder == nil
 +        && Prefs.HomepageSettings.showsWallpaper
 +        && !contentMode.isDetached
@@ -7148,10 +7313,10 @@ index 0000000..ff562fb
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/HomepageFeedPanelViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageFeedPanelViewController.swift
 new file mode 100644
-index 0000000..de536e8
+index 0000000..b3fa2cd
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageFeedPanelViewController.swift
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,284 @@
 +//
 +//  HomepageFeedPanelViewController.swift
 +//  Reynard
@@ -7183,7 +7348,7 @@ index 0000000..de536e8
 +    }()
 +    
 +    private let titleLabel: UILabel = {
-+        let label = UILabel()
++        let label = HomepageLegibleLabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.font = EdgeHomepagePalette.scaledFont(size: 14, weight: .medium)
 +        label.textColor = EdgeHomepagePalette.primaryText
@@ -7192,7 +7357,7 @@ index 0000000..de536e8
 +    }()
 +    
 +    private let metaLabel: UILabel = {
-+        let label = UILabel()
++        let label = HomepageLegibleLabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.font = EdgeHomepagePalette.scaledFont(size: 11)
 +        label.textColor = EdgeHomepagePalette.secondaryText
@@ -7253,6 +7418,12 @@ index 0000000..de536e8
 +        }
 +    }
 +    
++    /// Follows the wallpaper like the other homepage section titles.
++    func setForegroundColor(_ color: UIColor) {
++        titleLabel.textColor = color
++        metaLabel.textColor = color.withAlphaComponent(0.7)
++    }
++    
 +    func configure(article: HomepageFeedArticle) {
 +        self.article = article
 +        titleLabel.text = article.title
@@ -7289,7 +7460,7 @@ index 0000000..de536e8
 +    weak var delegate: HomepageFeedPanelViewControllerDelegate?
 +    
 +    private let titleLabel: UILabel = {
-+        let label = UILabel()
++        let label = HomepageLegibleLabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.font = UIFontMetrics(forTextStyle: .title2).scaledFont(
 +            for: .systemFont(ofSize: 22, weight: .bold)
@@ -7300,7 +7471,7 @@ index 0000000..de536e8
 +    }()
 +    
 +    private let statusLabel: UILabel = {
-+        let label = UILabel()
++        let label = HomepageLegibleLabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
 +        label.font = EdgeHomepagePalette.scaledFont(size: 12)
 +        label.textColor = EdgeHomepagePalette.secondaryText
@@ -7319,6 +7490,26 @@ index 0000000..de536e8
 +    
 +    private var articles: [HomepageFeedArticle] = []
 +    private var isLoading = false
++    private var contentMode: HomepageContentMode = .embeddedNarrow
++    
++    /// Same light/dark foreground rule as Favorites / Frequently Visited /
++    /// Recently Closed (HomepageWallpaper.foregroundColor).
++    func setContentMode(_ contentMode: HomepageContentMode) {
++        self.contentMode = contentMode
++        guard isViewLoaded else {
++            return
++        }
++        applyForegroundColor()
++    }
++    
++    private func applyForegroundColor() {
++        let foreground = HomepageWallpaper.foregroundColor(for: contentMode)
++        titleLabel.textColor = foreground
++        statusLabel.textColor = foreground.withAlphaComponent(0.7)
++        for case let row as HomepageFeedRowView in rowsStackView.arrangedSubviews {
++            row.setForegroundColor(foreground)
++        }
++    }
 +    
 +    override func viewDidLoad() {
 +        super.viewDidLoad()
@@ -7326,6 +7517,7 @@ index 0000000..de536e8
 +        configureHierarchy()
 +        configureConstraints()
 +        reset()
++        applyForegroundColor()
 +    }
 +    
 +    func reset() {
@@ -7372,6 +7564,7 @@ index 0000000..de536e8
 +        for article in visible {
 +            let row = HomepageFeedRowView(frame: .zero)
 +            row.configure(article: article)
++            row.setForegroundColor(HomepageWallpaper.foregroundColor(for: contentMode))
 +            row.addTarget(self, action: #selector(handleRowTap(_:)), for: .touchUpInside)
 +            rowsStackView.addArrangedSubview(row)
 +        }
@@ -9178,7 +9371,7 @@ index 0000000..850a8a7
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift b/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
-index 77ca970..da80372 100644
+index cf2bdfc..ea7a5f2 100644
 --- a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
 @@ -35,7 +35,10 @@ final class HomepageOverlayCoordinator {
@@ -9190,21 +9383,19 @@ index 77ca970..da80372 100644
 +    private let edgeHomepageViewController: HomepageViewController
 +    private let classicHomepageViewController: HomepageViewController
 +    private var homepageViewController: HomepageViewController
-     private let homepageThumbnailRenderer: HomepageThumbnailRenderer
      private var presentationIntent: HomepagePresentationIntent = .inactive
      
-@@ -55,10 +58,15 @@ final class HomepageOverlayCoordinator {
+     private struct HomepagePresentation: Equatable {
+@@ -54,9 +57,14 @@ final class HomepageOverlayCoordinator {
          self.delegate = delegate
          self.overlayCoordinator = overlayCoordinator
          self.toolbarController = toolbarController
 -        homepageViewController = HomepageViewController()
--        homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: homepageViewController)
 -        homepageViewController.homepageDelegate = self
 -        homepageViewController.setPrivateBrowsing(isPrivateBrowsing)
 +        edgeHomepageViewController = HomepageViewController(style: .edge)
 +        classicHomepageViewController = HomepageViewController(style: .classic)
 +        homepageViewController = edgeHomepageViewController
-+        homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: edgeHomepageViewController)
 +        for controller in [edgeHomepageViewController, classicHomepageViewController] {
 +            controller.homepageDelegate = self
 +            controller.addressBarDelegate = self
@@ -9213,7 +9404,23 @@ index 77ca970..da80372 100644
      }
      
      // MARK: - State
-@@ -159,6 +167,16 @@ final class HomepageOverlayCoordinator {
+@@ -117,15 +125,28 @@ final class HomepageOverlayCoordinator {
+             return nil
+         }
+         
+-        homepageViewController.setPrivateBrowsing(tab.isPrivate)
+-        homepageViewController.setContentMode(embeddedContentMode(layout: delegate.homepageLayout))
+-        homepageViewController.setShowsBackground(true)
+-        return homepageViewController.makeThumbnail(size: geometry.size, visibleRect: geometry.visibleRect)
++        // Homepage tabs show the Edge start page, so that is what their
++        // thumbnails show too.
++        let controller = edgeHomepageViewController
++        controller.setPrivateBrowsing(tab.isPrivate)
++        controller.setContentMode(embeddedContentMode(layout: delegate.homepageLayout))
++        controller.setShowsBackground(true)
++        return controller.makeThumbnail(size: geometry.size, visibleRect: geometry.visibleRect)
+     }
+     
      // MARK: - Presentation
      
      private func presentHomepage(_ presentation: HomepagePresentation, animated: Bool) {
@@ -9230,7 +9437,7 @@ index 77ca970..da80372 100644
          overlayCoordinator.dismiss(.homepage, on: otherHost(from: presentation.host), animated: false)
          
          guard !overlayCoordinator.contains(.homepage, on: presentation.host),
-@@ -456,3 +474,15 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
+@@ -423,3 +444,15 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
          delegate?.updateHomepageLayout(animated: false, duration: UX.layoutAnimationDuration)
      }
  }
@@ -9247,7 +9454,7 @@ index 77ca970..da80372 100644
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift b/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
-index 4e3f81c..896e6f1 100644
+index 0a43704..18f75f3 100644
 --- a/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
 @@ -22,8 +22,9 @@ protocol HomepageViewControllerDelegate: AnyObject {
@@ -9317,6 +9524,57 @@ index 4e3f81c..896e6f1 100644
          }
      }
      
+diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
+index ca9d57b..9f03e70 100644
+--- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
++++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
+@@ -62,7 +62,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
+     }()
+     
+     private let titleLabel: UILabel = {
+-        let label = UILabel()
++        let label = HomepageLegibleLabel()
+         label.translatesAutoresizingMaskIntoConstraints = false
+         label.font = FavoriteFolderCollectionViewCell.titleFont
+         label.textAlignment = .center
+@@ -104,6 +104,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
+ 
+     override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
+         super.apply(layoutAttributes)
++        setNeedsLayout()
+         alpha = 1
+         emptyIconView.alpha = layoutAttributes.alpha
+         previewGridView.alpha = layoutAttributes.alpha
+diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
+index f25f2c4..be1f830 100644
+--- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
++++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
+@@ -64,7 +64,7 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
+     }()
+     
+     private let titleLabel: UILabel = {
+-        let label = UILabel()
++        let label = HomepageLegibleLabel()
+         label.translatesAutoresizingMaskIntoConstraints = false
+         label.font = FavoriteSiteCollectionViewCell.titleFont
+         label.textAlignment = .center
+@@ -97,10 +97,16 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
+         setReorderState(.resting, animated: false)
+     }
+     
++    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
++        super.apply(layoutAttributes)
++        setNeedsLayout()
++    }
++    
+     override func layoutSubviews() {
+         super.layoutSubviews()
+         updateIconSize()
+         updateShadowColor()
++        contentView.layoutIfNeeded()
+     }
+     
+     func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
 index 455c732..0ed577c 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
@@ -9363,9 +9621,18 @@ index 455c732..0ed577c 100644
          return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
      }
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-index bf26062..46d5680 100644
+index bf26062..ddfe9b9 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
+@@ -55,7 +55,7 @@ final class FavoritesSectionViewController: UIViewController {
+     }()
+     
+     private let titleLabel: UILabel = {
+-        let label = UILabel()
++        let label = HomepageLegibleLabel()
+         label.translatesAutoresizingMaskIntoConstraints = false
+         label.font = FavoritesSectionViewController.titleFont
+         label.textColor = .label
 @@ -75,6 +75,36 @@ final class FavoritesSectionViewController: UIViewController {
      
      private let collectionLayout = FavoritesCollectionViewLayout()
@@ -9440,8 +9707,31 @@ index bf26062..46d5680 100644
              return false
          }
          
-@@ -363,7 +398,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -351,9 +386,14 @@ final class FavoritesSectionViewController: UIViewController {
+             return
+         }
+         
++        // Icons never shrink below a readable size: in very narrow windows
++        // drop columns instead (and get them back as the window widens).
++        let minimumIconSize: CGFloat = 44
++        let fittingColumns = Int((width - UX.horizontalInset * 2 + 15) / (minimumIconSize + 15))
++        let columnCount = max(1, min(contentMode.favoriteColumnCount, fittingColumns))
+         let metrics = FavoritesLayoutMetrics(
+             width: width,
+-            columnCount: contentMode.favoriteColumnCount,
++            columnCount: columnCount,
+             horizontalInset: UX.horizontalInset,
+             lineSpacing: UX.rowSpacing
+         )
+@@ -361,9 +401,14 @@ final class FavoritesSectionViewController: UIViewController {
+             || collectionLayout.metrics != metrics {
+             lastLaidOutWidth = width
              collectionLayout.metrics = metrics
++            // Cells size their icon from their own bounds; make every visible
++            // cell re-measure so icons grow back after an extreme shrink.
++            for cell in collectionView.visibleCells {
++                cell.setNeedsLayout()
++            }
          }
          
 -        let displayedItemCount = itemCount ?? displayedFavoriteItems.count
@@ -9449,7 +9739,7 @@ index bf26062..46d5680 100644
          let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
          let contentHeight = metrics.contentHeight(rowCount: rowCount)
          guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
-@@ -426,7 +461,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -426,7 +471,7 @@ final class FavoritesSectionViewController: UIViewController {
          let viewController = EditBookmarkViewController(bookmark: bookmark, store: bookmarkStore)
          let navigationController = UINavigationController(rootViewController: viewController)
          navigationController.modalPresentationStyle = .pageSheet
@@ -9458,7 +9748,7 @@ index bf26062..46d5680 100644
      }
      
      func deleteFavoriteBookmark(_ bookmark: BookmarkSnapshot) {
-@@ -456,6 +491,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -456,6 +501,7 @@ final class FavoritesSectionViewController: UIViewController {
              let translation = gestureRecognizer.translation(in: collectionView)
              let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
              guard let indexPath = collectionView.indexPathForItem(at: startLocation),
@@ -9466,7 +9756,7 @@ index bf26062..46d5680 100644
                    let cell = collectionView.cellForItem(at: indexPath),
                    collectionView.beginInteractiveMovementForItem(at: indexPath) else {
                  return
-@@ -481,6 +517,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -481,6 +527,7 @@ final class FavoritesSectionViewController: UIViewController {
      @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
          let location = gestureRecognizer.location(in: collectionView)
          guard let indexPath = collectionView.indexPathForItem(at: location),
@@ -9474,7 +9764,7 @@ index bf26062..46d5680 100644
                let cell = collectionView.cellForItem(at: indexPath) else {
              return
          }
-@@ -494,6 +531,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -494,6 +541,7 @@ final class FavoritesSectionViewController: UIViewController {
          switch gestureRecognizer.state {
          case .began:
              guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
@@ -9482,7 +9772,7 @@ index bf26062..46d5680 100644
                    let cell = collectionView.cellForItem(at: indexPath) else {
                  return
              }
-@@ -624,10 +662,19 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -624,10 +672,19 @@ final class FavoritesSectionViewController: UIViewController {
  
  extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
      func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -9503,7 +9793,7 @@ index bf26062..46d5680 100644
          switch displayedFavoriteItems[indexPath.item] {
          case let .bookmark(bookmark):
              let cell = collectionView.dequeueReusableCell(
-@@ -655,6 +702,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -655,6 +712,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
      }
      
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -9514,7 +9804,7 @@ index bf26062..46d5680 100644
          guard displayedFavoriteItems.indices.contains(indexPath.item) else {
              return
          }
-@@ -671,6 +722,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -671,6 +732,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
          return displayedFavoriteItems.indices.contains(indexPath.item)
      }
      
@@ -9535,9 +9825,18 @@ index bf26062..46d5680 100644
          guard displayedFavoriteItems.indices.contains(sourceIndexPath.item) else {
              reloadFavorites()
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
-index 28377e6..d2b4a3d 100644
+index 28377e6..8cbd08e 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/FrequentlyVisited/FrequentlyVisitedSectionViewController.swift
+@@ -46,7 +46,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
+     private var cardViews: [FrequentlyVisitedSiteCardView] = []
+     
+     private let titleLabel: UILabel = {
+-        let label = UILabel()
++        let label = HomepageLegibleLabel()
+         label.translatesAutoresizingMaskIntoConstraints = false
+         label.font = FrequentlyVisitedSectionViewController.titleFont
+         label.textColor = .label
 @@ -97,12 +97,93 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
          configureConstraints()
          observeChanges()
@@ -9657,6 +9956,19 @@ index 28377e6..d2b4a3d 100644
      }
      
      // MARK: - Actions
+diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
+index 69bd566..ee946c2 100644
+--- a/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
++++ b/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
+@@ -32,7 +32,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
+     private var lastLaidOutWidth: CGFloat = -1
+     
+     private let titleLabel: UILabel = {
+-        let label = UILabel()
++        let label = HomepageLegibleLabel()
+         label.translatesAutoresizingMaskIntoConstraints = false
+         label.font = RecentlyClosedTabsSectionViewController.titleFont
+         label.textColor = .label
 diff --git a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift b/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
 index 7f723fd..0ca560e 100644
 --- a/browser/Reynard/Client/Interface/Library/Bookmarks/BookmarksViewController.swift
@@ -10437,7 +10749,7 @@ index 10c68ad..c5843ee 100644
          }
          
 diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
-index f61a3ee..724ab13 100644
+index 9da113a..eb58ee6 100644
 --- a/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
 +++ b/browser/Reynard/Client/Interface/Sidebar/SidebarViewController.swift
 @@ -98,9 +98,11 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
@@ -10454,7 +10766,7 @@ index f61a3ee..724ab13 100644
              }
          } else {
              preferredDisplayMode = visible ? .allVisible : .primaryHidden
-@@ -144,7 +146,10 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -145,7 +147,10 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
      }
      
      func refreshVisibility() {
@@ -10466,7 +10778,7 @@ index f61a3ee..724ab13 100644
          updateBrowserLayoutIfNeeded()
      }
      
-@@ -174,11 +179,13 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -175,11 +180,13 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
      // MARK: - UISplitViewControllerDelegate
      
      func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
@@ -10482,7 +10794,7 @@ index f61a3ee..724ab13 100644
      }
      
      // MARK: - Notifications
-@@ -222,7 +229,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -223,7 +230,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
          delegate = self
          presentsWithGesture = false
          if #available(iOS 14.0, *) {
@@ -10491,7 +10803,7 @@ index f61a3ee..724ab13 100644
              preferredSplitBehavior = .tile
              preferredPrimaryColumnWidth = UX.preferredPrimaryWidth
              minimumPrimaryColumnWidth = UX.minimumPrimaryWidth
-@@ -241,20 +248,50 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
+@@ -242,20 +249,50 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
      }
      
      private func observeApplicationActivation() {
@@ -11766,29 +12078,129 @@ index 6da82ce..d4116de 100644
 +        coordinator.drop(dropItem.dragItem, toItemAt: destination)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
+index 15c4768..526739d 100644
+--- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
++++ b/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
+@@ -60,7 +60,60 @@ final class TabOverviewCollection: NSObject {
+     private var swipeState: SwipeState = .idle
+     private(set) var mode: TabOverview.Mode = .regularTabs
+     
+-    lazy var regularTabsCollectionView = makeTabCollectionView()
++    lazy var regularTabsCollectionView: UICollectionView = {
++        let view = makeTabCollectionView()
++        view.backgroundView = regularEmptyView
++        return view
++    }()
++    
++    /// No regular tabs at all: a single "open new tab" button in the centre.
++    private lazy var regularEmptyView: UIView = {
++        let container = UIView()
++        container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++        let button = makeOpenNewTabButton()
++        container.addSubview(button)
++        NSLayoutConstraint.activate([
++            button.centerXAnchor.constraint(equalTo: container.centerXAnchor),
++            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
++        ])
++        container.isHidden = true
++        return container
++    }()
++    
++    /// Shown under the private-mode picture and hint when there are no
++    /// private tabs.
++    private lazy var privateOpenNewTabButton = makeOpenNewTabButton()
++    
++    private func makeOpenNewTabButton() -> UIButton {
++        let button = UIButton(type: .system)
++        button.translatesAutoresizingMaskIntoConstraints = false
++        button.setTitle("打开新标签页", for: .normal)
++        button.setImage(UIImage(systemName: "plus"), for: .normal)
++        button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
++        button.titleLabel?.adjustsFontForContentSizeCategory = true
++        button.tintColor = .white
++        button.backgroundColor = .systemBlue
++        button.layer.cornerRadius = 22
++        button.layer.cornerCurve = .continuous
++        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 22, bottom: 0, right: 26)
++        button.imageEdgeInsets = UIEdgeInsets(top: 0, left: -6, bottom: 0, right: 6)
++        button.heightAnchor.constraint(equalToConstant: 44).isActive = true
++        button.addTarget(self, action: #selector(handleOpenNewTabButton), for: .touchUpInside)
++        return button
++    }
++    
++    @objc private func handleOpenNewTabButton() {
++        guard let tabOverview else {
++            return
++        }
++        tabOverview.delegate?.tabOverviewDidRequestNewTab(tabOverview)
++    }
++    
++    /// Empty-state buttons only appear when that mode has no tabs.
++    func updateEmptyStates() {
++        regularEmptyView.isHidden = !tabs(for: .regularTabs).isEmpty
++        privateOpenNewTabButton.isHidden = !tabs(for: .privateTabs).isEmpty
++    }
+     
+     lazy var privateTabsCollectionView: UICollectionView = {
+         let view = makeTabCollectionView()
+@@ -158,6 +211,7 @@ final class TabOverviewCollection: NSObject {
+     func reloadTabCards() {
+         tabChangeAnimationState.insertionPlaceholderMode = nil
+         allCollectionViews.forEach { $0.reloadData() }
++        updateEmptyStates()
+         restoreActiveTabCardCloseSwipeIfNeeded()
+         refreshTabIdentitySnapshot()
+     }
+@@ -286,6 +340,7 @@ final class TabOverviewCollection: NSObject {
+             return
+         }
+         
++        updateEmptyStates()
+         insertTabCards(regularInsertions, in: regularTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .regularTabs, previousCount: previousRegularCount)
+         deleteTabCards(regularDeletions, in: regularTabsCollectionView)
+         insertTabCards(privateInsertions, in: privateTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .privateTabs, previousCount: previousPrivateCount)
+@@ -321,7 +376,6 @@ final class TabOverviewCollection: NSObject {
+     private func makePrivateModeIntroView() -> UIView {
+         let container = UIView()
+         container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+-        container.isUserInteractionEnabled = false
+         let imageView = UIImageView(image: UIImage(named: "private.mode.icon")?.withRenderingMode(.alwaysTemplate))
+         imageView.translatesAutoresizingMaskIntoConstraints = false
+         imageView.contentMode = .scaleAspectFit
+@@ -339,11 +393,12 @@ final class TabOverviewCollection: NSObject {
+         subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
+         subtitleLabel.adjustsFontForContentSizeCategory = true
+         subtitleLabel.numberOfLines = 0
+-        let stackView = UIStackView(arrangedSubviews: [imageView, titleLabel, subtitleLabel])
++        let stackView = UIStackView(arrangedSubviews: [imageView, titleLabel, subtitleLabel, privateOpenNewTabButton])
+         stackView.translatesAutoresizingMaskIntoConstraints = false
+         stackView.axis = .vertical
+         stackView.alignment = .center
+         stackView.spacing = UX.privateModeIntroItemSpacing
++        stackView.setCustomSpacing(20, after: subtitleLabel)
+         container.addSubview(stackView)
+         NSLayoutConstraint.activate([
+             imageView.widthAnchor.constraint(equalToConstant: UX.privateModeIntroIconSideLength),
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
-index 586eb5a..859bd5b 100644
+index 74e7fad..79a3c32 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 +++ b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
-@@ -475,7 +475,7 @@ final class TabOverviewPresentation {
+@@ -471,11 +471,11 @@ final class TabOverviewPresentation {
          tabOverview.setMode(overviewMode, animated: false)
          let selectedIndex = dataSource.selectedIndex
          context.containerView.layoutIfNeeded()
 -        let topChromeView = context.browserChrome.topToolbarTransitionView()
 +        let topChromeView = context.browserChrome.topChromeTransitionView()
          context.prepareTabOverviewPresentation()
-         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode) { [weak self] _ in
-             guard let self, self.presentationToken == token else {
-@@ -484,7 +484,7 @@ final class TabOverviewPresentation {
-             }
-             
-             if let topChromeView {
--                topChromeView.frame = self.context.browserChrome.topToolbarTransitionFrame(in: self.context.containerView)
-+                topChromeView.frame = self.context.browserChrome.topChromeTransitionFrame(in: self.context.containerView)
-                 self.context.containerView.addSubview(topChromeView)
-             }
-             self.animatePadPresentation(selectedIndex: selectedIndex, topChromeView: topChromeView)
-@@ -541,7 +541,7 @@ final class TabOverviewPresentation {
+         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode)
+         if let topChromeView {
+-            topChromeView.frame = context.browserChrome.topToolbarTransitionFrame(in: context.containerView)
++            topChromeView.frame = context.browserChrome.topChromeTransitionFrame(in: context.containerView)
+             context.containerView.addSubview(topChromeView)
+         }
+         animatePadPresentation(selectedIndex: selectedIndex, topChromeView: topChromeView)
+@@ -536,7 +536,7 @@ final class TabOverviewPresentation {
          tabOverview.alpha = 1
          selectedCollection.transform = standardCollectionTransform.scaledBy(x: UX.transitionCollectionInitialScale, y: UX.transitionCollectionInitialScale)
          
@@ -12679,7 +13091,7 @@ index 0000000..d47ae19
 +    }
 +}
 diff --git a/browser/Reynard/Client/Stores/TabManagementStore.swift b/browser/Reynard/Client/Stores/TabManagementStore.swift
-index 68792ff..ff4d3eb 100644
+index f27cb22..42b85dd 100644
 --- a/browser/Reynard/Client/Stores/TabManagementStore.swift
 +++ b/browser/Reynard/Client/Stores/TabManagementStore.swift
 @@ -70,6 +70,11 @@ final class TabManagementStore {
@@ -12726,7 +13138,7 @@ index 68792ff..ff4d3eb 100644
          self.storage = StorageURLs(
              directoryURL: directoryURL,
              databaseURL: directoryURL.appendingPathComponent("TabManagement", isDirectory: false),
-@@ -387,7 +400,10 @@ final class TabManagementStore {
+@@ -389,7 +402,10 @@ final class TabManagementStore {
          
          var database: OpaquePointer?
          let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
@@ -12739,7 +13151,7 @@ index 68792ff..ff4d3eb 100644
                  sqlite3_close(database)
              }
 diff --git a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-index c23eb59..68dd5fd 100644
+index 734e3d8..3ba8f37 100644
 --- a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
 +++ b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
 @@ -65,6 +65,10 @@ final class TabManagerImplementation: NSObject, TabManager {
@@ -12753,7 +13165,7 @@ index c23eb59..68dd5fd 100644
      private lazy var lenientURLExpression: NSRegularExpression = {
          let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
          return try! NSRegularExpression(pattern: pattern)
-@@ -669,6 +673,15 @@ final class TabManagerImplementation: NSObject, TabManager {
+@@ -661,6 +665,15 @@ final class TabManagerImplementation: NSObject, TabManager {
          regularTabs[index].state.showsStartupHomepage = true
      }
      
@@ -12769,7 +13181,7 @@ index c23eb59..68dd5fd 100644
      @discardableResult
      func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
          let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
-@@ -935,7 +948,12 @@ final class TabManagerImplementation: NSObject, TabManager {
+@@ -925,7 +938,12 @@ final class TabManagerImplementation: NSObject, TabManager {
      }
      
      func browse(to term: String, in tab: Tab) {
@@ -12783,7 +13195,7 @@ index c23eb59..68dd5fd 100644
          guard !navigationInput.isEmpty else {
              return
          }
-@@ -1465,11 +1483,19 @@ extension TabManagerImplementation: ContentDelegate {
+@@ -1386,11 +1404,19 @@ extension TabManagerImplementation: ContentDelegate {
      }
      
      func onSavePdf(session: GeckoSession, request: SavePdfInfo) {

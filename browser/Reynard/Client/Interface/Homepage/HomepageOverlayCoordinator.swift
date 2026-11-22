@@ -39,7 +39,6 @@ final class HomepageOverlayCoordinator {
     private let edgeHomepageViewController: HomepageViewController
     private let classicHomepageViewController: HomepageViewController
     private var homepageViewController: HomepageViewController
-    private let homepageThumbnailRenderer: HomepageThumbnailRenderer
     private var presentationIntent: HomepagePresentationIntent = .inactive
     
     private struct HomepagePresentation: Equatable {
@@ -61,7 +60,6 @@ final class HomepageOverlayCoordinator {
         edgeHomepageViewController = HomepageViewController(style: .edge)
         classicHomepageViewController = HomepageViewController(style: .classic)
         homepageViewController = edgeHomepageViewController
-        homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: edgeHomepageViewController)
         for controller in [edgeHomepageViewController, classicHomepageViewController] {
             controller.homepageDelegate = self
             controller.addressBarDelegate = self
@@ -121,47 +119,19 @@ final class HomepageOverlayCoordinator {
     
     // MARK: - Thumbnails
     
-    func prepareHomepageForNewTab(mode: TabMode) {
+    func makeThumbnail(for tab: Tab) -> UIImage? {
         guard let delegate,
-              showsHomepageForBlankTabs else {
-            return
-        }
-        
-        homepageThumbnailRenderer.prepareForCapture(
-            contentMode: embeddedContentMode(layout: delegate.homepageLayout),
-            isPrivateBrowsing: mode == .private
-        )
-    }
-    
-    func captureHomepageThumbnail(_ tab: Tab, completion: @escaping (UIImage?) -> Void) {
-        guard let delegate,
-              let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
-            completion(nil)
-            return
-        }
-        
-        homepageThumbnailRenderer.capture(
-            size: geometry.size,
-            visibleRect: geometry.visibleRect,
-            contentMode: embeddedContentMode(layout: delegate.homepageLayout),
-            isPrivateBrowsing: tab.isPrivate,
-            completion: completion
-        )
-    }
-    
-    func previewImage(for tab: Tab) -> UIImage? {
-        guard let delegate,
-              isHomepageTab(tab),
               let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
             return nil
         }
         
-        return homepageThumbnailRenderer.snapshot(
-            size: geometry.size,
-            visibleRect: geometry.visibleRect,
-            contentMode: embeddedContentMode(layout: delegate.homepageLayout),
-            isPrivateBrowsing: tab.isPrivate
-        )
+        // Homepage tabs show the Edge start page, so that is what their
+        // thumbnails show too.
+        let controller = edgeHomepageViewController
+        controller.setPrivateBrowsing(tab.isPrivate)
+        controller.setContentMode(embeddedContentMode(layout: delegate.homepageLayout))
+        controller.setShowsBackground(true)
+        return controller.makeThumbnail(size: geometry.size, visibleRect: geometry.visibleRect)
     }
     
     // MARK: - Presentation

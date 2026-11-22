@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 10/6/26.
 //
 
+import GeckoView
 import UIKit
 
 final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
@@ -615,7 +616,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     }
     
     func configureNavigationMenus(
-        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [GeckoSessionHistoryItem],
         onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
     ) {
         topToolbar.configureNavigationMenus(itemsProvider: itemsProvider, onSelect: onSelect)
