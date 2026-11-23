@@ -19,6 +19,12 @@ on:
         required: false
         default: ''
         type: string
+      runner:
+        description: macOS runner image (macos-26 is often out of capacity)
+        required: false
+        default: macos-15
+        type: choice
+        options: [macos-15, macos-26, macos-14]
       build_normal_ipa:
         description: Build normal IPA
         required: false
@@ -96,7 +102,9 @@ jobs:
     needs: prepare
     if: ${{ needs.prepare.outputs.should_build == 'true' }}
     name: "${{ matrix.variant == 'standard' && 'Build Standard / TrollStore' || 'Build Jailbroken' }}"
-    runs-on: macos-26
+    # macos-26 runners were repeatedly unavailable (jobs cancelled after
+    # 15 min in the queue), so pushes build on macos-15.
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
