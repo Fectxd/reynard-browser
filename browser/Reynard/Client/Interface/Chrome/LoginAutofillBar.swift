@@ -196,7 +196,9 @@ final class LoginAutofillPresenter {
         let bar = self.bar ?? LoginAutofillBar(frame: .zero)
         self.bar = bar
         bar.onSelect = { [weak self] login in
-            self?.activeSession?.autofillLogin(username: login.username, password: login.password)
+            if self?.activeSession?.autofillLogin(username: login.username, password: login.password) != true {
+                self?.activeSession?.fillLoginWithScript(username: login.username, password: login.password)
+            }
             self?.hide()
         }
         bar.onClose = { [weak self] in

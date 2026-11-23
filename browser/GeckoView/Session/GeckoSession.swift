@@ -255,19 +255,41 @@ public class GeckoSession {
     /// Goes through the same entry point iOS uses for an iCloud Passwords
     /// suggestion (`insertTextSuggestion:` with a `UITextAutofillSuggestion`),
     /// which the engine's text input turns into a credential fill.
-    public func autofillLogin(username: String, password: String) {
+    @discardableResult
+    public func autofillLogin(username: String, password: String) -> Bool {
         guard let target = focusedTextInputView,
               let suggestionClass = NSClassFromString("UITextAutofillSuggestion").flatMap({ ($0 as AnyObject) as? NSObjectProtocol }) else {
-            return
+            return false
         }
         let makeSelector = NSSelectorFromString("autofillSuggestionWithUsername:password:")
         let insertSelector = NSSelectorFromString("insertTextSuggestion:")
         guard suggestionClass.responds(to: makeSelector),
               target.responds(to: insertSelector),
               let suggestion = suggestionClass.perform(makeSelector, with: username, with: password)?.takeUnretainedValue() else {
-            return
+            return false
         }
         _ = target.perform(insertSelector, with: suggestion)
+        return true
+    }
+    
+    /// Backup fill when the system suggestion route is unavailable: sets the
+    /// focused field / its form's username and password inputs from a script
+    /// running in the page, firing input/change so page frameworks notice.
+    public func fillLoginWithScript(username: String, password: String) {
+        func literal(_ value: String) -> String {
+            let data = (try? JSONSerialization.data(withJSONObject: [value])) ?? Data("[\"\"]".utf8)
+            let array = String(decoding: data, as: UTF8.self)
+            return String(array.dropFirst().dropLast())
+        }
+        let script = "void(function(u,p){var a=document.activeElement;var f=(a&&a.form)||document;"
+            + "var pw=f.querySelector('input[type=password]');var us=null;"
+            + "if(a&&a.tagName==='INPUT'&&a.type!=='password'){us=a}else{"
+            + "var c=f.querySelectorAll('input[type=text],input[type=email],input[type=tel],input:not([type])');us=c.length?c[0]:null}"
+            + "function set(e,v){if(!e)return;var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');"
+            + "d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}"
+            + "set(us,u);set(pw,p)})(" + literal(username) + "," + literal(password) + ")"
+        let encoded = script.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? script
+        runBookmarklet(encoded)
     }
     
     /// Content type of the focused web text field ("username", "password",
