@@ -13310,6 +13310,44 @@ index 2afb90e..0000000
 -  content/GeckoViewPdfJsParent.sys.mjs (content/GeckoViewPdfJsParent.sys.mjs)
 -  content/GeckoViewPdfJsChild.sys.mjs (content/GeckoViewPdfJsChild.sys.mjs)
 -  content/web/viewer.html (content/web/viewer-geckoview.html)
+diff --git a/patches/zz-edge-ui/autofill-keyboard-guard.patch b/patches/zz-edge-ui/autofill-keyboard-guard.patch
+new file mode 100644
+index 0000000..8327f4d
+--- /dev/null
++++ b/patches/zz-edge-ui/autofill-keyboard-guard.patch
+@@ -0,0 +1,32 @@
++diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
++index ea1839d..0055d2c 100644
++--- a/widget/uikit/GeckoEditableSupport.mm
+++++ b/widget/uikit/GeckoEditableSupport.mm
++@@ -4247,9 +4247,26 @@ NS_IMETHODIMP AutofillListener::OnEvent(const nsAString& aEvent,
++     return;
++   }
++ 
+++  // Edge UI: these are private UIKit classes whose shape differs between
+++  // iPadOS versions; check each step instead of crashing with an
+++  // unrecognized selector when a login field gets focus.
+++  if (![keyboard respondsToSelector:@selector(keyboardStateManager)]) {
+++    return;
+++  }
++   id<GeckoKeyboardAutofillState> keyboardState =
++       (id<GeckoKeyboardAutofillState>)[keyboard keyboardStateManager];
++-  [keyboardState.autofillController.autofillGroup removeObjectsForKeys:@[
+++  if (![keyboardState respondsToSelector:@selector(autofillController)]) {
+++    return;
+++  }
+++  id autofillController = [keyboardState autofillController];
+++  if (![autofillController respondsToSelector:@selector(autofillGroup)]) {
+++    return;
+++  }
+++  id autofillGroup = [autofillController autofillGroup];
+++  if (![autofillGroup respondsToSelector:@selector(removeObjectsForKeys:)]) {
+++    return;
+++  }
+++  [autofillGroup removeObjectsForKeys:@[
++     UITextContentTypeUsername, UITextContentTypePassword,
++     UITextContentTypeOneTimeCode
++   ]];
 diff --git a/patches/zz-edge-ui/edge-ui-engine.patch b/patches/zz-edge-ui/edge-ui-engine.patch
 new file mode 100644
 index 0000000..1c99020

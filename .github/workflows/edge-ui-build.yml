@@ -155,6 +155,19 @@ jobs:
       - name: Apply Gecko patches
         run: ./tools/development/apply-patches.sh
 
+      # A fresh checkout stamps every source file (and CLOBBER) with the
+      # current time, so a restored object tree always looked stale: mach
+      # auto-clobbered it and rebuilt the whole engine, which then ran out of
+      # time. Give unchanged sources a fixed old date and only the files the
+      # patches changed or added the current time, so the restored objects are
+      # reused and just the patched parts recompile.
+      - name: Normalise Gecko source timestamps
+        working-directory: engine/firefox
+        run: |
+          git ls-files -z | xargs -0 touch -h -t 202001010000
+          git diff --name-only -z HEAD | xargs -0 touch -h || true
+          git ls-files -z --others --exclude-standard | xargs -0 touch -h || true
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
