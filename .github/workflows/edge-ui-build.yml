@@ -110,11 +110,15 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
       SCCACHE_GHA_ENABLED: "true"
-      # Host tools in the object tree / toolchains are per CPU type: an
-      # Apple Silicon cache can't run on an Intel runner ("Bad CPU type").
-      SCCACHE_GHA_VERSION: ${{ matrix.sccache_namespace }}-${{ runner.arch }}
+      SCCACHE_GHA_VERSION: ${{ matrix.sccache_namespace }}
 
     steps:
+      # Host tools in the object tree / toolchains are per CPU type: an
+      # Apple Silicon cache can't run on an Intel runner ("Bad CPU type").
+      # (The runner context isn't allowed in job-level env, so set it here.)
+      - name: Separate sccache namespace per CPU type
+        run: echo "SCCACHE_GHA_VERSION=${{ matrix.sccache_namespace }}-${{ runner.arch }}" >> "$GITHUB_ENV"
+
       - name: Check out repository
         uses: actions/checkout@v4
         with:
