@@ -190,15 +190,26 @@ jobs:
       # Swift-only change reuses this cache and `./mach build` becomes an
       # incremental compile instead of a full ~2-3h rebuild. --auto-clobber is
       # kept so a genuine Gecko merge-day change still wipes + rebuilds safely.
+      # Restore and save are split so a partial build is kept: if the engine
+      # build runs out of time, the half-built object tree is still saved
+      # (see "Save Gecko object cache") and the next run resumes from it.
+      # Every save uses a unique key; the prefix restore picks the newest.
       - name: Restore Gecko object cache
-        uses: actions/cache@v4
+        id: gecko_obj_cache
+        uses: actions/cache/restore@v4
         with:
           path: engine/firefox/obj-aarch64-apple-ios
-          key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}
+          key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-
             edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-
 
       - name: Build Gecko
+        id: gecko_build
+        # Stop well before the 6 h job cap so there is time left to save the
+        # partial object tree; the job then fails and a re-run continues.
+        timeout-minutes: 285
+        continue-on-error: true
         env:
           CC: clang
           CXX: clang++
@@ -223,6 +234,19 @@ jobs:
           kill "$tail_pid" 2>/dev/null
           wait "$tail_pid" 2>/dev/null
           exit "$build_status"
+
+      - name: Save Gecko object cache
+        if: ${{ always() && steps.gecko_build.outcome != 'skipped' }}
+        uses: actions/cache/save@v4
+        with:
+          path: engine/firefox/obj-aarch64-apple-ios
+          key: ${{ steps.gecko_obj_cache.outputs.cache-primary-key }}
+
+      - name: Stop if the engine build did not finish
+        if: ${{ steps.gecko_build.outcome != 'success' }}
+        run: |
+          echo "::error::Gecko build did not finish (timed out or failed). Progress was cached: re-run this workflow to continue from where it stopped."
+          exit 1
 
       - name: Build idevice support library
         run: ./tools/development/build-idevice.sh
