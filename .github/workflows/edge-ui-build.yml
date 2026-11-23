@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       upstream_ref:
-        description: Upstream (minh-ton/reynard-browser) branch or tag to patch
+        description: Upstream (minh-ton/reynard-browser) branch, tag or commit to patch (empty = the pinned base below)
         required: false
-        default: main
+        default: ''
         type: string
       build_normal_ipa:
         description: Build normal IPA
@@ -116,7 +116,10 @@ jobs:
           git remote add upstream https://github.com/minh-ton/reynard-browser.git 2>/dev/null || true
           git fetch --no-tags upstream "${UPSTREAM_REF}"
         env:
-          UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+          # Pinned to the upstream commit edge-ui was last merged with, so an
+          # upstream refactor can't break pushes before it has been merged.
+          # Bump this together with each upstream merge.
+          UPSTREAM_REF: ${{ inputs.upstream_ref || '7d5633f7f6d9df0c2aa832537a8b25f59296df3a' }}
 
       # Reset browser/, engine/ and patches/ to the upstream revision and replay
       # tools/edge-ui on top. This proves on every build that the customisation

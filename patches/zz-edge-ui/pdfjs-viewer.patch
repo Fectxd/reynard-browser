@@ -1,0 +1,85 @@
+diff --git a/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs b/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs
+index 7ca3d74..4dcd00b 100644
+--- a/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs
++++ b/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs
+@@ -787,6 +787,22 @@ export class PdfJsParent extends JSWindowActorParent {
+ 
+   _saveURL(aMsg) {
+     const { blobUrl, originalUrl, filename, isModified } = aMsg.data;
++    // Edge UI (iOS): there is no desktop save dialog in GeckoView. Hand the
++    // PDF -- a blob: URL holding the annotated document -- to the app the same
++    // way the GeckoView viewer does, so its Save / Save As sheet handles it.
++    const eventDispatcher =
++      this.browser?.documentGlobal?.moduleManager?.eventDispatcher;
++    if (eventDispatcher) {
++      eventDispatcher.sendRequest("GeckoView:SavePdf", {
++        url: blobUrl,
++        filename,
++        originalUrl,
++        isPrivate: lazy.PrivateBrowsingUtils.isBrowserPrivate(this.browser),
++        skipConfirmation: true,
++        requestExternalApp: false,
++      });
++      return;
++    }
+     this.browser.documentGlobal.saveURL(
+       blobUrl /* aURL */,
+       originalUrl /* aOriginalURL */,
+diff --git a/toolkit/components/pdfjs/content/web/viewer.mjs b/toolkit/components/pdfjs/content/web/viewer.mjs
+index b0bd011..9c746f3 100644
+--- a/toolkit/components/pdfjs/content/web/viewer.mjs
++++ b/toolkit/components/pdfjs/content/web/viewer.mjs
+@@ -20080,3 +20080,53 @@ if (document.readyState === "interactive" || document.readyState === "complete")
+ }
+ 
+ export { PDFViewerApplication, AppConstants as PDFViewerApplicationConstants, AppOptions as PDFViewerApplicationOptions };
++
++// Edge UI: the pen / highlighter options panel stays open after picking the
++// tool and covers the page while writing. Tuck it away as soon as drawing
++// starts on the page (the tool stays active); tapping the tool button again
++// brings the panel back instead of leaving the tool.
++(function edgeAutoHideEditorParams() {
++  const tools = [
++    ["editorInkButton", "editorInkParamsToolbar"],
++    ["editorHighlightButton", "editorHighlightParamsToolbar"],
++  ];
++  document.addEventListener(
++    "pointerdown",
++    event => {
++      const target = event.target;
++      if (!(target instanceof Element) || !target.closest("#viewerContainer")) {
++        return;
++      }
++      for (const [buttonId, panelId] of tools) {
++        const button = document.getElementById(buttonId);
++        const panel = document.getElementById(panelId);
++        if (
++          button?.classList.contains("toggled") &&
++          panel &&
++          !panel.classList.contains("hidden") &&
++          !panel.contains(target)
++        ) {
++          panel.classList.add("hidden");
++          button.setAttribute("aria-expanded", "false");
++        }
++      }
++    },
++    true
++  );
++  for (const [buttonId, panelId] of tools) {
++    document.getElementById(buttonId)?.addEventListener(
++      "click",
++      event => {
++        const button = event.currentTarget;
++        const panel = document.getElementById(panelId);
++        if (button.classList.contains("toggled") && panel?.classList.contains("hidden")) {
++          event.stopImmediatePropagation();
++          event.preventDefault();
++          panel.classList.remove("hidden");
++          button.setAttribute("aria-expanded", "true");
++        }
++      },
++      true
++    );
++  }
++})();
