@@ -20,9 +20,11 @@ cd "$ROOT_DIR"
 BASE=$(git merge-base HEAD "$UPSTREAM_REF")
 
 # Include new, not-yet-committed files in the diff.
-git add -A -N browser
+git add -A -N browser patches
 
-git -c core.autocrlf=false diff --no-color --no-ext-diff "$BASE" -- browser \
+# patches/ is included too: Edge-only engine patches live in patches/zz-edge-ui/
+# (applied after upstream's), and upstream engine patches we drop are deleted.
+git -c core.autocrlf=false diff --no-color --no-ext-diff "$BASE" -- browser patches \
 	':(exclude)browser/Reynard/Resources/Localizable.xcstrings' \
 	':(exclude,glob)browser/**/*.png' \
 	':(exclude,glob)browser/**/*.jpg' \

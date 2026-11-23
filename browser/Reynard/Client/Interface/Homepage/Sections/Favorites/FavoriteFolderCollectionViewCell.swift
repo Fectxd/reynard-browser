@@ -104,7 +104,6 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
 
     override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
         super.apply(layoutAttributes)
-        setNeedsLayout()
         alpha = 1
         emptyIconView.alpha = layoutAttributes.alpha
         previewGridView.alpha = layoutAttributes.alpha

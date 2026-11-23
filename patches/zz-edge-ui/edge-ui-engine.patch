@@ -1,0 +1,97 @@
+diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+index 8f2cc35..07a46e3 100644
+--- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
++++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+@@ -112,6 +112,39 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+     return SCREEN_ORIENTATION_PORTRAIT;
+   }
+ 
++  // Edge UI: in-page developer tools (Eruda), the mobile stand-in for F12.
++  // Shows the panel if it is already loaded, otherwise inserts its script.
++  edgeShowDevTools(aUrl) {
++    const win = this.contentWindow;
++    const doc = win?.document;
++    if (!doc) {
++      return "no-document";
++    }
++    const page = win.wrappedJSObject;
++    if (page.eruda) {
++      try {
++        page.eruda.init();
++      } catch (e) {}
++      page.eruda.show();
++      return "shown";
++    }
++    const script = doc.createElement("script");
++    script.src = aUrl;
++    script.addEventListener("load", () => {
++      try {
++        win.wrappedJSObject.eruda.init();
++        win.wrappedJSObject.eruda.show();
++      } catch (e) {
++        win.alert("开发者面板初始化失败：" + e);
++      }
++    });
++    script.addEventListener("error", () => {
++      win.alert("开发者面板加载失败（网络或页面安全策略限制）");
++    });
++    (doc.head || doc.documentElement).appendChild(script);
++    return "loading";
++  }
++
+   receiveMessage(message) {
+     const { name } = message;
+     debug`receiveMessage: ${name}`;
+@@ -122,6 +155,8 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+         return this.getFocusedInputMetrics();
+       case "FetchImage":
+         return this.fetchImage(message.data.url);
++      case "EdgeShowDevTools":
++        return this.edgeShowDevTools(message.data.url);
+     }
+ 
+     switch (name) {
+diff --git a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
+index 7f06d28..a2982a4 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
+@@ -33,6 +33,8 @@ export class GeckoViewContent extends GeckoViewModule {
+       "GeckoView:Autofill:FillCredentials",
+       "GeckoView:GetFocusedInputMetrics",
+       "GeckoView:FetchImage",
++      "GeckoView:Edge:ShowDevTools",
++      "GeckoView:Edge:FillLogin",
+     ]);
+   }
+ 
+@@ -194,6 +196,14 @@ export class GeckoViewContent extends GeckoViewModule {
+       case "GeckoView:FetchImage":
+         this._fetchImage(aData, aCallback);
+         return;
++      case "GeckoView:Edge:ShowDevTools":
++        this._edgeShowDevTools(aData, aCallback);
++        return;
++      case "GeckoView:Edge:FillLogin":
++        // Same fill as the iCloud Passwords path, but with an object payload
++        // the app can send ({ username, password }).
++        this._fillCredentials([aData.username ?? "", aData.password ?? ""]);
++        return;
+     }
+ 
+     switch (aEvent) {
+@@ -562,6 +572,15 @@ export class GeckoViewContent extends GeckoViewModule {
+     }
+   }
+ 
++  async _edgeShowDevTools(aData, aCallback) {
++    try {
++      const result = await this.actor.sendQuery("EdgeShowDevTools", aData);
++      aCallback?.onSuccess(result);
++    } catch (error) {
++      aCallback?.onError(`Cannot show developer tools: ${error}`);
++    }
++  }
++
+   async _fetchImage(aData, aCallback) {
+     try {
+       aCallback.onSuccess(await this.actor.sendQuery("FetchImage", aData));

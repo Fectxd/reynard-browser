@@ -130,10 +130,10 @@ index 30e447a..5c8ddee 100644
 +    }
  }
 diff --git a/browser/GeckoView/Session/GeckoSession.swift b/browser/GeckoView/Session/GeckoSession.swift
-index bcc8ffe..49cace8 100644
+index bcc8ffe..38c20c3 100644
 --- a/browser/GeckoView/Session/GeckoSession.swift
 +++ b/browser/GeckoView/Session/GeckoSession.swift
-@@ -244,6 +244,79 @@ public class GeckoSession {
+@@ -244,6 +244,69 @@ public class GeckoSession {
      
      public func isOpen() -> Bool { window != nil }
      
@@ -165,24 +165,14 @@ index bcc8ffe..49cace8 100644
 +        return true
 +    }
 +    
-+    /// Backup fill when the system suggestion route is unavailable: sets the
-+    /// focused field / its form's username and password inputs from a script
-+    /// running in the page, firing input/change so page frameworks notice.
-+    public func fillLoginWithScript(username: String, password: String) {
-+        func literal(_ value: String) -> String {
-+            let data = (try? JSONSerialization.data(withJSONObject: [value])) ?? Data("[\"\"]".utf8)
-+            let array = String(decoding: data, as: UTF8.self)
-+            return String(array.dropFirst().dropLast())
-+        }
-+        let script = "void(function(u,p){var a=document.activeElement;var f=(a&&a.form)||document;"
-+            + "var pw=f.querySelector('input[type=password]');var us=null;"
-+            + "if(a&&a.tagName==='INPUT'&&a.type!=='password'){us=a}else{"
-+            + "var c=f.querySelectorAll('input[type=text],input[type=email],input[type=tel],input:not([type])');us=c.length?c[0]:null}"
-+            + "function set(e,v){if(!e)return;var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');"
-+            + "d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}"
-+            + "set(us,u);set(pw,p)})(" + literal(username) + "," + literal(password) + ")"
-+        let encoded = script.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? script
-+        runBookmarklet(encoded)
++    /// Backup fill when the system suggestion route is unavailable: asks the
++    /// engine to fill the focused login form (Edge engine patch, same fill as
++    /// the iCloud Passwords path).
++    public func fillLoginThroughEngine(username: String, password: String) {
++        dispatcher.dispatch(
++            type: "GeckoView:Edge:FillLogin",
++            message: ["username": username, "password": password]
++        )
 +    }
 +    
 +    /// Content type of the focused web text field ("username", "password",
@@ -213,25 +203,14 @@ index bcc8ffe..49cace8 100644
      public var engineView: UIView? {
          return window?.view()
      }
-@@ -291,6 +364,23 @@ public class GeckoSession {
+@@ -291,6 +354,12 @@ public class GeckoSession {
              ])
      }
      
-+    /// Runs a `javascript:` bookmarklet in the current page. The load names
-+    /// this session as its referrer, so the script runs with the page's own
-+    /// principal (like a desktop bookmarklet) instead of the system principal.
-+    public func runBookmarklet(_ script: String) {
-+        guard let id else {
-+            return
-+        }
-+        dispatcher.dispatch(
-+            type: "GeckoView:LoadUri",
-+            message: [
-+                "uri": "javascript:" + script,
-+                "flags": GeckoSessionLoadFlags.none,
-+                "referrerSessionId": id,
-+                "headerFilter": 1,
-+            ])
++    /// Edge UI: shows the in-page developer tools (Eruda) loaded from
++    /// `scriptURL`. Handled by the Edge engine patch in GeckoViewContent.
++    public func showDeveloperTools(scriptURL: String) {
++        dispatcher.dispatch(type: "GeckoView:Edge:ShowDevTools", message: ["url": scriptURL])
 +    }
 +    
      public func stop() {
@@ -1323,7 +1302,7 @@ index 0000000..e6dd4d2
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 new file mode 100644
-index 0000000..d7abd78
+index 0000000..c670306
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 @@ -0,0 +1,262 @@
@@ -1526,7 +1505,7 @@ index 0000000..d7abd78
 +        self.bar = bar
 +        bar.onSelect = { [weak self] login in
 +            if self?.activeSession?.autofillLogin(username: login.username, password: login.password) != true {
-+                self?.activeSession?.fillLoginWithScript(username: login.username, password: login.password)
++                self?.activeSession?.fillLoginThroughEngine(username: login.username, password: login.password)
 +            }
 +            self?.hide()
 +        }
@@ -2844,10 +2823,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..1a91869
+index 0000000..777d88e
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,346 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -3116,22 +3095,14 @@ index 0000000..1a91869
 +    /// (UIApplication suspend), which references a real method so #selector
 +    /// compiles.
 +    /// "开发者面板": an in-page DevTools (Eruda: console, elements, network,
-+    /// resources, sources), the mobile counterpart of F12. Injected as a
-+    /// bookmarklet; choosing it again shows the panel if it was closed.
++    /// resources, sources), the mobile counterpart of F12. Inserted into the
++    /// page by the engine; choosing it again shows the panel if it was closed.
 +    /// Pages with a strict Content-Security-Policy may refuse the script.
 +    private func toggleDeveloperTools() {
 +        guard let tab = tabManager.selectedTab else {
 +            return
 +        }
-+        let script = """
-+        void(function(){if(window.eruda){try{eruda.init()}catch(e){}eruda.show();return;}\
-+        var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js';\
-+        s.onload=function(){eruda.init();eruda.show();};\
-+        s.onerror=function(){alert('开发者面板加载失败（网络或页面安全策略限制）');};\
-+        (document.head||document.documentElement).appendChild(s);})()
-+        """
-+        let encoded = script.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? script
-+        tab.session.runBookmarklet(encoded)
++        tab.session.showDeveloperTools(scriptURL: "https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js")
 +    }
 +    
 +    private func exitBrowserToBackground() {
@@ -5550,10 +5521,10 @@ index 0000000..eacfede
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..22e17b3
+index 0000000..42f449d
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1204 @@
+@@ -0,0 +1,1205 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -5891,6 +5862,7 @@ index 0000000..22e17b3
 +            }
 +            pagesStackView.setNeedsLayout()
 +            pagesStackView.layoutIfNeeded()
++            favoritesSectionViewController?.relayoutForWidthChange()
 +        }
 +        
 +        guard !pagerScrollView.isTracking,
@@ -9549,7 +9521,7 @@ index 0a43704..18f75f3 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
-index ca9d57b..9f03e70 100644
+index ca9d57b..18392bf 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteFolderCollectionViewCell.swift
 @@ -62,7 +62,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
@@ -9561,16 +9533,8 @@ index ca9d57b..9f03e70 100644
          label.translatesAutoresizingMaskIntoConstraints = false
          label.font = FavoriteFolderCollectionViewCell.titleFont
          label.textAlignment = .center
-@@ -104,6 +104,7 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
- 
-     override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
-         super.apply(layoutAttributes)
-+        setNeedsLayout()
-         alpha = 1
-         emptyIconView.alpha = layoutAttributes.alpha
-         previewGridView.alpha = layoutAttributes.alpha
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
-index f25f2c4..be1f830 100644
+index f25f2c4..97d463d 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoriteSiteCollectionViewCell.swift
 @@ -64,7 +64,7 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
@@ -9582,23 +9546,6 @@ index f25f2c4..be1f830 100644
          label.translatesAutoresizingMaskIntoConstraints = false
          label.font = FavoriteSiteCollectionViewCell.titleFont
          label.textAlignment = .center
-@@ -97,10 +97,16 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
-         setReorderState(.resting, animated: false)
-     }
-     
-+    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
-+        super.apply(layoutAttributes)
-+        setNeedsLayout()
-+    }
-+    
-     override func layoutSubviews() {
-         super.layoutSubviews()
-         updateIconSize()
-         updateShadowColor()
-+        contentView.layoutIfNeeded()
-     }
-     
-     func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
 index 455c732..0ed577c 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesCollectionViewLayout.swift
@@ -9645,7 +9592,7 @@ index 455c732..0ed577c 100644
          return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
      }
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-index bf26062..ddfe9b9 100644
+index bf26062..4894a4c 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 @@ -55,7 +55,7 @@ final class FavoritesSectionViewController: UIViewController {
@@ -9731,31 +9678,31 @@ index bf26062..ddfe9b9 100644
              return false
          }
          
-@@ -351,9 +386,14 @@ final class FavoritesSectionViewController: UIViewController {
-             return
-         }
-         
-+        // Icons never shrink below a readable size: in very narrow windows
-+        // drop columns instead (and get them back as the window widens).
-+        let minimumIconSize: CGFloat = 44
-+        let fittingColumns = Int((width - UX.horizontalInset * 2 + 15) / (minimumIconSize + 15))
-+        let columnCount = max(1, min(contentMode.favoriteColumnCount, fittingColumns))
-         let metrics = FavoritesLayoutMetrics(
-             width: width,
--            columnCount: contentMode.favoriteColumnCount,
-+            columnCount: columnCount,
-             horizontalInset: UX.horizontalInset,
-             lineSpacing: UX.rowSpacing
-         )
-@@ -361,9 +401,14 @@ final class FavoritesSectionViewController: UIViewController {
-             || collectionLayout.metrics != metrics {
-             lastLaidOutWidth = width
+@@ -337,6 +372,22 @@ final class FavoritesSectionViewController: UIViewController {
+     
+     // MARK: - Layout
+     
++    /// Edge start page: the window width changed (Split View, Stage Manager,
++    /// rotation). Recompute the grid from scratch and rebuild the cells so an
++    /// earlier, very narrow size can never stay stuck in metrics or cells.
++    func relayoutForWidthChange() {
++        guard isViewLoaded else {
++            return
++        }
++        lastLaidOutWidth = -1
++        collectionLayout.metrics = nil
++        view.setNeedsLayout()
++        view.layoutIfNeeded()
++        updateFavoriteGridLayout()
++        collectionView.reloadData()
++        collectionView.layoutIfNeeded()
++    }
++    
+     private func invalidateFavoriteLayout() {
+         lastLaidOutWidth = -1
+         UIView.performWithoutAnimation {
+@@ -363,7 +414,7 @@ final class FavoritesSectionViewController: UIViewController {
              collectionLayout.metrics = metrics
-+            // Cells size their icon from their own bounds; make every visible
-+            // cell re-measure so icons grow back after an extreme shrink.
-+            for cell in collectionView.visibleCells {
-+                cell.setNeedsLayout()
-+            }
          }
          
 -        let displayedItemCount = itemCount ?? displayedFavoriteItems.count
@@ -9763,7 +9710,7 @@ index bf26062..ddfe9b9 100644
          let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
          let contentHeight = metrics.contentHeight(rowCount: rowCount)
          guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
-@@ -426,7 +471,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -426,7 +477,7 @@ final class FavoritesSectionViewController: UIViewController {
          let viewController = EditBookmarkViewController(bookmark: bookmark, store: bookmarkStore)
          let navigationController = UINavigationController(rootViewController: viewController)
          navigationController.modalPresentationStyle = .pageSheet
@@ -9772,7 +9719,7 @@ index bf26062..ddfe9b9 100644
      }
      
      func deleteFavoriteBookmark(_ bookmark: BookmarkSnapshot) {
-@@ -456,6 +501,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -456,6 +507,7 @@ final class FavoritesSectionViewController: UIViewController {
              let translation = gestureRecognizer.translation(in: collectionView)
              let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
              guard let indexPath = collectionView.indexPathForItem(at: startLocation),
@@ -9780,7 +9727,7 @@ index bf26062..ddfe9b9 100644
                    let cell = collectionView.cellForItem(at: indexPath),
                    collectionView.beginInteractiveMovementForItem(at: indexPath) else {
                  return
-@@ -481,6 +527,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -481,6 +533,7 @@ final class FavoritesSectionViewController: UIViewController {
      @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
          let location = gestureRecognizer.location(in: collectionView)
          guard let indexPath = collectionView.indexPathForItem(at: location),
@@ -9788,7 +9735,7 @@ index bf26062..ddfe9b9 100644
                let cell = collectionView.cellForItem(at: indexPath) else {
              return
          }
-@@ -494,6 +541,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -494,6 +547,7 @@ final class FavoritesSectionViewController: UIViewController {
          switch gestureRecognizer.state {
          case .began:
              guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
@@ -9796,7 +9743,7 @@ index bf26062..ddfe9b9 100644
                    let cell = collectionView.cellForItem(at: indexPath) else {
                  return
              }
-@@ -624,10 +672,19 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -624,10 +678,19 @@ final class FavoritesSectionViewController: UIViewController {
  
  extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
      func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -9817,7 +9764,7 @@ index bf26062..ddfe9b9 100644
          switch displayedFavoriteItems[indexPath.item] {
          case let .bookmark(bookmark):
              let cell = collectionView.dequeueReusableCell(
-@@ -655,6 +712,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -655,6 +718,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
      }
      
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -9828,7 +9775,7 @@ index bf26062..ddfe9b9 100644
          guard displayedFavoriteItems.indices.contains(indexPath.item) else {
              return
          }
-@@ -671,6 +732,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -671,6 +738,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
          return displayedFavoriteItems.indices.contains(indexPath.item)
      }
      
@@ -11564,7 +11511,7 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..d4116de 100644
+index 6da82ce..ff63e18 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -12025,14 +11972,24 @@ index 6da82ce..d4116de 100644
      func collectionView(
          _ collectionView: UICollectionView,
          targetIndexPathForMoveFromItemAt originalIndexPath: IndexPath,
-@@ -796,3 +1005,76 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
+@@ -796,3 +1005,95 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
          return CGSize(width: cellLayout.width, height: bounds.height)
      }
  }
 +
 +// MARK: - Drag & drop reordering (continues from the context menu lift)
 +
++/// Index the lifted tab currently occupies while a system drag is running.
++/// The tab is moved live as the finger passes other tabs, so the rest of the
++/// strip slides aside immediately (like the press-and-drag reorder).
++private var tabDropCurrentIndexKey: UInt8 = 0
++
 +extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
++    private var dropCurrentIndex: Int? {
++        get { objc_getAssociatedObject(self, &tabDropCurrentIndexKey) as? Int }
++        set { objc_setAssociatedObject(self, &tabDropCurrentIndexKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
++    }
++    
 +    func collectionView(
 +        _ collectionView: UICollectionView,
 +        itemsForBeginning session: UIDragSession,
@@ -12045,6 +12002,7 @@ index 6da82ce..d4116de 100644
 +        }
 +        let item = UIDragItem(itemProvider: NSItemProvider())
 +        item.localObject = indexPath.item
++        dropCurrentIndex = indexPath.item
 +        return [item]
 +    }
 +    
@@ -12065,6 +12023,11 @@ index 6da82ce..d4116de 100644
 +        return true
 +    }
 +    
++    func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
++        dropCurrentIndex = nil
++        collectionViewLayout.invalidateLayout()
++    }
++    
 +    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
 +        return session.localDragSession != nil
 +    }
@@ -12074,32 +12037,35 @@ index 6da82ce..d4116de 100644
 +        dropSessionDidUpdate session: UIDropSession,
 +        withDestinationIndexPath destinationIndexPath: IndexPath?
 +    ) -> UICollectionViewDropProposal {
-+        guard session.localDragSession != nil, collectionView.hasActiveDrag else {
++        guard session.localDragSession != nil, let current = dropCurrentIndex else {
 +            return UICollectionViewDropProposal(operation: .forbidden)
 +        }
-+        return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
++        let location = session.location(in: self)
++        if let target = indexPathForItem(at: location)?.item,
++           target != current,
++           let count = tabBar?.dataSource?.tabs.count,
++           (0..<count).contains(target),
++           (0..<count).contains(current) {
++            // Move now so the other tabs reflow under the finger.
++            dropCurrentIndex = target
++            performBatchUpdates({
++                self.tabBar?.requestMoveTab(from: current, to: target)
++                self.moveItem(at: IndexPath(item: current, section: 0), to: IndexPath(item: target, section: 0))
++            }, completion: { [weak self] _ in
++                self?.collectionViewLayout.invalidateLayout()
++            })
++        }
++        return UICollectionViewDropProposal(operation: .move, intent: .unspecified)
 +    }
 +    
 +    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
-+        guard let dropItem = coordinator.items.first,
-+              let sourceIndexPath = dropItem.sourceIndexPath,
-+              let count = tabBar?.dataSource?.tabs.count, count > 0 else {
++        guard let dropItem = coordinator.items.first, let current = dropCurrentIndex else {
 +            return
 +        }
-+        var destination = coordinator.destinationIndexPath ?? IndexPath(item: count - 1, section: 0)
-+        destination.item = min(max(destination.item, 0), count - 1)
-+        guard destination != sourceIndexPath else {
-+            coordinator.drop(dropItem.dragItem, toItemAt: sourceIndexPath)
-+            return
-+        }
-+        performBatchUpdates({
-+            // Same model path as the interactive reorder (moveItemAt).
-+            self.tabBar?.requestMoveTab(from: sourceIndexPath.item, to: destination.item)
-+            self.moveItem(at: sourceIndexPath, to: destination)
-+        }, completion: { [weak self] _ in
-+            self?.collectionViewLayout.invalidateLayout()
-+        })
-+        coordinator.drop(dropItem.dragItem, toItemAt: destination)
++        // The tab already sits at its final slot; just land the preview there.
++        coordinator.drop(dropItem.dragItem, toItemAt: IndexPath(item: current, section: 0))
++        dropCurrentIndex = nil
++        collectionViewLayout.invalidateLayout()
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
@@ -13287,3 +13253,163 @@ index f5cb73e..25dd582 100644
          browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
          
          let window = UIWindow(windowScene: windowScene)
+diff --git a/patches/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs.patch b/patches/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs.patch
+deleted file mode 100644
+index f7b93a4..0000000
+--- a/patches/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs.patch
++++ /dev/null
+@@ -1,32 +0,0 @@
+-diff --git a/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs b/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs
+-index 2ff845c35866..3476eee498b2 100644
+---- a/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs
+-+++ b/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs
+-@@ -35,6 +35,8 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+- import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+- import { isEmbeddedPdfLoad } from "resource://gre/modules/pdfjs.sys.mjs";
+- 
+-+const isMobilePlatform = ["android", "ios"].includes(AppConstants.platform);
+-+
+- // Non-pdfjs preferences to get when the viewer is created and to observe.
+- const toolbarDensityPref = "browser.uidensity";
+- const caretBrowsingModePref = "accessibility.browsewithcaret";
+-@@ -102,8 +104,7 @@ function getDOMWindow(aChannel, aPrincipal) {
+- 
+- function getActor(window) {
+-   try {
+--    const actorName =
+--      AppConstants.platform === "android" ? "GeckoViewPdfJs" : "PdfJs";
+-+    const actorName = isMobilePlatform ? "GeckoViewPdfJs" : "PdfJs";
+-     return window.windowGlobalChild.getActor(actorName);
+-   } catch (ex) {
+-     return null;
+-@@ -775,7 +776,7 @@ class ChromeActions {
+-   }
+- 
+-   isMobile() {
+--    return AppConstants.platform === "android";
+-+    return isMobilePlatform;
+-   }
+- 
+-   async getNimbusExperimentData() {
+diff --git a/patches/toolkit/components/pdfjs/jar.mn.patch b/patches/toolkit/components/pdfjs/jar.mn.patch
+deleted file mode 100644
+index 2afb90e..0000000
+--- a/patches/toolkit/components/pdfjs/jar.mn.patch
++++ /dev/null
+@@ -1,13 +0,0 @@
+-diff --git a/toolkit/components/pdfjs/jar.mn b/toolkit/components/pdfjs/jar.mn
+-index c084d6338866..17500da72b25 100644
+---- a/toolkit/components/pdfjs/jar.mn
+-+++ b/toolkit/components/pdfjs/jar.mn
+-@@ -20,7 +20,7 @@ pdfjs.jar:
+-  content/web/wasm/jbig2.wasm (content/web/wasm/jbig2.wasm)
+-  content/web/wasm/jbig2_nowasm_fallback.js (content/web/wasm/jbig2_nowasm_fallback.js)
+-  content/web/iccs/ (content/web/iccs/*.icc)
+--#ifdef ANDROID
+-+#if defined(ANDROID) || defined(XP_IOS)
+-  content/GeckoViewPdfJsParent.sys.mjs (content/GeckoViewPdfJsParent.sys.mjs)
+-  content/GeckoViewPdfJsChild.sys.mjs (content/GeckoViewPdfJsChild.sys.mjs)
+-  content/web/viewer.html (content/web/viewer-geckoview.html)
+diff --git a/patches/zz-edge-ui/edge-ui-engine.patch b/patches/zz-edge-ui/edge-ui-engine.patch
+new file mode 100644
+index 0000000..1c99020
+--- /dev/null
++++ b/patches/zz-edge-ui/edge-ui-engine.patch
+@@ -0,0 +1,97 @@
++diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
++index 8f2cc35..07a46e3 100644
++--- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+++++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
++@@ -112,6 +112,39 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
++     return SCREEN_ORIENTATION_PORTRAIT;
++   }
++ 
+++  // Edge UI: in-page developer tools (Eruda), the mobile stand-in for F12.
+++  // Shows the panel if it is already loaded, otherwise inserts its script.
+++  edgeShowDevTools(aUrl) {
+++    const win = this.contentWindow;
+++    const doc = win?.document;
+++    if (!doc) {
+++      return "no-document";
+++    }
+++    const page = win.wrappedJSObject;
+++    if (page.eruda) {
+++      try {
+++        page.eruda.init();
+++      } catch (e) {}
+++      page.eruda.show();
+++      return "shown";
+++    }
+++    const script = doc.createElement("script");
+++    script.src = aUrl;
+++    script.addEventListener("load", () => {
+++      try {
+++        win.wrappedJSObject.eruda.init();
+++        win.wrappedJSObject.eruda.show();
+++      } catch (e) {
+++        win.alert("开发者面板初始化失败：" + e);
+++      }
+++    });
+++    script.addEventListener("error", () => {
+++      win.alert("开发者面板加载失败（网络或页面安全策略限制）");
+++    });
+++    (doc.head || doc.documentElement).appendChild(script);
+++    return "loading";
+++  }
+++
++   receiveMessage(message) {
++     const { name } = message;
++     debug`receiveMessage: ${name}`;
++@@ -122,6 +155,8 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
++         return this.getFocusedInputMetrics();
++       case "FetchImage":
++         return this.fetchImage(message.data.url);
+++      case "EdgeShowDevTools":
+++        return this.edgeShowDevTools(message.data.url);
++     }
++ 
++     switch (name) {
++diff --git a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
++index 7f06d28..a2982a4 100644
++--- a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
+++++ b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
++@@ -33,6 +33,8 @@ export class GeckoViewContent extends GeckoViewModule {
++       "GeckoView:Autofill:FillCredentials",
++       "GeckoView:GetFocusedInputMetrics",
++       "GeckoView:FetchImage",
+++      "GeckoView:Edge:ShowDevTools",
+++      "GeckoView:Edge:FillLogin",
++     ]);
++   }
++ 
++@@ -194,6 +196,14 @@ export class GeckoViewContent extends GeckoViewModule {
++       case "GeckoView:FetchImage":
++         this._fetchImage(aData, aCallback);
++         return;
+++      case "GeckoView:Edge:ShowDevTools":
+++        this._edgeShowDevTools(aData, aCallback);
+++        return;
+++      case "GeckoView:Edge:FillLogin":
+++        // Same fill as the iCloud Passwords path, but with an object payload
+++        // the app can send ({ username, password }).
+++        this._fillCredentials([aData.username ?? "", aData.password ?? ""]);
+++        return;
++     }
++ 
++     switch (aEvent) {
++@@ -562,6 +572,15 @@ export class GeckoViewContent extends GeckoViewModule {
++     }
++   }
++ 
+++  async _edgeShowDevTools(aData, aCallback) {
+++    try {
+++      const result = await this.actor.sendQuery("EdgeShowDevTools", aData);
+++      aCallback?.onSuccess(result);
+++    } catch (error) {
+++      aCallback?.onError(`Cannot show developer tools: ${error}`);
+++    }
+++  }
+++
++   async _fetchImage(aData, aCallback) {
++     try {
++       aCallback.onSuccess(await this.actor.sendQuery("FetchImage", aData));

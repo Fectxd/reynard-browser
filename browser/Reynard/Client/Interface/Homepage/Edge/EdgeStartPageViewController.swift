@@ -335,6 +335,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             }
             pagesStackView.setNeedsLayout()
             pagesStackView.layoutIfNeeded()
+            favoritesSectionViewController?.relayoutForWidthChange()
         }
         
         guard !pagerScrollView.isTracking,

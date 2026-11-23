@@ -372,6 +372,22 @@ final class FavoritesSectionViewController: UIViewController {
     
     // MARK: - Layout
     
+    /// Edge start page: the window width changed (Split View, Stage Manager,
+    /// rotation). Recompute the grid from scratch and rebuild the cells so an
+    /// earlier, very narrow size can never stay stuck in metrics or cells.
+    func relayoutForWidthChange() {
+        guard isViewLoaded else {
+            return
+        }
+        lastLaidOutWidth = -1
+        collectionLayout.metrics = nil
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        updateFavoriteGridLayout()
+        collectionView.reloadData()
+        collectionView.layoutIfNeeded()
+    }
+    
     private func invalidateFavoriteLayout() {
         lastLaidOutWidth = -1
         UIView.performWithoutAnimation {
@@ -386,14 +402,9 @@ final class FavoritesSectionViewController: UIViewController {
             return
         }
         
-        // Icons never shrink below a readable size: in very narrow windows
-        // drop columns instead (and get them back as the window widens).
-        let minimumIconSize: CGFloat = 44
-        let fittingColumns = Int((width - UX.horizontalInset * 2 + 15) / (minimumIconSize + 15))
-        let columnCount = max(1, min(contentMode.favoriteColumnCount, fittingColumns))
         let metrics = FavoritesLayoutMetrics(
             width: width,
-            columnCount: columnCount,
+            columnCount: contentMode.favoriteColumnCount,
             horizontalInset: UX.horizontalInset,
             lineSpacing: UX.rowSpacing
         )
@@ -401,11 +412,6 @@ final class FavoritesSectionViewController: UIViewController {
             || collectionLayout.metrics != metrics {
             lastLaidOutWidth = width
             collectionLayout.metrics = metrics
-            // Cells size their icon from their own bounds; make every visible
-            // cell re-measure so icons grow back after an extreme shrink.
-            for cell in collectionView.visibleCells {
-                cell.setNeedsLayout()
-            }
         }
         
         let displayedItemCount = (itemCount ?? displayedFavoriteItems.count) + addTileCount

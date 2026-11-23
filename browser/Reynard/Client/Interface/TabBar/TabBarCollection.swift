@@ -1008,7 +1008,17 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
 
 // MARK: - Drag & drop reordering (continues from the context menu lift)
 
+/// Index the lifted tab currently occupies while a system drag is running.
+/// The tab is moved live as the finger passes other tabs, so the rest of the
+/// strip slides aside immediately (like the press-and-drag reorder).
+private var tabDropCurrentIndexKey: UInt8 = 0
+
 extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
+    private var dropCurrentIndex: Int? {
+        get { objc_getAssociatedObject(self, &tabDropCurrentIndexKey) as? Int }
+        set { objc_setAssociatedObject(self, &tabDropCurrentIndexKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+    
     func collectionView(
         _ collectionView: UICollectionView,
         itemsForBeginning session: UIDragSession,
@@ -1021,6 +1031,7 @@ extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDe
         }
         let item = UIDragItem(itemProvider: NSItemProvider())
         item.localObject = indexPath.item
+        dropCurrentIndex = indexPath.item
         return [item]
     }
     
@@ -1041,6 +1052,11 @@ extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDe
         return true
     }
     
+    func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
+        dropCurrentIndex = nil
+        collectionViewLayout.invalidateLayout()
+    }
+    
     func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
         return session.localDragSession != nil
     }
@@ -1050,31 +1066,34 @@ extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDe
         dropSessionDidUpdate session: UIDropSession,
         withDestinationIndexPath destinationIndexPath: IndexPath?
     ) -> UICollectionViewDropProposal {
-        guard session.localDragSession != nil, collectionView.hasActiveDrag else {
+        guard session.localDragSession != nil, let current = dropCurrentIndex else {
             return UICollectionViewDropProposal(operation: .forbidden)
         }
-        return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+        let location = session.location(in: self)
+        if let target = indexPathForItem(at: location)?.item,
+           target != current,
+           let count = tabBar?.dataSource?.tabs.count,
+           (0..<count).contains(target),
+           (0..<count).contains(current) {
+            // Move now so the other tabs reflow under the finger.
+            dropCurrentIndex = target
+            performBatchUpdates({
+                self.tabBar?.requestMoveTab(from: current, to: target)
+                self.moveItem(at: IndexPath(item: current, section: 0), to: IndexPath(item: target, section: 0))
+            }, completion: { [weak self] _ in
+                self?.collectionViewLayout.invalidateLayout()
+            })
+        }
+        return UICollectionViewDropProposal(operation: .move, intent: .unspecified)
     }
     
     func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
-        guard let dropItem = coordinator.items.first,
-              let sourceIndexPath = dropItem.sourceIndexPath,
-              let count = tabBar?.dataSource?.tabs.count, count > 0 else {
+        guard let dropItem = coordinator.items.first, let current = dropCurrentIndex else {
             return
         }
-        var destination = coordinator.destinationIndexPath ?? IndexPath(item: count - 1, section: 0)
-        destination.item = min(max(destination.item, 0), count - 1)
-        guard destination != sourceIndexPath else {
-            coordinator.drop(dropItem.dragItem, toItemAt: sourceIndexPath)
-            return
-        }
-        performBatchUpdates({
-            // Same model path as the interactive reorder (moveItemAt).
-            self.tabBar?.requestMoveTab(from: sourceIndexPath.item, to: destination.item)
-            self.moveItem(at: sourceIndexPath, to: destination)
-        }, completion: { [weak self] _ in
-            self?.collectionViewLayout.invalidateLayout()
-        })
-        coordinator.drop(dropItem.dragItem, toItemAt: destination)
+        // The tab already sits at its final slot; just land the preview there.
+        coordinator.drop(dropItem.dragItem, toItemAt: IndexPath(item: current, section: 0))
+        dropCurrentIndex = nil
+        collectionViewLayout.invalidateLayout()
     }
 }

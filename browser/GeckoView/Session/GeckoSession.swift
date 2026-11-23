@@ -272,24 +272,14 @@ public class GeckoSession {
         return true
     }
     
-    /// Backup fill when the system suggestion route is unavailable: sets the
-    /// focused field / its form's username and password inputs from a script
-    /// running in the page, firing input/change so page frameworks notice.
-    public func fillLoginWithScript(username: String, password: String) {
-        func literal(_ value: String) -> String {
-            let data = (try? JSONSerialization.data(withJSONObject: [value])) ?? Data("[\"\"]".utf8)
-            let array = String(decoding: data, as: UTF8.self)
-            return String(array.dropFirst().dropLast())
-        }
-        let script = "void(function(u,p){var a=document.activeElement;var f=(a&&a.form)||document;"
-            + "var pw=f.querySelector('input[type=password]');var us=null;"
-            + "if(a&&a.tagName==='INPUT'&&a.type!=='password'){us=a}else{"
-            + "var c=f.querySelectorAll('input[type=text],input[type=email],input[type=tel],input:not([type])');us=c.length?c[0]:null}"
-            + "function set(e,v){if(!e)return;var d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');"
-            + "d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}"
-            + "set(us,u);set(pw,p)})(" + literal(username) + "," + literal(password) + ")"
-        let encoded = script.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? script
-        runBookmarklet(encoded)
+    /// Backup fill when the system suggestion route is unavailable: asks the
+    /// engine to fill the focused login form (Edge engine patch, same fill as
+    /// the iCloud Passwords path).
+    public func fillLoginThroughEngine(username: String, password: String) {
+        dispatcher.dispatch(
+            type: "GeckoView:Edge:FillLogin",
+            message: ["username": username, "password": password]
+        )
     }
     
     /// Content type of the focused web text field ("username", "password",
@@ -364,21 +354,10 @@ public class GeckoSession {
             ])
     }
     
-    /// Runs a `javascript:` bookmarklet in the current page. The load names
-    /// this session as its referrer, so the script runs with the page's own
-    /// principal (like a desktop bookmarklet) instead of the system principal.
-    public func runBookmarklet(_ script: String) {
-        guard let id else {
-            return
-        }
-        dispatcher.dispatch(
-            type: "GeckoView:LoadUri",
-            message: [
-                "uri": "javascript:" + script,
-                "flags": GeckoSessionLoadFlags.none,
-                "referrerSessionId": id,
-                "headerFilter": 1,
-            ])
+    /// Edge UI: shows the in-page developer tools (Eruda) loaded from
+    /// `scriptURL`. Handled by the Edge engine patch in GeckoViewContent.
+    public func showDeveloperTools(scriptURL: String) {
+        dispatcher.dispatch(type: "GeckoView:Edge:ShowDevTools", message: ["url": scriptURL])
     }
     
     public func stop() {

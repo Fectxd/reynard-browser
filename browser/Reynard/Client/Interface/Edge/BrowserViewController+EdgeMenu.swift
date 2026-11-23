@@ -266,22 +266,14 @@ extension BrowserViewController {
     /// (UIApplication suspend), which references a real method so #selector
     /// compiles.
     /// "开发者面板": an in-page DevTools (Eruda: console, elements, network,
-    /// resources, sources), the mobile counterpart of F12. Injected as a
-    /// bookmarklet; choosing it again shows the panel if it was closed.
+    /// resources, sources), the mobile counterpart of F12. Inserted into the
+    /// page by the engine; choosing it again shows the panel if it was closed.
     /// Pages with a strict Content-Security-Policy may refuse the script.
     private func toggleDeveloperTools() {
         guard let tab = tabManager.selectedTab else {
             return
         }
-        let script = """
-        void(function(){if(window.eruda){try{eruda.init()}catch(e){}eruda.show();return;}\
-        var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js';\
-        s.onload=function(){eruda.init();eruda.show();};\
-        s.onerror=function(){alert('开发者面板加载失败（网络或页面安全策略限制）');};\
-        (document.head||document.documentElement).appendChild(s);})()
-        """
-        let encoded = script.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? script
-        tab.session.runBookmarklet(encoded)
+        tab.session.showDeveloperTools(scriptURL: "https://cdn.jsdelivr.net/npm/eruda@3/eruda.min.js")
     }
     
     private func exitBrowserToBackground() {

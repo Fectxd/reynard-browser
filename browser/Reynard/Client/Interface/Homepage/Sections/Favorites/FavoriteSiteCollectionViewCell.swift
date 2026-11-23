@@ -97,16 +97,10 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
         setReorderState(.resting, animated: false)
     }
     
-    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
-        super.apply(layoutAttributes)
-        setNeedsLayout()
-    }
-    
     override func layoutSubviews() {
         super.layoutSubviews()
         updateIconSize()
         updateShadowColor()
-        contentView.layoutIfNeeded()
     }
     
     func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {

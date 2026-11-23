@@ -71,6 +71,10 @@ if [ -n "$UPSTREAM_REF" ]; then
 	git checkout "$UPSTREAM_REF" -- browser
 	# Keep the Gecko engine pin and engine patches in step with that upstream
 	# revision too, so the app and engine sources always match.
+	# patches/ is wiped first so Edge-only engine patches (patches/zz-edge-ui/)
+	# and upstream patches the Edge patch deletes come back only through it.
+	git rm -r -q --cached patches >/dev/null
+	rm -rf patches
 	git checkout "$UPSTREAM_REF" -- engine patches
 elif git -c core.autocrlf=false apply --reverse --check "$PATCH_FILE" >/dev/null 2>&1; then
 	echo "Edge UI patch is already applied."
