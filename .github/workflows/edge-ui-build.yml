@@ -146,7 +146,9 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install python@3.12 lld cbindgen llvm
+          # --overwrite: Intel images ship a Python whose /usr/local/bin links
+          # would otherwise make `brew link` fail.
+          brew install --overwrite python@3.12 lld cbindgen llvm
           echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
