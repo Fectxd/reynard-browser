@@ -110,7 +110,9 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     env:
       SCCACHE_GHA_ENABLED: "true"
-      SCCACHE_GHA_VERSION: ${{ matrix.sccache_namespace }}
+      # Host tools in the object tree / toolchains are per CPU type: an
+      # Apple Silicon cache can't run on an Intel runner ("Bad CPU type").
+      SCCACHE_GHA_VERSION: ${{ matrix.sccache_namespace }}-${{ runner.arch }}
 
     steps:
       - name: Check out repository
@@ -194,9 +196,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.mozbuild
-          key: edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('engine/release.txt') }}
+          key: edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ runner.arch }}-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('engine/release.txt') }}
           restore-keys: |
-            edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ steps.rust_toolchain.outputs.hash }}-
+            edgeui-buildcache-gecko-deps-${{ matrix.variant }}-${{ runner.arch }}-${{ steps.rust_toolchain.outputs.hash }}-
 
       - name: Restore idevice build cache
         uses: actions/cache@v4
@@ -204,9 +206,9 @@ jobs:
           path: |
             support/idevice/target
             browser/Reynard/JIT/RPPairing/libidevice_ffi.a
-          key: edgeui-buildcache-idevice-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('support/idevice/Cargo.lock', 'support/idevice/Cargo.toml', 'tools/development/build-idevice.sh') }}
+          key: edgeui-buildcache-idevice-${{ runner.arch }}-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('support/idevice/Cargo.lock', 'support/idevice/Cargo.toml', 'tools/development/build-idevice.sh') }}
           restore-keys: |
-            edgeui-buildcache-idevice-${{ steps.rust_toolchain.outputs.hash }}-
+            edgeui-buildcache-idevice-${{ runner.arch }}-${{ steps.rust_toolchain.outputs.hash }}-
 
       - name: Set up sccache
         uses: mozilla-actions/sccache-action@v0.0.11
@@ -225,10 +227,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: engine/firefox/obj-aarch64-apple-ios
-          key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-
-            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ hashFiles('engine/release.txt') }}-
+            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-
+            edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-
 
       - name: Build Gecko
         id: gecko_build
