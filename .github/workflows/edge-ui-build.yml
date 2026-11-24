@@ -230,7 +230,9 @@ jobs:
         id: gecko_obj_cache
         uses: actions/cache/restore@v4
         with:
-          path: engine/firefox/obj-aarch64-apple-ios
+          path: |
+            engine/firefox/obj-aarch64-apple-ios
+            !engine/firefox/obj-aarch64-apple-ios/.mozbuild/logs
           key: edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-
@@ -238,9 +240,12 @@ jobs:
 
       - name: Build Gecko
         id: gecko_build
-        # Stop well before the 6 h job cap so there is time left to save the
-        # partial object tree; the job then fails and a re-run continues.
-        timeout-minutes: 285
+        # The step stops the compile itself at 270 min (see below), leaving
+        # time to save the partial object tree; the job then fails and a
+        # re-run continues. timeout-minutes is only a last-resort backstop:
+        # when it fires, GitHub kills just this shell while the compilers keep
+        # writing, and the cache save fails ("file changed as we read it").
+        timeout-minutes: 300
         continue-on-error: true
         env:
           CC: clang
@@ -256,22 +261,53 @@ jobs:
           printf '#!/bin/sh\nexit 0\n' > "$RUNNER_TEMP/no-notifier/terminal-notifier"
           chmod +x "$RUNNER_TEMP/no-notifier/terminal-notifier"
           export PATH="$RUNNER_TEMP/no-notifier:$PATH"
+          # Job control on: the build gets its own process group, so the whole
+          # compile (mach, make, clang, rustc...) can be stopped together.
+          set -m
           ./tools/development/build-gecko.sh ${{ matrix.build_args }} > "$RUNNER_TEMP/gecko-build.log" 2>&1 &
           build_pid=$!
+          set +m
           tail -n +1 -f "$RUNNER_TEMP/gecko-build.log" &
           tail_pid=$!
           set +e
-          wait "$build_pid"
+          deadline=$((SECONDS + 270 * 60))
+          timed_out=false
+          while kill -0 "$build_pid" 2>/dev/null; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              timed_out=true
+              echo "::warning::Engine build reached its time budget; stopping it so the progress can be cached."
+              kill -TERM -- "-$build_pid" 2>/dev/null
+              for _ in $(seq 1 60); do
+                kill -0 "$build_pid" 2>/dev/null || break
+                sleep 2
+              done
+              kill -KILL -- "-$build_pid" 2>/dev/null
+              # Anything that escaped the process group must not keep writing
+              # into the object tree while it is being archived.
+              pkill -KILL -f 'obj-aarch64-apple-ios' 2>/dev/null
+              for p in make clang clang++ rustc cargo ld64.lld; do pkill -KILL -x "$p" 2>/dev/null; done
+              break
+            fi
+            sleep 15
+          done
+          wait "$build_pid" 2>/dev/null
           build_status=$?
+          sccache --stop-server >/dev/null 2>&1
+          sleep 5
           kill "$tail_pid" 2>/dev/null
           wait "$tail_pid" 2>/dev/null
+          if [ "$timed_out" = true ]; then
+            exit 124
+          fi
           exit "$build_status"
 
       - name: Save Gecko object cache
         if: ${{ always() && steps.gecko_build.outcome != 'skipped' }}
         uses: actions/cache/save@v4
         with:
-          path: engine/firefox/obj-aarch64-apple-ios
+          path: |
+            engine/firefox/obj-aarch64-apple-ios
+            !engine/firefox/obj-aarch64-apple-ios/.mozbuild/logs
           key: ${{ steps.gecko_obj_cache.outputs.cache-primary-key }}
 
       - name: Stop if the engine build did not finish
