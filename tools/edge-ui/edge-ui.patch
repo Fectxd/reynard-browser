@@ -3254,10 +3254,10 @@ index 0000000..fa452b3
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
 new file mode 100644
-index 0000000..1028ec4
+index 0000000..eaf75f0
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,175 @@
 +//
 +//  EdgeAppearanceViewController.swift
 +//  Reynard
@@ -3265,7 +3265,8 @@ index 0000000..1028ec4
 +//  Created by Edge UI instrumentation.
 +//
 +//  Edge-style "深色/浅色模式" popup, presented the same way as the Font size
-+//  window. The user picks one of: 深色 / 浅色 / 跟随系统.
++//  window. Reuses the three option tiles of Settings > Appearance
++//  (AppAppearanceOptionControl: 系统 / 浅色 / 深色), each kept square.
 +//
 +
 +import UIKit
@@ -3274,19 +3275,23 @@ index 0000000..1028ec4
 +
 +    private enum UX {
 +        static let contentWidth: CGFloat = 300
-+        static let contentHeight: CGFloat = 292
-+        static let blueTint = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
++        // Natural height: 16 + title 22 + 4 + subtitle 16 + 16 + tiles 118 + 16.
++        static let contentHeight: CGFloat = 212
 +        static let headerFontSize: CGFloat = 18
-+        static let rowFontSize: CGFloat = 16
-+        static let rowHeight: CGFloat = 50
-+        static let rowSpacing: CGFloat = 8
-+        static let topPadding: CGFloat = 28
-+        static let bottomPadding: CGFloat = 20
++        static let horizontalPadding: CGFloat = 16
++        static let topPadding: CGFloat = 16
++        static let minimumGap: CGFloat = 16
++        // AppAppearanceOptionControl: 74pt preview + 5pt side insets, so an
++        // 84pt-wide option shows a square preview.
++        static let optionWidth: CGFloat = 84
++        static let optionSpacing: CGFloat = 8
 +    }
 +
 +    /// Invoked when the user picks an appearance; the presenter persists the
 +    /// choice and applies it.
 +    var onSelect: ((AppAppearance) -> Void)?
++
++    private var selectedAppearance: AppAppearance
 +
 +    private let titleLabel: UILabel = {
 +        let label = UILabel()
@@ -3306,11 +3311,36 @@ index 0000000..1028ec4
 +        return label
 +    }()
 +
-+    private var optionButtons: [UIButton] = []
++    // Same controls, symbols and titles as Settings > Appearance.
++    private let systemOption = AppAppearanceOptionControl(
++        appearance: .system,
++        symbolName: "reynard.circle.lefthalf.filled",
++        title: NSLocalizedString("System", comment: "Appearance option")
++    )
++    private let lightOption = AppAppearanceOptionControl(
++        appearance: .light,
++        symbolName: "reynard.sun.max.fill",
++        title: NSLocalizedString("Day", comment: "Light appearance option")
++    )
++    private let darkOption = AppAppearanceOptionControl(
++        appearance: .dark,
++        symbolName: "reynard.moon.fill",
++        title: NSLocalizedString("Night", comment: "Dark appearance option")
++    )
++
++    private lazy var optionsStackView: UIStackView = {
++        let stackView = UIStackView(arrangedSubviews: [systemOption, lightOption, darkOption])
++        stackView.translatesAutoresizingMaskIntoConstraints = false
++        stackView.axis = .horizontal
++        stackView.alignment = .fill
++        stackView.distribution = .fillEqually
++        stackView.spacing = UX.optionSpacing
++        return stackView
++    }()
 +
 +    init(current: AppAppearance) {
++        selectedAppearance = current
 +        super.init(nibName: nil, bundle: nil)
-+        configureOptions(current: current)
 +    }
 +
 +    required init?(coder: NSCoder) {
@@ -3323,80 +3353,84 @@ index 0000000..1028ec4
 +        preferredContentSize = CGSize(width: UX.contentWidth, height: UX.contentHeight)
 +        configureHierarchy()
 +        configureConstraints()
-+    }
-+
-+    private func configureOptions(current: AppAppearance) {
-+        let options: [(AppAppearance, String)] = [
-+            (.dark, "深色"),
-+            (.light, "浅色"),
-+            (.system, "跟随系统"),
-+        ]
-+        for (appearance, title) in options {
-+            let button = UIButton(type: .system)
-+            button.translatesAutoresizingMaskIntoConstraints = false
-+            button.setTitle(title, for: .normal)
-+            button.titleLabel?.font = .systemFont(ofSize: UX.rowFontSize, weight: .medium)
-+            button.setTitleColor(.label, for: .normal)
-+            button.contentHorizontalAlignment = .left
-+            button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
-+            button.backgroundColor = UIColor.secondarySystemBackground
-+            button.layer.cornerRadius = 10
-+            button.layer.cornerCurve = .continuous
-+            button.layer.borderWidth = 1
-+            button.layer.borderColor = (appearance == current ? UX.blueTint : UIColor.clear).cgColor
-+            button.tintColor = appearance == current ? UX.blueTint : .clear
-+            button.tag = options.firstIndex(where: { $0.0 == appearance }) ?? 0
-+            button.addTarget(self, action: #selector(optionTapped(_:)), for: .touchUpInside)
-+            optionButtons.append(button)
-+        }
++        displaySelection()
++        systemOption.addTarget(self, action: #selector(selectSystem), for: .touchUpInside)
++        lightOption.addTarget(self, action: #selector(selectLight), for: .touchUpInside)
++        darkOption.addTarget(self, action: #selector(selectDark), for: .touchUpInside)
 +    }
 +
 +    private func configureHierarchy() {
 +        view.addSubview(titleLabel)
 +        view.addSubview(subtitleLabel)
-+        optionButtons.forEach { view.addSubview($0) }
++        view.addSubview(optionsStackView)
 +    }
 +
 +    private func configureConstraints() {
++        let safeArea = view.safeAreaLayoutGuide
++        // The popover can be taller than the content (the menu container
++        // sizes it). Keep the header at the top of the safe area and centre
++        // the tiles in the space below it, so spare height is split evenly
++        // instead of piling up at the bottom (the Font size panel looked
++        // shifted up for exactly that reason).
++        let topGap = UILayoutGuide()
++        let bottomGap = UILayoutGuide()
++        view.addLayoutGuide(topGap)
++        view.addLayoutGuide(bottomGap)
++        let equalGaps = topGap.heightAnchor.constraint(equalTo: bottomGap.heightAnchor)
++        equalGaps.priority = .defaultHigh
++
 +        NSLayoutConstraint.activate([
-+            titleLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: UX.topPadding),
-+            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-+            titleLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
++            titleLabel.topAnchor.constraint(equalTo: safeArea.topAnchor, constant: UX.topPadding),
++            titleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalPadding),
++            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -UX.horizontalPadding),
 +
 +            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
-+            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
++            subtitleLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalPadding),
++            subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -UX.horizontalPadding),
 +
-+            optionButtons[0].topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 18),
++            topGap.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor),
++            topGap.bottomAnchor.constraint(equalTo: optionsStackView.topAnchor),
++            topGap.heightAnchor.constraint(greaterThanOrEqualToConstant: UX.minimumGap),
++            bottomGap.topAnchor.constraint(equalTo: optionsStackView.bottomAnchor),
++            bottomGap.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor),
++            bottomGap.heightAnchor.constraint(greaterThanOrEqualToConstant: UX.minimumGap),
++            equalGaps,
++
++            // Not stretched to the popover width: three square tiles, centred.
++            optionsStackView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++            optionsStackView.widthAnchor.constraint(equalToConstant: UX.optionWidth * 3 + UX.optionSpacing * 2),
 +        ])
-+
-+        var previousButton: UIButton?
-+        for button in optionButtons {
-+            NSLayoutConstraint.activate([
-+                button.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-+                button.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-+                button.heightAnchor.constraint(equalToConstant: UX.rowHeight),
-+            ])
-+            if let previousButton {
-+                NSLayoutConstraint.activate([
-+                    button.topAnchor.constraint(equalTo: previousButton.bottomAnchor, constant: UX.rowSpacing),
-+                ])
-+            }
-+            previousButton = button
-+        }
-+        if let last = optionButtons.last {
-+            NSLayoutConstraint.activate([
-+                last.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -UX.bottomPadding),
-+            ])
-+        }
 +    }
 +
-+    @objc private func optionTapped(_ sender: UIButton) {
-+        let options: [AppAppearance] = [.dark, .light, .system]
-+        guard options.indices.contains(sender.tag) else {
-+            return
++    private func displaySelection() {
++        systemOption.displaySelection(selected: selectedAppearance == .system)
++        lightOption.displaySelection(selected: selectedAppearance == .light)
++        darkOption.displaySelection(selected: selectedAppearance == .dark)
++    }
++
++    @objc private func selectSystem() {
++        systemOption.animateTap()
++        select(.system)
++    }
++
++    @objc private func selectLight() {
++        lightOption.animateTap()
++        select(.light)
++    }
++
++    @objc private func selectDark() {
++        darkOption.animateTap()
++        select(.dark)
++    }
++
++    private func select(_ appearance: AppAppearance) {
++        selectedAppearance = appearance
++        displaySelection()
++        onSelect?(appearance)
++        // Let the new selection show for a moment before closing.
++        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
++            self?.dismiss(animated: true)
 +        }
-+        onSelect?(options[sender.tag])
-+        dismiss(animated: true)
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
