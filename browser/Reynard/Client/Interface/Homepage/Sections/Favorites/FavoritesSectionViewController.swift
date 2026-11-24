@@ -171,6 +171,31 @@ final class FavoritesSectionViewController: UIViewController {
         applyFavoriteItemLimit()
     }
     
+    /// Edge start page: re-apply the wallpaper light/dark foreground now,
+    /// even when the content mode is unchanged (wallpaper switched, light/dark
+    /// appearance changed) -- the same direct update the feed panel uses.
+    func refreshForegroundColor() {
+        guard isViewLoaded else {
+            return
+        }
+        let foregroundColor = HomepageWallpaper.foregroundColor(for: contentMode)
+        guard lastAppliedForegroundColor != foregroundColor else {
+            return
+        }
+        lastAppliedForegroundColor = foregroundColor
+        titleLabel.textColor = foregroundColor
+        showAllButton.tintColor = foregroundColor
+        // Recolour the names on screen without reloading the grid (keeps
+        // layout and an ongoing reorder intact); new cells get the colour in
+        // cellForItemAt.
+        for cell in collectionView.visibleCells {
+            (cell as? FavoriteSiteCollectionViewCell)?.setTitleColor(foregroundColor)
+            (cell as? FavoriteFolderCollectionViewCell)?.setTitleColor(foregroundColor)
+        }
+    }
+    
+    private var lastAppliedForegroundColor: UIColor?
+    
     // MARK: - Configuration
     
     private func configureAppearance() {

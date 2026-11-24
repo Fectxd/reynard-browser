@@ -97,6 +97,10 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
         setReorderState(.resting, animated: false)
     }
     
+    func setTitleColor(_ color: UIColor) {
+        titleLabel.textColor = color
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         updateFolderSize()

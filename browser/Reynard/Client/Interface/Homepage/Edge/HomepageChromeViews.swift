@@ -170,8 +170,20 @@ final class HomepageWeatherChipView: UIControl {
             stackView.topAnchor.constraint(equalTo: topAnchor),
             stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
             stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.horizontalInset),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -UX.horizontalInset),
+            // Equal, not <=: the chip is exactly as wide as its content plus
+            // padding, so short place names don't leave an empty tail. The
+            // start page caps it (<= 260pt); past that the city name truncates
+            // first.
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalInset),
         ])
+        cityLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        summaryLabel.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
+        for label in [temperatureLabel, separatorLabel] {
+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+        for label in [temperatureLabel, summaryLabel, separatorLabel, cityLabel] {
+            label.setContentHuggingPriority(.required, for: .horizontal)
+        }
     }
     
     private func refreshIcon() {

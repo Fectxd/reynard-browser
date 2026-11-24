@@ -381,6 +381,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
             mode = contentMode.isDetached ? .detachedNarrow : .embeddedNarrow
         }
         guard mode != sectionContentMode else {
+            refreshForegroundColors()
             return
         }
         sectionContentMode = mode
@@ -390,6 +391,17 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         frequentlyVisitedSectionViewController?.setContentMode(mode)
         recentlyClosedTabsSectionViewController?.setContentMode(mode)
         feedPanelViewController?.setContentMode(mode)
+        refreshForegroundColors()
+    }
+    
+    /// All four page titles (and the favourite names) follow the wallpaper's
+    /// light/dark foreground the same way: re-applied directly on every
+    /// layout, wallpaper or appearance change, like the feed panel.
+    private func refreshForegroundColors() {
+        favoritesSectionViewController?.refreshForegroundColor()
+        frequentlyVisitedSectionViewController?.refreshForegroundColor()
+        recentlyClosedTabsSectionViewController?.refreshForegroundColor()
+        feedPanelViewController?.setContentMode(sectionContentMode)
     }
     
     override func viewSafeAreaInsetsDidChange() {
@@ -400,6 +412,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         updateBackground()
+        refreshForegroundColors()
     }
     
     // MARK: - Public API
@@ -1045,6 +1058,7 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
     @objc private func homepageSettingsDidChange() {
         updateBackground()
         rebuildPanels()
+        refreshForegroundColors()
     }
     
     // MARK: - Helpers
