@@ -898,6 +898,7 @@ extension TabBarCollection: UICollectionViewDataSource {
         }
         
         configure(tabBarCell, at: indexPath)
+        tabBarCell.setDragPlaceholder(indexPath.item == dropCurrentIndex)
         tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
             guard let self,
                   let tabBarCell,
@@ -1014,7 +1015,7 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
 private var tabDropCurrentIndexKey: UInt8 = 0
 
 extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
-    private var dropCurrentIndex: Int? {
+    fileprivate var dropCurrentIndex: Int? {
         get { objc_getAssociatedObject(self, &tabDropCurrentIndexKey) as? Int }
         set { objc_setAssociatedObject(self, &tabDropCurrentIndexKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
@@ -1052,8 +1053,20 @@ extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDe
         return true
     }
     
+    func collectionView(_ collectionView: UICollectionView, dragSessionWillBegin session: UIDragSession) {
+        // The lift preview has been snapshotted by now; empty the original
+        // slot so it doesn't show a second copy under the finger.
+        guard let current = dropCurrentIndex else {
+            return
+        }
+        (cellForItem(at: IndexPath(item: current, section: 0)) as? TabBarCell)?.setDragPlaceholder(true)
+    }
+    
     func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
         dropCurrentIndex = nil
+        for case let cell as TabBarCell in visibleCells {
+            cell.setDragPlaceholder(false)
+        }
         collectionViewLayout.invalidateLayout()
     }
     

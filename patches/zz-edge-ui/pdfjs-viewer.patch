@@ -26,10 +26,34 @@ index 7ca3d74..4dcd00b 100644
        blobUrl /* aURL */,
        originalUrl /* aOriginalURL */,
 diff --git a/toolkit/components/pdfjs/content/web/viewer.mjs b/toolkit/components/pdfjs/content/web/viewer.mjs
-index b0bd011..9c746f3 100644
+index b0bd011..630a2ec 100644
 --- a/toolkit/components/pdfjs/content/web/viewer.mjs
 +++ b/toolkit/components/pdfjs/content/web/viewer.mjs
-@@ -20080,3 +20080,53 @@ if (document.readyState === "interactive" || document.readyState === "complete")
+@@ -1667,6 +1667,23 @@ class FirefoxCom {
+ }
+ class DownloadManager extends BaseDownloadManager {
+   _triggerDownload(blobUrl, originalUrl, filename, isAttachment = false, isModified = false) {
++    // Edge UI (iOS): there is no desktop save dialog in this build. Hand the
++    // document -- including annotations / form edits, since save() passes the
++    // edited bytes here -- to the browser as an ordinary download, so it
++    // lands in the app's Downloads list from where it can be opened or saved
++    // elsewhere ("另存为").
++    try {
++      const link = document.createElement("a");
++      link.href = blobUrl;
++      link.download = filename || "document.pdf";
++      link.style.display = "none";
++      (document.body || document.documentElement).append(link);
++      link.click();
++      link.remove();
++      return;
++    } catch (e) {
++      console.error("Edge UI: direct PDF download failed, falling back.", e);
++    }
+     FirefoxCom.request("download", {
+       blobUrl,
+       originalUrl,
+@@ -20080,3 +20097,53 @@ if (document.readyState === "interactive" || document.readyState === "complete")
  }
  
  export { PDFViewerApplication, AppConstants as PDFViewerApplicationConstants, AppOptions as PDFViewerApplicationOptions };

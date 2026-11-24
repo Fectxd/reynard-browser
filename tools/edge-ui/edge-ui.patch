@@ -11399,7 +11399,7 @@ index 7f65843..e0e97f8 100644
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..848a472 100644
+index aa1450a..2840964 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 @@ -10,7 +10,12 @@ import UIKit
@@ -11516,7 +11516,13 @@ index aa1450a..848a472 100644
          button.setPreferredSymbolConfiguration(
              UIImage.SymbolConfiguration(pointSize: UX.tabCloseButtonSymbolPointSize, weight: .regular),
              forImageIn: .normal
-@@ -142,6 +166,12 @@ final class TabBarCell: UICollectionViewCell {
+@@ -137,11 +161,18 @@ final class TabBarCell: UICollectionViewCell {
+     
+     override func prepareForReuse() {
+         super.prepareForReuse()
++        contentView.alpha = 1
+         tabID = nil
+         closeHandler = nil
          tabContentView.layer.borderWidth = 0
      }
      
@@ -11529,7 +11535,7 @@ index aa1450a..848a472 100644
      override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
          super.traitCollectionDidChange(previousTraitCollection)
          guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-@@ -149,6 +179,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -149,6 +180,7 @@ final class TabBarCell: UICollectionViewCell {
          }
          
          updateBorderColor()
@@ -11537,7 +11543,7 @@ index aa1450a..848a472 100644
      }
      
      // MARK: - Configuration
-@@ -160,17 +191,21 @@ final class TabBarCell: UICollectionViewCell {
+@@ -160,17 +192,21 @@ final class TabBarCell: UICollectionViewCell {
          cellWidth: CGFloat
      ) {
          tabID = tab.id
@@ -11565,7 +11571,7 @@ index aa1450a..848a472 100644
          let isCollapsed = layoutMode == .faviconOnly || isTooNarrowForTitle
          
          titleLabel.isHidden = isCollapsed
-@@ -180,7 +215,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -180,7 +216,10 @@ final class TabBarCell: UICollectionViewCell {
          expandedTrailingConstraint.isActive = !isCollapsed
          collapsedTrailingConstraint.isActive = isCollapsed
          expandedTitleWidthConstraint.isActive = !isCollapsed
@@ -11577,7 +11583,18 @@ index aa1450a..848a472 100644
      }
      
      func containsCloseButton(at point: CGPoint) -> Bool {
-@@ -196,10 +234,24 @@ final class TabBarCell: UICollectionViewCell {
+@@ -192,14 +231,35 @@ final class TabBarCell: UICollectionViewCell {
+         return closeButton.frame.contains(convertedPoint)
+     }
+     
++    /// While this tab is being dragged out of its context menu, the cell
++    /// left in the strip stays as an empty slot (keeps its width, shows
++    /// nothing) so only the lifted copy is visible.
++    func setDragPlaceholder(_ isPlaceholder: Bool) {
++        contentView.alpha = isPlaceholder ? 0 : 1
++    }
++    
+     // MARK: - View Setup
      
      private func configureAppearance() {
          contentView.backgroundColor = .clear
@@ -11605,7 +11622,7 @@ index aa1450a..848a472 100644
      }
      
      private func configureHierarchy() {
-@@ -223,9 +275,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -223,9 +283,9 @@ final class TabBarCell: UICollectionViewCell {
      private func configureConstraints() {
          expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
          collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
@@ -11618,7 +11635,7 @@ index aa1450a..848a472 100644
          
          NSLayoutConstraint.activate([
              tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
-@@ -233,7 +285,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -233,7 +293,6 @@ final class TabBarCell: UICollectionViewCell {
              tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
              tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
              
@@ -11626,7 +11643,7 @@ index aa1450a..848a472 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +301,101 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +309,101 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
@@ -11729,7 +11746,7 @@ index aa1450a..848a472 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..ff63e18 100644
+index 6da82ce..fdf37d9 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -12130,7 +12147,15 @@ index 6da82ce..ff63e18 100644
          }
      }
      
-@@ -759,6 +915,59 @@ extension TabBarCollection: UICollectionViewDelegate {
+@@ -742,6 +898,7 @@ extension TabBarCollection: UICollectionViewDataSource {
+         }
+         
+         configure(tabBarCell, at: indexPath)
++        tabBarCell.setDragPlaceholder(indexPath.item == dropCurrentIndex)
+         tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
+             guard let self,
+                   let tabBarCell,
+@@ -759,6 +916,59 @@ extension TabBarCollection: UICollectionViewDelegate {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
      
@@ -12190,7 +12215,7 @@ index 6da82ce..ff63e18 100644
      func collectionView(
          _ collectionView: UICollectionView,
          targetIndexPathForMoveFromItemAt originalIndexPath: IndexPath,
-@@ -796,3 +1005,95 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
+@@ -796,3 +1006,107 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
          return CGSize(width: cellLayout.width, height: bounds.height)
      }
  }
@@ -12203,7 +12228,7 @@ index 6da82ce..ff63e18 100644
 +private var tabDropCurrentIndexKey: UInt8 = 0
 +
 +extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
-+    private var dropCurrentIndex: Int? {
++    fileprivate var dropCurrentIndex: Int? {
 +        get { objc_getAssociatedObject(self, &tabDropCurrentIndexKey) as? Int }
 +        set { objc_setAssociatedObject(self, &tabDropCurrentIndexKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
 +    }
@@ -12241,8 +12266,20 @@ index 6da82ce..ff63e18 100644
 +        return true
 +    }
 +    
++    func collectionView(_ collectionView: UICollectionView, dragSessionWillBegin session: UIDragSession) {
++        // The lift preview has been snapshotted by now; empty the original
++        // slot so it doesn't show a second copy under the finger.
++        guard let current = dropCurrentIndex else {
++            return
++        }
++        (cellForItem(at: IndexPath(item: current, section: 0)) as? TabBarCell)?.setDragPlaceholder(true)
++    }
++    
 +    func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
 +        dropCurrentIndex = nil
++        for case let cell as TabBarCell in visibleCells {
++            cell.setDragPlaceholder(false)
++        }
 +        collectionViewLayout.invalidateLayout()
 +    }
 +    
@@ -13671,10 +13708,10 @@ index 0000000..1c99020
 +       aCallback.onSuccess(await this.actor.sendQuery("FetchImage", aData));
 diff --git a/patches/zz-edge-ui/pdfjs-viewer.patch b/patches/zz-edge-ui/pdfjs-viewer.patch
 new file mode 100644
-index 0000000..1c025e1
+index 0000000..d465c89
 --- /dev/null
 +++ b/patches/zz-edge-ui/pdfjs-viewer.patch
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,109 @@
 +diff --git a/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs b/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs
 +index 7ca3d74..4dcd00b 100644
 +--- a/toolkit/components/pdfjs/content/PdfJsParent.sys.mjs
@@ -13703,10 +13740,34 @@ index 0000000..1c025e1
 +       blobUrl /* aURL */,
 +       originalUrl /* aOriginalURL */,
 +diff --git a/toolkit/components/pdfjs/content/web/viewer.mjs b/toolkit/components/pdfjs/content/web/viewer.mjs
-+index b0bd011..9c746f3 100644
++index b0bd011..630a2ec 100644
 +--- a/toolkit/components/pdfjs/content/web/viewer.mjs
 ++++ b/toolkit/components/pdfjs/content/web/viewer.mjs
-+@@ -20080,3 +20080,53 @@ if (document.readyState === "interactive" || document.readyState === "complete")
++@@ -1667,6 +1667,23 @@ class FirefoxCom {
++ }
++ class DownloadManager extends BaseDownloadManager {
++   _triggerDownload(blobUrl, originalUrl, filename, isAttachment = false, isModified = false) {
+++    // Edge UI (iOS): there is no desktop save dialog in this build. Hand the
+++    // document -- including annotations / form edits, since save() passes the
+++    // edited bytes here -- to the browser as an ordinary download, so it
+++    // lands in the app's Downloads list from where it can be opened or saved
+++    // elsewhere ("另存为").
+++    try {
+++      const link = document.createElement("a");
+++      link.href = blobUrl;
+++      link.download = filename || "document.pdf";
+++      link.style.display = "none";
+++      (document.body || document.documentElement).append(link);
+++      link.click();
+++      link.remove();
+++      return;
+++    } catch (e) {
+++      console.error("Edge UI: direct PDF download failed, falling back.", e);
+++    }
++     FirefoxCom.request("download", {
++       blobUrl,
++       originalUrl,
++@@ -20080,3 +20097,53 @@ if (document.readyState === "interactive" || document.readyState === "complete")
 + }
 + 
 + export { PDFViewerApplication, AppConstants as PDFViewerApplicationConstants, AppOptions as PDFViewerApplicationOptions };

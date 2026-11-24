@@ -161,6 +161,7 @@ final class TabBarCell: UICollectionViewCell {
     
     override func prepareForReuse() {
         super.prepareForReuse()
+        contentView.alpha = 1
         tabID = nil
         closeHandler = nil
         tabContentView.layer.borderWidth = 0
@@ -228,6 +229,13 @@ final class TabBarCell: UICollectionViewCell {
         
         let convertedPoint = convert(point, to: tabContentView)
         return closeButton.frame.contains(convertedPoint)
+    }
+    
+    /// While this tab is being dragged out of its context menu, the cell
+    /// left in the strip stays as an empty slot (keeps its width, shows
+    /// nothing) so only the lifted copy is visible.
+    func setDragPlaceholder(_ isPlaceholder: Bool) {
+        contentView.alpha = isPlaceholder ? 0 : 1
     }
     
     // MARK: - View Setup
