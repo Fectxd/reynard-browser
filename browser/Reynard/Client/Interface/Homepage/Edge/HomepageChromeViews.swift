@@ -172,15 +172,18 @@ final class HomepageWeatherChipView: UIControl {
             stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.horizontalInset),
             // Equal, not <=: the chip is exactly as wide as its content plus
             // padding, so short place names don't leave an empty tail. The
-            // start page caps it (<= 260pt); past that the city name truncates
-            // first.
+            // start page lets it grow only up to the settings button; past
+            // that the city name truncates first, then the summary.
             stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalInset),
         ])
-        cityLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        summaryLabel.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
-        for label in [temperatureLabel, separatorLabel] {
-            label.setContentCompressionResistancePriority(.required, for: .horizontal)
-        }
+        // All below the top bar's required edges, so the chip yields instead
+        // of pushing into the gear; the temperature gives way last.
+        cityLabel.setContentCompressionResistancePriority(UILayoutPriority(240), for: .horizontal)
+        summaryLabel.setContentCompressionResistancePriority(UILayoutPriority(245), for: .horizontal)
+        separatorLabel.setContentCompressionResistancePriority(UILayoutPriority(246), for: .horizontal)
+        temperatureLabel.setContentCompressionResistancePriority(UILayoutPriority(248), for: .horizontal)
+        cityLabel.lineBreakMode = .byTruncatingTail
+        summaryLabel.lineBreakMode = .byTruncatingTail
         for label in [temperatureLabel, summaryLabel, separatorLabel, cityLabel] {
             label.setContentHuggingPriority(.required, for: .horizontal)
         }

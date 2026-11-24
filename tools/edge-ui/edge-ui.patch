@@ -3401,10 +3401,10 @@ index 0000000..1028ec4
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
 new file mode 100644
-index 0000000..a2f1112
+index 0000000..83ca492
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeFontSizeViewController.swift
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,279 @@
 +//
 +//  EdgeFontSizeViewController.swift
 +//  Reynard
@@ -3587,7 +3587,7 @@ index 0000000..a2f1112
 +
 +    private func configureConstraints() {
 +        NSLayoutConstraint.activate([
-+            headerView.topAnchor.constraint(equalTo: view.topAnchor),
++            headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
 +            headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
 +            headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 +            headerView.heightAnchor.constraint(equalToConstant: 52),
@@ -3606,7 +3606,7 @@ index 0000000..a2f1112
 +            topDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 +            topDivider.heightAnchor.constraint(equalToConstant: 0.5),
 +
-+            sectionLabel.topAnchor.constraint(equalTo: topDivider.bottomAnchor, constant: 12),
++            sectionLabel.topAnchor.constraint(greaterThanOrEqualTo: topDivider.bottomAnchor, constant: 12),
 +            sectionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 +            sectionLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
 +
@@ -3626,7 +3626,25 @@ index 0000000..a2f1112
 +            noteLabel.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 14),
 +            noteLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
 +            noteLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-+            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
++            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
++        ])
++
++        // The popover is often taller than the content (the menu container
++        // sizes it), and with the body pinned under the divider all spare
++        // height piled up at the bottom, so everything looked shifted up.
++        // Centre the body between the divider and the bottom instead.
++        let topGap = UILayoutGuide()
++        let bottomGap = UILayoutGuide()
++        view.addLayoutGuide(topGap)
++        view.addLayoutGuide(bottomGap)
++        let equalGaps = topGap.heightAnchor.constraint(equalTo: bottomGap.heightAnchor)
++        equalGaps.priority = .defaultHigh
++        NSLayoutConstraint.activate([
++            topGap.topAnchor.constraint(equalTo: topDivider.bottomAnchor),
++            topGap.bottomAnchor.constraint(equalTo: sectionLabel.topAnchor),
++            bottomGap.topAnchor.constraint(equalTo: noteLabel.bottomAnchor),
++            bottomGap.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
++            equalGaps,
 +        ])
 +    }
 +
@@ -5521,10 +5539,10 @@ index 0000000..eacfede
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..2b8ca32
+index 0000000..8b082b6
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1219 @@
+@@ -0,0 +1,1224 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -6012,10 +6030,15 @@ index 0000000..2b8ca32
 +        topBarView.addArrangedSubview(weatherChipView)
 +        topBarView.addArrangedSubview(headerSpacerView)
 +        topBarView.addArrangedSubview(settingsButton)
++        // The chip is as wide as its text and may grow up to the settings
++        // button (minus the 8pt stack spacing), wherever that is for the
++        // current window width; beyond that its text truncates. The spacer
++        // gives up its room first, the chip next; the gear never shrinks.
 +        headerSpacerView.setContentHuggingPriority(.defaultLow, for: .horizontal)
++        headerSpacerView.setContentCompressionResistancePriority(.fittingSizeLevel, for: .horizontal)
 +        weatherChipView.setContentHuggingPriority(.required, for: .horizontal)
-+        weatherChipView.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-+        weatherChipView.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
++        weatherChipView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
++        settingsButton.setContentCompressionResistancePriority(.required, for: .horizontal)
 +        
 +        headerStackView.addArrangedSubview(searchFieldView)
 +        
@@ -6845,10 +6868,10 @@ index 0000000..dcce9dd
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/HomepageChromeViews.swift b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageChromeViews.swift
 new file mode 100644
-index 0000000..f86c92e
+index 0000000..0d71ea9
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageChromeViews.swift
-@@ -0,0 +1,484 @@
+@@ -0,0 +1,487 @@
 +//
 +//  HomepageChromeViews.swift
 +//  Reynard
@@ -7023,15 +7046,18 @@ index 0000000..f86c92e
 +            stackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.horizontalInset),
 +            // Equal, not <=: the chip is exactly as wide as its content plus
 +            // padding, so short place names don't leave an empty tail. The
-+            // start page caps it (<= 260pt); past that the city name truncates
-+            // first.
++            // start page lets it grow only up to the settings button; past
++            // that the city name truncates first, then the summary.
 +            stackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.horizontalInset),
 +        ])
-+        cityLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-+        summaryLabel.setContentCompressionResistancePriority(.defaultLow + 1, for: .horizontal)
-+        for label in [temperatureLabel, separatorLabel] {
-+            label.setContentCompressionResistancePriority(.required, for: .horizontal)
-+        }
++        // All below the top bar's required edges, so the chip yields instead
++        // of pushing into the gear; the temperature gives way last.
++        cityLabel.setContentCompressionResistancePriority(UILayoutPriority(240), for: .horizontal)
++        summaryLabel.setContentCompressionResistancePriority(UILayoutPriority(245), for: .horizontal)
++        separatorLabel.setContentCompressionResistancePriority(UILayoutPriority(246), for: .horizontal)
++        temperatureLabel.setContentCompressionResistancePriority(UILayoutPriority(248), for: .horizontal)
++        cityLabel.lineBreakMode = .byTruncatingTail
++        summaryLabel.lineBreakMode = .byTruncatingTail
 +        for label in [temperatureLabel, summaryLabel, separatorLabel, cityLabel] {
 +            label.setContentHuggingPriority(.required, for: .horizontal)
 +        }

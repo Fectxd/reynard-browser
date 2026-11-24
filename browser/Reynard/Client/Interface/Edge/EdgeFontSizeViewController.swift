@@ -180,7 +180,7 @@ final class EdgeFontSizeViewController: UIViewController {
 
     private func configureConstraints() {
         NSLayoutConstraint.activate([
-            headerView.topAnchor.constraint(equalTo: view.topAnchor),
+            headerView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             headerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: 52),
@@ -199,7 +199,7 @@ final class EdgeFontSizeViewController: UIViewController {
             topDivider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             topDivider.heightAnchor.constraint(equalToConstant: 0.5),
 
-            sectionLabel.topAnchor.constraint(equalTo: topDivider.bottomAnchor, constant: 12),
+            sectionLabel.topAnchor.constraint(greaterThanOrEqualTo: topDivider.bottomAnchor, constant: 12),
             sectionLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             sectionLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
 
@@ -219,7 +219,25 @@ final class EdgeFontSizeViewController: UIViewController {
             noteLabel.topAnchor.constraint(equalTo: percentLabel.bottomAnchor, constant: 14),
             noteLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             noteLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -12),
+            noteLabel.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+        ])
+
+        // The popover is often taller than the content (the menu container
+        // sizes it), and with the body pinned under the divider all spare
+        // height piled up at the bottom, so everything looked shifted up.
+        // Centre the body between the divider and the bottom instead.
+        let topGap = UILayoutGuide()
+        let bottomGap = UILayoutGuide()
+        view.addLayoutGuide(topGap)
+        view.addLayoutGuide(bottomGap)
+        let equalGaps = topGap.heightAnchor.constraint(equalTo: bottomGap.heightAnchor)
+        equalGaps.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            topGap.topAnchor.constraint(equalTo: topDivider.bottomAnchor),
+            topGap.bottomAnchor.constraint(equalTo: sectionLabel.topAnchor),
+            bottomGap.topAnchor.constraint(equalTo: noteLabel.bottomAnchor),
+            bottomGap.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            equalGaps,
         ])
     }
 

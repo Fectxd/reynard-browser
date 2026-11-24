@@ -485,10 +485,15 @@ final class EdgeStartPageViewController: UIViewController, HomepageRootContent {
         topBarView.addArrangedSubview(weatherChipView)
         topBarView.addArrangedSubview(headerSpacerView)
         topBarView.addArrangedSubview(settingsButton)
+        // The chip is as wide as its text and may grow up to the settings
+        // button (minus the 8pt stack spacing), wherever that is for the
+        // current window width; beyond that its text truncates. The spacer
+        // gives up its room first, the chip next; the gear never shrinks.
         headerSpacerView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        headerSpacerView.setContentCompressionResistancePriority(.fittingSizeLevel, for: .horizontal)
         weatherChipView.setContentHuggingPriority(.required, for: .horizontal)
-        weatherChipView.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-        weatherChipView.widthAnchor.constraint(lessThanOrEqualToConstant: 260).isActive = true
+        weatherChipView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        settingsButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         
         headerStackView.addArrangedSubview(searchFieldView)
         
