@@ -260,10 +260,10 @@ index 5e088c8..70abdc8 100644
                  title: NSLocalizedString("New Private Tab", comment: ""),
                  action: #selector(BrowserViewController.newPrivateTabKeyCommand(_:)),
 diff --git a/browser/Reynard/Client/Extensions/UIApplication+Presentation.swift b/browser/Reynard/Client/Extensions/UIApplication+Presentation.swift
-index d2ee386..a24e44b 100644
+index 2e4a7f9..dd567b1 100644
 --- a/browser/Reynard/Client/Extensions/UIApplication+Presentation.swift
 +++ b/browser/Reynard/Client/Extensions/UIApplication+Presentation.swift
-@@ -77,6 +77,40 @@ extension UIApplication {
+@@ -80,6 +80,40 @@ extension UIApplication {
          return topViewController(from: rootViewController)
      }
      
@@ -304,26 +304,64 @@ index d2ee386..a24e44b 100644
      func topViewController(from rootViewController: UIViewController) -> UIViewController {
          var controller = rootViewController
          while let presentedController = controller.presentedViewController {
-diff --git a/browser/Reynard/Client/Interface/BrowserViewController+Addons.swift b/browser/Reynard/Client/Interface/BrowserViewController+Addons.swift
-index 445c269..cacdb02 100644
---- a/browser/Reynard/Client/Interface/BrowserViewController+Addons.swift
-+++ b/browser/Reynard/Client/Interface/BrowserViewController+Addons.swift
-@@ -69,7 +69,9 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
+index f8e6abd..0129dae 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
+@@ -95,12 +95,6 @@ extension BrowserViewController: SearchOverlayCoordinatorDelegate, HomepageOverl
      }
      
-     func presentAddonAlert(_ coordinator: AddonCoordinator, title: String?, message: String) {
--        AlertPresenter.show(title: title, message: message)
-+        // Present in this window: add-on events are per-scene, so the alert must
-+        // not land on another window that happens to be frontmost.
-+        AlertPresenter.show(title: title, message: message, in: view.window)
+     func openSettingsFromHomepage() {
+-        if browserLayout.interfaceIdiom == .pad,
+-           browserLayout.chromeMode == .pad {
+-            sidebarCoordinator.showSection(.settings)
+-            return
+-        }
+-        
+         presentLibrary(initialSection: .settings)
      }
      
-     func dismissAddonModal(_ coordinator: AddonCoordinator, completion: (() -> Void)?) -> Bool {
-diff --git a/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift b/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
-index 5b696f1..0e35763 100644
---- a/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
-+++ b/browser/Reynard/Client/Interface/BrowserViewController+BrowserActions.swift
-@@ -54,15 +54,10 @@ extension BrowserViewController {
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
+index 3893c2f..5223790 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
+@@ -46,6 +46,17 @@ extension BrowserViewController {
+         createNewTab(mode: .private)
+     }
+     
++    /// Opens an additional window (iPad Stage Manager / Split View); the new
++    /// scene is set up by BrowserWindowManager like any other window.
++    @objc func newWindowKeyCommand(_ sender: UIKeyCommand) {
++        // Multiple windows are an iPad-only affordance.
++        guard UIDevice.current.userInterfaceIdiom == .pad else {
++            return
++        }
++        
++        UIApplication.shared.requestSceneSessionActivation(nil, userActivity: nil, options: nil)
++    }
++    
+     @objc func focusAddressBarKeyCommand(_ sender: UIKeyCommand) {
+         if tabOverview.isPresented || tabOverview.isTransitionRunning {
+             setTabOverviewVisible(false, animated: false)
+@@ -66,10 +77,11 @@ extension BrowserViewController {
+         
+         toolbarController.reset()
+         let mode = tabManager.selectedTabMode
++        let wasLastTab = tabManager.tabs(for: mode).count == 1
+         tabManager.removeTab(tab, behavior: .adjacent)
+         
+-        if mode == .regular && tabManager.regularTabs.isEmpty {
+-            createNewTab(mode: .regular)
++        if wasLastTab {
++            presentTabOverviewAfterClosingLastTab(mode: mode)
+         }
+     }
+     
+diff --git a/browser/Reynard/Client/Interface/BrowserViewController+Presentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+Presentation.swift
+index 6e08413..512d515 100644
+--- a/browser/Reynard/Client/Interface/BrowserViewController+Presentation.swift
++++ b/browser/Reynard/Client/Interface/BrowserViewController+Presentation.swift
+@@ -58,15 +58,9 @@ extension BrowserViewController {
          initialSection: LibrarySection = .bookmarks,
          startsEditingBookmarks: Bool = false
      ) {
@@ -337,13 +375,12 @@ index 5b696f1..0e35763 100644
 -        }
 -        
 +        // The library always opens as a modal pageSheet overlay, in both
-+        // portrait and landscape. The old pad split-view sidebar (the stuck
-+        // "primary" menu) is removed: it squeezed the tab bar / address bar and
-+        // could not be dismissed. A modal only overlays web content.
++        // portrait and landscape (Edge UI: the pad split-view sidebar is not
++        // used; the Edge side panel covers the side-by-side case).
          let libraryController = LibraryViewController(
              initialSection: initialSection,
              isPrivateMode: tabManager.selectedTab?.isPrivate == true,
-@@ -75,12 +70,6 @@ extension BrowserViewController {
+@@ -79,12 +73,6 @@ extension BrowserViewController {
      }
      
      func toggleLibrary(section: LibrarySection) {
@@ -356,105 +393,11 @@ index 5b696f1..0e35763 100644
          guard let navigationController = presentedViewController as? ContentModalNavigationController,
                let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
              presentLibrary(initialSection: section)
-@@ -161,9 +150,6 @@ extension BrowserViewController {
-         
-         let mode = tabManager.selectedTabMode
-         closeTab(at: tabManager.selectedTabIndex, mode: mode)
--        if mode == .regular && tabManager.regularTabs.isEmpty {
--            createNewTab(mode: .regular)
--        }
-     }
-     
-     func createNewTabAnimated(mode: TabMode) {
-diff --git a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
-index 2c1210e..acdc89b 100644
---- a/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
-+++ b/browser/Reynard/Client/Interface/BrowserViewController+ContentOverlay.swift
-@@ -152,11 +152,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
-     }
-     
-     func openSettingsFromHomepage() {
--        if browserLayout.interfaceIdiom == .pad,
--           browserLayout.chromeMode == .pad {
--            sidebarCoordinator.showSection(.settings)
--            return
--        }
-         presentLibrary(initialSection: .settings)
-     }
-     
-diff --git a/browser/Reynard/Client/Interface/BrowserViewController+Downloads.swift b/browser/Reynard/Client/Interface/BrowserViewController+Downloads.swift
-index d2dd68c..df0921a 100644
---- a/browser/Reynard/Client/Interface/BrowserViewController+Downloads.swift
-+++ b/browser/Reynard/Client/Interface/BrowserViewController+Downloads.swift
-@@ -14,6 +14,12 @@ extension BrowserViewController: DownloadsCoordinatorDelegate {
-         && browserLayout.chromeMode == .pad
-     }
-     
-+    /// Download confirmations belong to this window, not whichever window is
-+    /// frontmost when an asynchronous download finishes.
-+    var downloadsPresentingWindow: UIWindow? {
-+        return viewIfLoaded?.window
-+    }
-+    
-     func downloadsCoordinator(_ coordinator: DownloadsCoordinator, didUpdate summary: DownloadStoreSummary) {
-         browserChrome.updateDownload(summary)
-     }
-diff --git a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-index e2a4f99..f431aa5 100644
---- a/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-+++ b/browser/Reynard/Client/Interface/BrowserViewController+KeyCommands.swift
-@@ -46,6 +46,18 @@ extension BrowserViewController {
-         createNewTab(mode: .private)
-     }
-     
-+    /// Opens an additional window (iPad Stage Manager / Split View). The new
-+    /// window starts at the homepage and uses its own ephemeral tab store, so it
-+    /// never restores or overwrites the primary window's saved tab set.
-+    @objc func newWindowKeyCommand(_ sender: UIKeyCommand) {
-+        // Multiple windows are an iPad-only affordance.
-+        guard UIDevice.current.userInterfaceIdiom == .pad else {
-+            return
-+        }
-+        
-+        UIApplication.shared.requestSceneSessionActivation(nil, userActivity: nil, options: nil)
-+    }
-+    
-     @objc func focusAddressBarKeyCommand(_ sender: UIKeyCommand) {
-         if tabOverview.isPresented || tabOverview.isTransitionRunning {
-             setTabOverviewVisible(false, animated: false)
-@@ -65,10 +77,11 @@ extension BrowserViewController {
-         
-         toolbarController.reset()
-         let mode = tabManager.selectedTabMode
-+        let wasLastTab = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
-         tabManager.removeTab(at: tabManager.selectedTabIndex, mode: mode, behavior: .adjacent)
-         
--        if mode == .regular && tabManager.regularTabs.isEmpty {
--            createNewTab(mode: .regular)
-+        if wasLastTab {
-+            presentTabOverviewAfterClosingLastTab(mode: mode)
-         }
-     }
-     
-@@ -82,10 +95,11 @@ extension BrowserViewController {
-         
-         Task { @MainActor in
-             do {
--                let pdfFileURL = try await PagePrintPreparationAlert.prepare {
-+                // Present the print flow in this window's scene.
-+                let pdfFileURL = try await PagePrintPreparationAlert.prepare(in: view.window) {
-                     try await tab.session.printToPDF()
-                 }
--                try await PagePrintPresenter.present(pdfFileURL: pdfFileURL, jobName: tab.title)
-+                try await PagePrintPresenter.present(pdfFileURL: pdfFileURL, jobName: tab.title, in: view.window)
-             } catch {
-                 return
-             }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
-index 00c5033..fcf9ca4 100644
+index 8568bd1..911fda3 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
-@@ -34,6 +34,7 @@ extension BrowserViewController: TabManagerDelegate {
+@@ -37,6 +37,7 @@ extension BrowserViewController: TabManagerDelegate {
          updateBrowserLayout(animated: animateTabBarVisibility)
          homepageOverlayCoordinator.updatePresentation(animated: false)
          tabBar.updateLayout()
@@ -462,7 +405,7 @@ index 00c5033..fcf9ca4 100644
      }
      
      func tabManagerDidTerminateSelectedTab(_ tabManager: TabManager) {
-@@ -96,6 +97,7 @@ extension BrowserViewController: TabManagerDelegate {
+@@ -94,6 +95,7 @@ extension BrowserViewController: TabManagerDelegate {
          }
          
          requestHomepageAddressBarFocus()
@@ -470,11 +413,11 @@ index 00c5033..fcf9ca4 100644
      }
      
      func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
-@@ -348,4 +350,12 @@ extension BrowserViewController {
-             return nil
-         }
+@@ -331,4 +333,12 @@ extension BrowserViewController: TabSessionHandlerDelegate {
+             succeeded: succeeded
+         )
      }
-+
++    
 +    /// Updates the tab-overview button's count badge to reflect the current
 +    /// browsing mode (regular vs private tabs are counted separately).
 +    func refreshTabOverviewBadge() {
@@ -484,7 +427,7 @@ index 00c5033..fcf9ca4 100644
 +    }
  }
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
-index 494d447..0cd5fb9 100644
+index 1b2938a..deb4d48 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabPresentation.swift
 @@ -5,6 +5,7 @@
@@ -495,42 +438,25 @@ index 494d447..0cd5fb9 100644
  import UIKit
  
  extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOverviewDelegate, TabOverviewPresentationContext {
-@@ -39,22 +40,49 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
-         tabManager.selectTab(at: index, mode: mode)
-     }
-     
-+    /// Opens a copy of the tab (same URL) right after it and selects the copy.
-+    func duplicateTab(at index: Int, mode: TabMode) {
-+        guard tabs.indices.contains(index) else {
-+            return
-+        }
-+        let sourceURL = tabs[index].url
-+        toolbarController.reset()
-+        _ = tabManager.addTab(selecting: true, at: index + 1, isPrivate: mode == .private)
-+        if let sourceURL {
-+            tabManager.selectedTab?.session.load(sourceURL)
-+        }
-+    }
-+    
-     func closeTab(at index: Int, mode: TabMode) {
-         toolbarController.reset()
+@@ -65,18 +66,48 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+         }
+         
          let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
 -        if isTabOverviewActive,
 -           tabOverview.mode == .regularTabs,
 -           mode == .regular,
 -           tabManager.regularTabs.count == 1 {
-+        let isClosingLastTabOfMode = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
++        let isClosingLastTabOfMode = tabManager.tabs(for: mode).count == 1
 +        if isTabOverviewActive, isClosingLastTabOfMode {
 +            // Keep the overview open on its empty state ("打开新标签页").
              tabOverview.prepareNextTabChangesWithoutAnimation()
-             tabManager.removeTab(at: index, mode: mode, behavior: .none)
--            tabOverview.prepareNextTabChangesWithoutAnimation()
+             tabManager.removeTab(tab, behavior: .none)
 -            createTabFromOverview(mode: .regular)
              return
          }
          
          let behavior: TabRemovalBehavior = isTabOverviewActive ? .none : .recent
-         tabManager.removeTab(at: index, mode: mode, behavior: behavior)
+         tabManager.removeTab(tab, behavior: behavior)
 +        if isClosingLastTabOfMode {
 +            presentTabOverviewAfterClosingLastTab(mode: mode)
 +        }
@@ -548,43 +474,47 @@ index 494d447..0cd5fb9 100644
 +        // Presenting picks the selected tab's mode; show the mode that just
 +        // became empty instead (e.g. the last private tab was closed).
 +        tabOverview.setMode(TabOverview.Mode(tabMode: mode), animated: false)
++    }
++    
++    /// Opens a copy of the tab (same URL) right after it and selects the copy.
++    func duplicateTab(at index: Int, mode: TabMode) {
++        guard let source = tabManager.tabs(for: mode)[safe: index] else {
++            return
++        }
++        toolbarController.reset()
++        _ = tabManager.createTab(
++            selecting: true,
++            target: .index(index + 1),
++            mode: mode,
++            url: source.url,
++            loadImmediately: true
++        )
      }
      
      func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode) {
-@@ -134,6 +162,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+@@ -153,6 +184,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
      func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
          if visible {
              toolbarController.lock(for: .tabOverview)
 +            dismissEdgeLibraryPanel(animated: false)
-             if browserChrome.performAfterTransition({ [weak self] in
+             if browserChrome.addressBar.performAfterTransition({ [weak self] in
                  self?.setTabOverviewVisible(true, animated: animated)
              }) {
+@@ -233,9 +265,6 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
+         
+         let mode = tabManager.selectedTabMode
+         closeTab(at: tabManager.selectedTabIndex, mode: mode)
+-        if mode == .regular && tabManager.regularTabs.isEmpty {
+-            createNewTab(mode: .regular)
+-        }
+     }
+     
+     func closeAllTabs() {
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController.swift b/browser/Reynard/Client/Interface/BrowserViewController.swift
-index 12e0ee8..76b5568 100644
+index 2ce1c02..dfe4a3c 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController.swift
-@@ -24,10 +24,18 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-     
-     // MARK: - State
-     
--    let sessionManager = SessionManager()
-+    /// The tab-list store backing this window. The primary window uses the
-+    /// shared on-disk store; an additional (Stage Manager) window gets its own
-+    /// ephemeral, in-memory store so it can never clobber the saved tab list.
-+    let tabStore: TabManagementStore
-+    /// True for an additional window: it starts at the homepage instead of
-+    /// restoring the shared tab set.
-+    private let startsWithHomepage: Bool
-+    let sessionManager: SessionManager
-     lazy var tabManager = TabManagerImplementation(
-         delegate: self,
--        sessionManager: sessionManager
-+        sessionManager: sessionManager,
-+        store: tabStore
-     )
-     private var lockedOrientations: UIInterfaceOrientationMask?
-     private var pendingOrientationRequest: (
-@@ -49,6 +57,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -79,6 +79,15 @@ final class BrowserViewController: UIViewController {
      let contentView = ContentView()
      lazy var browserChrome = BrowserChrome()
      var tabBar: TabBar { return browserChrome.tabBar }
@@ -600,44 +530,7 @@ index 12e0ee8..76b5568 100644
      
      private(set) lazy var toolbarController = ToolbarController(
          browserChrome: browserChrome,
-@@ -133,8 +150,16 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-         return preferredInterfaceOrientation(allowedBy: allowedOrientations) ?? .portrait
-     }
-     
--    init(canHostSidebar: Bool = true) {
-+    init(canHostSidebar: Bool = true, startsWithHomepage: Bool = false) {
-         self.allowsSidebarHosting = canHostSidebar
-+        self.startsWithHomepage = startsWithHomepage
-+        // An additional window gets an isolated, in-memory tab store so it
-+        // neither restores nor overwrites the primary window's saved tabs.
-+        let store = startsWithHomepage
-+            ? TabManagementStore(isEphemeral: true)
-+            : TabManagementStore.shared
-+        self.tabStore = store
-+        self.sessionManager = SessionManager(tabStore: store)
-         super.init(nibName: nil, bundle: nil)
-     }
-     
-@@ -144,11 +169,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-     
-     deinit {
-         stopScreenOrientationHandling()
-+        if isShowingFullscreenMedia {
-+            // `isIdleTimerDisabled` is app-global while scenes are per-window:
-+            // with a second window open, only clear it when no other window
-+            // still needs it, otherwise closing one window would re-enable the
-+            // idle timer for the window that is still showing fullscreen media.
-+            let anotherWindowNeedsIdleTimerDisabled = UIApplication.shared.connectedScenes
-+                .compactMap { $0 as? UIWindowScene }
-+                .flatMap(\.windows)
-+                .compactMap { $0.rootViewController as? BrowserViewController }
-+                .contains { $0 !== self && $0.isShowingFullscreenMedia }
-+            if !anotherWindowNeedsIdleTimerDisabled {
-+                UIApplication.shared.isIdleTimerDisabled = false
-+            }
-+        }
-         NotificationCenter.default.removeObserver(self)
-     }
+@@ -201,6 +210,17 @@ final class BrowserViewController: UIViewController {
      
      override func viewDidLoad() {
          super.viewDidLoad()
@@ -655,29 +548,15 @@ index 12e0ee8..76b5568 100644
          view.backgroundColor = .systemBackground
          
          if sidebarCoordinator.installHostIfNeeded() {
-@@ -162,13 +212,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-         contextMenuCoordinator.configure()
-         downloadsCoordinator.startObservingStore()
-         downloadsCoordinator.syncToolbarButtonState()
--        tabOverview.restoreMode(TabOverview.Mode(tabMode: TabManagementStore.shared.preferredRestoredMode()))
-+        tabOverview.restoreMode(TabOverview.Mode(tabMode: tabStore.preferredRestoredMode()))
-         syncBrowserNavigationChrome(animated: false)
-         browserChrome.syncSidebarButton(splitViewController: splitViewController)
-         applyUpdateMenuButtonBadge()
-         
--        tabManager.createInitialTab()
-+        if startsWithHomepage {
-+            // Additional window: a single fresh homepage tab, no restoration.
-+            tabManager.createHomepageWindowInitialTab()
-+        } else {
-+            tabManager.createInitialTab()
-+        }
+@@ -225,6 +245,7 @@ final class BrowserViewController: UIViewController {
+         }
+         tabOverview.restoreMode(TabOverview.Mode(tabMode: tabManager.selectedTabMode))
          refreshAddressBar()
 +        refreshTabOverviewBadge()
          homepageOverlayCoordinator.updatePresentation(animated: false)
          
          Task { @MainActor [weak self] in
-@@ -230,10 +286,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -286,10 +307,12 @@ final class BrowserViewController: UIViewController {
          )
          homepageOverlayCoordinator.updateVisibleContentInsets()
          invalidateNavigationThumbnailsIfNeeded()
@@ -690,15 +569,16 @@ index 12e0ee8..76b5568 100644
          DispatchQueue.main.async { [weak self] in
              guard let self,
                    self.isViewLoaded,
-@@ -256,6 +314,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -313,7 +336,7 @@ final class BrowserViewController: UIViewController {
          if let readerSettings = presentedViewController as? ReaderSettingsViewController {
              readerSettings.dismiss(animated: false)
          }
+-        
 +        dismissEdgeMenuOnLayoutChange()
          performContentLifecycle {
              toolbarController.reset(animated: false)
              coordinator.animate { _ in
-@@ -305,8 +364,13 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -366,8 +389,13 @@ final class BrowserViewController: UIViewController {
          
          NSLayoutConstraint.activate([
              contentView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -714,7 +594,7 @@ index 12e0ee8..76b5568 100644
              contentView.bottomAnchor.constraint(equalTo: browserChrome.bottomToolbarTopAnchor).withPriority(.defaultHigh),
              browserChrome.leadingAnchor.constraint(equalTo: view.leadingAnchor),
              browserChrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-@@ -318,6 +382,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -379,6 +407,9 @@ final class BrowserViewController: UIViewController {
              tabOverview.topAnchor.constraint(equalTo: view.topAnchor),
              tabOverview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
          ])
@@ -724,20 +604,25 @@ index 12e0ee8..76b5568 100644
      }
      
      private func configureBrowserChromeActions() {
-@@ -452,10 +519,10 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-             )
+@@ -515,7 +546,7 @@ final class BrowserViewController: UIViewController {
          }
+         
          browserChrome.onLibrary = { [weak self] in
 -            self?.presentLibrary()
 +            self?.presentEdgeMenu()
+         }
+         browserChrome.onHistory = { [weak self] in
+             self?.presentLibrary(initialSection: .history)
+@@ -527,7 +558,7 @@ final class BrowserViewController: UIViewController {
+             self?.presentBookmarkEditor(addToFavorites: false)
          }
          browserChrome.onDownloads = { [weak self] in
 -            self?.presentLibrary(initialSection: .downloads)
 +            self?.presentEdgeLibraryPanel(section: .downloads)
          }
-         browserChrome.onNewTab = { [weak self] in
-             self?.createNewTab()
-@@ -463,6 +530,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+         browserChrome.onSettings = { [weak self] in
+             self?.presentLibrary(initialSection: .settings)
+@@ -547,6 +578,12 @@ final class BrowserViewController: UIViewController {
          browserChrome.onTabOverview = { [weak self] in
              self?.setTabOverviewVisible(true, animated: true)
          }
@@ -750,7 +635,7 @@ index 12e0ee8..76b5568 100644
          browserChrome.onOverlayDismiss = { [weak self] in
              self?.toolbarController.reset()
              self?.dismissAddressBarEditingAndChromeOverlay()
-@@ -542,6 +615,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -647,6 +684,9 @@ final class BrowserViewController: UIViewController {
          animated
          ? UIView.animate(withDuration: duration, animations: layoutBlock)
          : layoutBlock()
@@ -760,7 +645,7 @@ index 12e0ee8..76b5568 100644
      }
      
      func dismissAddressBarEditingAndOverlays() {
-@@ -573,6 +649,25 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -678,6 +718,25 @@ final class BrowserViewController: UIViewController {
          updateBrowserLayout(animated: animated, duration: duration)
      }
      
@@ -786,7 +671,7 @@ index 12e0ee8..76b5568 100644
      func applyBrowserLayout(animated: Bool = false) {
          if isShowingFullscreenMedia {
              applyFullscreenLayout()
-@@ -606,12 +701,15 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -711,12 +770,15 @@ final class BrowserViewController: UIViewController {
          let isSearchFocused = searchOverlayCoordinator.isFocused && !tabOverview.isPresented
          contentView.applyLayout(
              ContentView.LayoutState(mode: isSearchFocused ? .searchFocused : .standard),
@@ -804,7 +689,7 @@ index 12e0ee8..76b5568 100644
      }
      
      private func applyCompactLayout() {
-@@ -626,11 +724,29 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -731,24 +793,54 @@ final class BrowserViewController: UIViewController {
      private func applyPadLayout(animated: Bool) {
          contentView.applyLayout(
              ContentView.LayoutState(mode: .standard),
@@ -832,12 +717,13 @@ index 12e0ee8..76b5568 100644
 +    func setEdgeLibraryContentTrailingInset(_ inset: CGFloat) {
 +        contentTrailingConstraint?.constant = -max(0, inset)
 +    }
-     
-     private var visibleTabCount: Int {
-         let tabs = tabManager.selectedTabMode == .private
-@@ -639,17 +755,23 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-         return tabs.count
-     }
++    
++    private var visibleTabCount: Int {
++        let tabs = tabManager.selectedTabMode == .private
++        ? tabManager.privateTabs
++        : tabManager.regularTabs
++        return tabs.count
++    }
      
 +    /// Whether the top tab strip should be shown. The strip is part of the top
 +    /// chrome only in the wide (pad) layout — the narrow phone layout has no
@@ -854,18 +740,19 @@ index 12e0ee8..76b5568 100644
          }
 -        
 -        let showsTabBar = browserLayout.interfaceIdiom == .pad
--        ? visibleTabCount > 1
--        : visibleTabCount > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
+-        ? tabManager.activeTabs.count > 1
+-        : tabManager.activeTabs.count > 1 && Prefs.AppearanceSettings.showsLandscapeTabBar
 -        guard showsTabBar else {
 +
 +        guard visibleTabCount > 0 else {
              return .hidden
          }
+-        
 +
          return tabOverview.isPresented ? .layoutReserved : .visible
      }
      
-@@ -671,7 +793,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -775,7 +867,7 @@ final class BrowserViewController: UIViewController {
              ? .fullscreenMedia
              : (tabOverview.isPresented ? .tabOverview : .browsing),
              search: searchState,
@@ -874,21 +761,18 @@ index 12e0ee8..76b5568 100644
              interfaceIdiom: browserLayout.interfaceIdiom,
              orientation: browserLayout.orientation,
              isTwoThirdSplitScreenOrSmaller: isSidebarOverlayLayout,
-@@ -681,22 +803,36 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -785,13 +877,36 @@ final class BrowserViewController: UIViewController {
      }
      
      private func resolveBrowserLayout() -> BrowserLayout {
--        let interfaceIdiom = traitCollection.userInterfaceIdiom
-         let orientation = currentViewportOrientation()
--        
--        if interfaceIdiom == .pad {
--            return isCompactPadLayout
--            ? resolveCompactLayout(interfaceIdiom: .pad, orientation: orientation)
--            : resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
--        }
--        
--        guard orientation == .portrait else {
--            return resolvePadLayout(interfaceIdiom: .phone, orientation: .landscape)
+-        return BrowserLayout.resolve(
+-            interfaceIdiom: traitCollection.userInterfaceIdiom,
+-            orientation: currentViewportOrientation(),
+-            addressBarPosition: Prefs.AppearanceSettings.addressBarPosition,
+-            isCompactPadLayout: isCompactPadLayout,
+-            isHalfSplitScreenOrSmaller: isHalfSplitScreenOrSmaller
+-        )
++        let orientation = currentViewportOrientation()
 +        // The layout is decided purely by window width (in points), not by the
 +        // device idiom. Windows at or above compactWidthThreshold use the wide
 +        // pad top-toolbar layout (tab bar above address bar); anything narrower
@@ -901,11 +785,7 @@ index 12e0ee8..76b5568 100644
 +
 +        if isWideLayout {
 +            return resolvePadLayout(interfaceIdiom: .pad, orientation: orientation)
-         }
--        
--        return Prefs.AppearanceSettings.addressBarPosition == .top
--        ? resolveCompactLayout(interfaceIdiom: .phone, orientation: .portrait)
--        : resolvePhoneLayout()
++        }
 +
 +        // Narrow: phone layout with the address bar pinned to the top toolbar
 +        // and the five-button navigation row in the bottom toolbar.
@@ -925,7 +805,7 @@ index 12e0ee8..76b5568 100644
      }
      
      private func currentViewportOrientation() -> BrowserLayout.ViewportOrientation {
-@@ -752,34 +888,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
+@@ -847,12 +962,38 @@ final class BrowserViewController: UIViewController {
      }
      
      private func browserWindowWidth(fallback: CGFloat) -> CGFloat {
@@ -941,45 +821,34 @@ index 12e0ee8..76b5568 100644
 +            return view.bounds.width
 +        }
 +        return fallback
-     }
-     
--    private func resolvePhoneLayout() -> BrowserLayout {
++    }
++    
 +    private func resolvePhoneLayout(orientation: BrowserLayout.ViewportOrientation) -> BrowserLayout {
-         return BrowserLayout(
-             interfaceIdiom: .phone,
--            orientation: .portrait,
--            chromeMode: .phone,
--            chromePosition: .bottom,
--            tabOverviewToolbarPosition: .bottom,
--            overlayHost: .embedded
--        )
--    }
--    
--    private func resolveCompactLayout(
--        interfaceIdiom: UIUserInterfaceIdiom,
--        orientation: BrowserLayout.ViewportOrientation
--    ) -> BrowserLayout {
--        return BrowserLayout(
--            interfaceIdiom: interfaceIdiom,
-             orientation: orientation,
--            chromeMode: .compact,
--            chromePosition: interfaceIdiom == .phone ? .top : .bottom,
++        return BrowserLayout(
++            interfaceIdiom: .phone,
++            orientation: orientation,
 +            chromeMode: .phone,
 +            chromePosition: .top,
-             tabOverviewToolbarPosition: .bottom,
-             overlayHost: .embedded
-         )
-@@ -799,10 +922,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
-         )
++            tabOverviewToolbarPosition: .bottom,
++            overlayHost: .embedded
++        )
++    }
++    
++    private func resolvePadLayout(
++        interfaceIdiom: UIUserInterfaceIdiom,
++        orientation: BrowserLayout.ViewportOrientation
++    ) -> BrowserLayout {
++        return BrowserLayout(
++            interfaceIdiom: interfaceIdiom,
++            orientation: orientation,
++            chromeMode: .pad,
++            chromePosition: .bottom,
++            tabOverviewToolbarPosition: isHalfSplitScreenOrSmaller ? .bottom : .top,
++            overlayHost: .detached
++        )
      }
      
--    private func browserTopInset() -> CGFloat {
--        return sidebarCoordinator.topInset(fallback: UX.fallbackTopInset)
--    }
--    
-     // MARK: - Sidebar
-     
-     private func performContentLifecycle(_ action: () -> Void) {
+     private func browserTopInset() -> CGFloat {
 diff --git a/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift b/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift
 index 0e2b6c6..4f0c45b 100644
 --- a/browser/Reynard/Client/Interface/Chrome/AddressBar/AddressBar.swift
@@ -1040,19 +909,19 @@ index 0e2b6c6..4f0c45b 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-index 522dc7e..ba76ed4 100644
+index ab1f409..2eff945 100644
 --- a/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/BrowserChrome.swift
-@@ -66,6 +66,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
-     var onDownloads: (() -> Void)?
+@@ -70,6 +70,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+     var onSettings: (() -> Void)?
      var onNewTab: (() -> Void)?
      var onTabOverview: (() -> Void)?
 +    var onFavorite: (() -> Void)?
 +    var onMenu: (() -> Void)?
-     var onOverlayDismiss: (() -> Void)?
-     var onPageZoomOut: (() -> Void)?
-     var onPageZoomIn: (() -> Void)?
-@@ -103,6 +105,18 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+     var onShowReader: (() -> Void)?
+     var onShowFindInPage: (() -> Void)?
+     var onShowPageZoom: (() -> Void)?
+@@ -111,6 +113,18 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          view.isHidden = true
          return view
      }()
@@ -1071,7 +940,7 @@ index 522dc7e..ba76ed4 100644
      
      private let overlayContentView = ChromeOverlayContentView()
      private let actionBar = ActionBar()
-@@ -199,6 +213,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -207,6 +221,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          ? bottomToolbar.sharePopoverSourceView()
          : topToolbar.sharePopoverSourceView()
      }
@@ -1097,9 +966,9 @@ index 522dc7e..ba76ed4 100644
 +        )
 +    }
      
-     var addressBarButton: AddressBarButton {
-         return addressBar.addressBarButton
-@@ -637,6 +672,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+     // MARK: - Layout
+     
+@@ -596,6 +631,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          topToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
          bottomToolbar.setMenuButtonIndicatesUpdate(hasUpdate)
      }
@@ -1111,27 +980,25 @@ index 522dc7e..ba76ed4 100644
      
      func syncSidebarButton(splitViewController: UISplitViewController?) {
          topToolbar.syncSidebarButton(splitViewController: splitViewController)
-@@ -663,6 +703,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
-         topToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
-         topToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
-         topToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
-+        topToolbar.onFavorite = { [weak self] in self?.onFavorite?() }
-+        topToolbar.onMenu = { [weak self] in self?.onMenu?() }
+@@ -618,6 +658,9 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+         topToolbar.onItem = { [weak self] item in self?.performToolbarItem(item) }
+         bottomToolbar.onItem = { [weak self] item in self?.performToolbarItem(item) }
          
-         bottomToolbar.onBack = { [weak self] in self?.onBack?() }
-         bottomToolbar.onForward = { [weak self] in self?.onForward?() }
-@@ -670,6 +712,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
-         bottomToolbar.onLibrary = { [weak self] in self?.onLibrary?() }
-         bottomToolbar.onDownloads = { [weak self] in self?.onDownloads?() }
-         bottomToolbar.onTabOverview = { [weak self] in self?.onTabOverview?() }
-+        bottomToolbar.onNewTab = { [weak self] in self?.onNewTab?() }
-+        
 +        // The "+" new-tab button on the tab strip row inserts a new tab.
 +        tabBar.onNewTab = { [weak self] in self?.onNewTab?() }
-         
++        
          actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
          actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
-@@ -704,6 +750,38 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+         actionBar.onPageZoomReset = { [weak self] in self?.onPageZoomReset?() }
+@@ -644,6 +687,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+         case .history: onHistory?()
+         case .bookmarks: onBookmarks?()
+         case .addBookmark: onAddBookmark?()
++        case .favorite: onFavorite?()
+         case .downloads: onDownloads?()
+         case .settings: onSettings?()
+         case .reader: onShowReader?()
+@@ -671,6 +715,38 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          return topToolbar.convert(topToolbar.bounds, to: view)
      }
      
@@ -1170,7 +1037,7 @@ index 522dc7e..ba76ed4 100644
      func setToolbarTransition(
          topOffset: CGFloat,
          bottomOffset: CGFloat,
-@@ -714,7 +792,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -681,7 +757,6 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          animatesContent: Bool
      ) {
          topToolbar.transform = CGAffineTransform(translationX: 0, y: topOffset)
@@ -1178,7 +1045,7 @@ index 522dc7e..ba76ed4 100644
          bottomToolbar.transform = CGAffineTransform(translationX: 0, y: bottomOffset)
          actionBar.transform = actionBarKeyboardBottomConstraint == nil
          ? CGAffineTransform(translationX: 0, y: bottomOffset)
-@@ -817,6 +894,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -784,6 +859,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      }
      
      private func configureHierarchy() {
@@ -1186,7 +1053,7 @@ index 522dc7e..ba76ed4 100644
          addSubview(topToolbar)
          addSubview(tabBar)
          addSubview(bottomToolbar)
-@@ -831,19 +909,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -798,19 +874,27 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
          overlayWidthConstraint = overlayContentView.widthAnchor.constraint(equalToConstant: 0)
          overlayHeightConstraint = overlayContentView.heightAnchor.constraint(equalToConstant: 0)
          NSLayoutConstraint.activate([
@@ -1220,7 +1087,7 @@ index 522dc7e..ba76ed4 100644
              overlayDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
              overlayDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
              overlayDismissView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor),
-@@ -859,7 +945,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -826,7 +910,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
              actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
              actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
          ])
@@ -1229,7 +1096,7 @@ index 522dc7e..ba76ed4 100644
          bottomToolbar.configureTopAnchor(to: safeAreaLayoutGuide.bottomAnchor)
      }
      
-@@ -885,10 +971,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -852,10 +936,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      private func attachAddressBar(for mode: BrowserChromeMode) {
          topToolbar.detachAddressBar()
          bottomToolbar.detachAddressBar()
@@ -1244,7 +1111,7 @@ index 522dc7e..ba76ed4 100644
              topToolbar.attachAddressBar(addressBar)
          }
      }
-@@ -945,7 +1032,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
+@@ -912,7 +997,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
      
      private func resolvedTopState(for state: State) -> TopToolbar.LayoutState {
          switch state.mode {
@@ -1569,22 +1436,15 @@ index 0000000..c670306
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index 0f64a0b..222c628 100644
+index cfdf24b..a3549d4 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-@@ -38,6 +38,7 @@ final class BottomToolbar: UIView {
-     var onLibrary: (() -> Void)?
-     var onDownloads: (() -> Void)?
-     var onTabOverview: (() -> Void)?
-+    var onNewTab: (() -> Void)?
-     
-     private let contentView: UIView = {
-         let view = UIView()
-@@ -46,15 +47,10 @@ final class BottomToolbar: UIView {
+@@ -43,14 +43,11 @@ final class BottomToolbar: UIView {
          return view
      }()
      
--    private let backgroundView: UIVisualEffectView = {
++    // Edge UI: a solid surface instead of a translucent material.
+     private let backgroundView: UIVisualEffectView = {
 -        let effect: UIVisualEffect
 -        if #available(iOS 26.0, *) {
 -            effect = UIGlassEffect.nonAdaptive(style: .regular)
@@ -1592,14 +1452,13 @@ index 0f64a0b..222c628 100644
 -            effect = UIBlurEffect(style: .systemChromeMaterial)
 -        }
 -        let view = UIVisualEffectView(effect: effect)
-+    private let backgroundView: UIView = {
-+        let view = UIView()
-         view.translatesAutoresizingMaskIntoConstraints = false
++        let view = UIVisualEffectView(effect: nil)
 +        view.backgroundColor = .systemBackground
++        view.contentView.backgroundColor = .systemBackground
+         view.translatesAutoresizingMaskIntoConstraints = false
          return view
      }()
-     
-@@ -62,9 +58,6 @@ final class BottomToolbar: UIView {
+@@ -59,9 +56,6 @@ final class BottomToolbar: UIView {
          let view = UIView()
          view.translatesAutoresizingMaskIntoConstraints = false
          view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
@@ -1609,42 +1468,23 @@ index 0f64a0b..222c628 100644
          return view
      }()
      
-@@ -78,14 +71,24 @@ final class BottomToolbar: UIView {
-     
-     private lazy var backButton = ToolbarButton(buttonType: .back, target: self, action: #selector(backTapped))
-     private lazy var forwardButton = ToolbarButton(buttonType: .forward, target: self, action: #selector(forwardTapped))
--    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
-+    private lazy var newTabButton = ToolbarButton(buttonType: .newTab, target: self, action: #selector(newTabTapped))
-+    private lazy var tabOverviewButton = ToolbarButton(
-+        buttonType: .tabOverview,
-+        target: self,
-+        action: #selector(tabOverviewTapped),
-+        // This toolbar only hosts buttons in the short phone/narrow row, so
-+        // the count badge uses the compact style that stays fully inside it.
-+        tabCountBadgeStyle: .compact
-+    )
-     private lazy var libraryButton = ToolbarButton(buttonType: .library, target: self, action: #selector(libraryTapped))
-+    // Share & Downloads live in the Edge overflow menu. Keep hidden buttons so
-+    // the share popover anchor and download badge updates still have a view.
-+    private lazy var shareButton = ToolbarButton(buttonType: .share, target: self, action: #selector(shareTapped))
-     private lazy var downloadButton = ToolbarButton(buttonType: .download, target: self, action: #selector(downloadsTapped))
--    private lazy var tabOverviewButton = ToolbarButton(buttonType: .tabOverview, target: self, action: #selector(tabOverviewTapped))
-     private let buttonMenus = ToolbarButtonMenus()
-     
-     private lazy var buttons: UIStackView = {
--        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, libraryButton, downloadButton, tabOverviewButton])
-+        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, newTabButton, tabOverviewButton, libraryButton])
-         stack.translatesAutoresizingMaskIntoConstraints = false
-         stack.axis = .horizontal
-         stack.distribution = .fillEqually
-@@ -171,14 +174,22 @@ final class BottomToolbar: UIView {
+@@ -167,14 +161,31 @@ final class BottomToolbar: UIView {
      }
      
      func sharePopoverSourceView() -> UIView {
--        return shareButton
-+        // Share lives in the overflow menu; anchor the popover to the menu
-+        // button (visible) rather than the hidden share button.
-+        return libraryButton
+-        return button(for: .share)
++        // Edge UI: share usually lives in the overflow menu; anchor the
++        // popover to a visible button.
++        let share = button(for: .share)
++        if share.superview != nil, !share.isHidden {
++            return share
++        }
++        return button(for: .library)
++    }
++    
++    /// Tab count on the tab-overview button (Edge UI badge).
++    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
++        button(for: .tabOverview).setTabCount(count, isPrivate: isPrivate)
      }
      
      func apply(state: LayoutState, hidesButtons: Bool) {
@@ -1654,67 +1494,46 @@ index 0f64a0b..222c628 100644
 +        case .hidden:
              contentHeight = UX.bottomToolbarStandardContentHeight
 +        case .standard:
-+            // When the address bar lives on the top toolbar (phone layout), the
-+            // bottom toolbar only needs to host the five-button navigation row.
++            // Edge UI phone layout: when the address bar lives on the top
++            // toolbar, this toolbar only hosts the button row.
 +            contentHeight = addressBar == nil
 +            ? UX.bottomToolbarCompactContentHeight
 +            : UX.bottomToolbarStandardContentHeight
          case .collapsed, .compact:
              contentHeight = UX.bottomToolbarCompactContentHeight
          }
-@@ -260,6 +271,10 @@ final class BottomToolbar: UIView {
-             for: .normal
-         )
+@@ -304,7 +315,13 @@ final class BottomToolbar: UIView {
+             return button
+         }
+         
+-        let button = ToolbarButton(buttonType: .item(item), target: self, action: #selector(itemTapped(_:)))
++        // The short phone row uses the compact tab-count badge.
++        let button = ToolbarButton(
++            buttonType: .item(item),
++            target: self,
++            action: #selector(itemTapped(_:)),
++            tabCountBadgeStyle: .compact
++        )
+         itemButtons[item] = button
+         return button
      }
-+
-+    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
-+        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
-+    }
-     
-     // MARK: - Action Wiring
-     
-@@ -269,6 +284,7 @@ final class BottomToolbar: UIView {
-     @objc private func libraryTapped() { onLibrary?() }
-     @objc private func downloadsTapped() { onDownloads?() }
-     @objc private func tabOverviewTapped() { onTabOverview?() }
-+    @objc private func newTabTapped() { onNewTab?() }
-     
-     // MARK: - View Setup
-     
-@@ -327,6 +343,8 @@ final class BottomToolbar: UIView {
-     
-     private func configureInitialState() {
-         shareButton.isEnabled = false
-+        // Share & Downloads live in the overflow menu; keep them hidden.
-+        shareButton.isHidden = true
-         downloadButton.isHidden = true
-     }
-     
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-index 5383025..3904c17 100644
+index 1d815af..f03e863 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
-@@ -22,6 +22,15 @@ final class ToolbarButton: UIButton {
+@@ -22,6 +22,20 @@ final class ToolbarButton: UIButton {
          static let standardSymbolPointSize: CGFloat = 20
          static let newTabSymbolPointSize: CGFloat = 20
          static let downloadSymbolPointSize: CGFloat = 17
++        // Edge UI tab-count badge.
 +        static let tabCountBadgeSideLength: CGFloat = 14
 +        static let tabCountBadgeInset: CGFloat = 2
 +        static let tabCountBadgeFontSize: CGFloat = 9
-+        // The phone (narrow) bottom toolbar button row is short, so its tab
-+        // badge uses a smaller, more inset pill that is guaranteed to stay
-+        // fully inside the visible button.
++        // The phone (narrow) bottom toolbar row is short, so its badge is a
++        // smaller, more inset pill that stays fully inside the button.
 +        static let compactTabCountBadgeSideLength: CGFloat = 12
 +        static let compactTabCountBadgeInset: CGFloat = 3
 +        static let compactTabCountBadgeFontSize: CGFloat = 8
-     }
-     
-     enum ButtonType {
-@@ -33,6 +42,12 @@ final class ToolbarButton: UIButton {
-         case download
-         case newTab
-         case sidebar
-+        case favorite
 +    }
 +    
 +    enum TabCountBadgeStyle {
@@ -1722,15 +1541,15 @@ index 5383025..3904c17 100644
 +        case compact
      }
      
-     private lazy var downloadIconView: UIImageView = {
-@@ -64,14 +79,47 @@ final class ToolbarButton: UIButton {
-     }()
-     
+     enum ButtonType: Equatable {
+@@ -60,12 +74,45 @@ final class ToolbarButton: UIButton {
      private lazy var downloadProgressFillWidthConstraint = downloadProgressFillView.widthAnchor.constraint(equalToConstant: 0)
--    
-+
-+    // Tab-overview count badge (bottom-right corner). Lazy so it only exists
-+    // for the tab-overview button.
+     
+     let toolbarButtonType: ButtonType
++    private let tabCountBadgeStyle: TabCountBadgeStyle
++    
++    // Tab-overview count badge (lower-right of the glyph). Lazy so it only
++    // exists for the tab-overview button.
 +    private lazy var tabCountBadgeView: UIView = {
 +        let view = UIView()
 +        view.translatesAutoresizingMaskIntoConstraints = false
@@ -1742,7 +1561,7 @@ index 5383025..3904c17 100644
 +        }
 +        return view
 +    }()
-+
++    
 +    private lazy var tabCountBadgeLabel: UILabel = {
 +        let label = UILabel()
 +        label.translatesAutoresizingMaskIntoConstraints = false
@@ -1754,9 +1573,6 @@ index 5383025..3904c17 100644
 +        label.textAlignment = .center
 +        return label
 +    }()
-+
-     private let toolbarButtonType: ButtonType
-+    private let tabCountBadgeStyle: TabCountBadgeStyle
      private(set) var isShowingDownloads = false
      
      // MARK: - Lifecycle
@@ -1773,7 +1589,7 @@ index 5383025..3904c17 100644
          super.init(frame: .zero)
          if #available(iOS 13.4, *) {
              isPointerInteractionEnabled = true
-@@ -80,6 +128,7 @@ final class ToolbarButton: UIButton {
+@@ -74,6 +121,7 @@ final class ToolbarButton: UIButton {
          configureImage()
          configureTarget(target, action: action)
          configureDownloadViewsIfNeeded()
@@ -1781,82 +1597,66 @@ index 5383025..3904c17 100644
      }
      
      required init?(coder: NSCoder) {
-@@ -191,6 +240,89 @@ final class ToolbarButton: UIButton {
-             downloadProgressFillWidthConstraint,
-         ])
+@@ -122,6 +170,74 @@ final class ToolbarButton: UIButton {
+         accessibilityLabel = NSLocalizedString("Downloads", comment: "")
      }
-+
-+    private func configureTabCountViewsIfNeeded() {
-+        guard toolbarButtonType == .tabOverview else {
+     
++    // MARK: - Tab Count Badge (Edge UI)
++    
++    /// Shows the tab count on the tab-overview button and swaps the glyph for
++    /// private vs regular mode.
++    func setTabCount(_ count: Int, isPrivate: Bool) {
++        guard toolbarButtonType == .item(.tabOverview) else {
 +            return
 +        }
-+
++        
++        let normalizedCount = max(count, 0)
++        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
++        tabCountBadgeView.isHidden = normalizedCount == 0
++        tabCountBadgeView.layer.cornerRadius = badgeSideLength / 2
++        applyTabCountPrivateStyle(isPrivate: isPrivate)
++        accessibilityValue = normalizedCount == 0 ? nil : "\(normalizedCount)"
++        accessibilityLabel = isPrivate
++        ? NSLocalizedString("Private Tabs", comment: "")
++        : NSLocalizedString("Tabs", comment: "")
++    }
++    
++    private func configureTabCountViewsIfNeeded() {
++        guard toolbarButtonType == .item(.tabOverview) else {
++            return
++        }
++        
 +        clipsToBounds = false
 +        addSubview(tabCountBadgeView)
 +        tabCountBadgeView.addSubview(tabCountBadgeLabel)
-+
-+        // Anchor the pill to the BUTTON CENTER with a fixed offset rather than
-+        // to the button's edges. On the phone (compact) bottom toolbar the tab
-+        // button is much wider than the centered glyph (fillEqually), so edge
-+        // anchoring made the pill float away from the icon and drift with the
-+        // button's width. Center-based anchoring keeps it glued to the glyph's
-+        // lower-right regardless of the button's width. The offset is constant:
-+        // side/2 - inset - pill/2 = +6 for both styles.
++        // Anchored to the button centre with a fixed offset, so the pill stays
++        // on the glyph's lower-right however wide the button is stretched.
 +        let badgeCenterOffset = (UX.standardButtonSideLength / 2) - badgeInset - (badgeSideLength / 2)
 +        NSLayoutConstraint.activate([
 +            tabCountBadgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: badgeCenterOffset),
 +            tabCountBadgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: badgeCenterOffset),
 +            tabCountBadgeView.heightAnchor.constraint(equalToConstant: badgeSideLength),
 +            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: badgeSideLength),
-+
++            
 +            tabCountBadgeLabel.leadingAnchor.constraint(equalTo: tabCountBadgeView.leadingAnchor, constant: 3),
 +            tabCountBadgeLabel.trailingAnchor.constraint(equalTo: tabCountBadgeView.trailingAnchor, constant: -3),
 +            tabCountBadgeLabel.centerYAnchor.constraint(equalTo: tabCountBadgeView.centerYAnchor),
 +        ])
 +    }
-+
-+    /// Shows the current tab count on the tab-overview button (bottom-right
-+    /// corner) and swaps the icon to reflect private vs regular mode.
-+    func setTabCount(_ count: Int, isPrivate: Bool) {
-+        guard toolbarButtonType == .tabOverview else {
-+            return
-+        }
-+
-+        let normalizedCount = max(count, 0)
-+        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
-+        tabCountBadgeView.isHidden = normalizedCount == 0
-+        tabCountBadgeView.layer.cornerRadius = badgeSideLength / 2
-+
-+        applyTabCountPrivateStyle(isPrivate: isPrivate)
-+
-+        accessibilityValue = normalizedCount == 0 ? nil : "\(normalizedCount)"
-+        accessibilityLabel = isPrivate
-+        ? NSLocalizedString("Private Tabs", comment: "")
-+        : NSLocalizedString("Tabs", comment: "")
-+    }
-+
-+    // MARK: - Tab Count Badge Metrics
-+
++    
 +    private var badgeSideLength: CGFloat {
-+        return tabCountBadgeStyle == .compact
-+        ? UX.compactTabCountBadgeSideLength
-+        : UX.tabCountBadgeSideLength
++        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeSideLength : UX.tabCountBadgeSideLength
 +    }
-+
++    
 +    private var badgeInset: CGFloat {
-+        return tabCountBadgeStyle == .compact
-+        ? UX.compactTabCountBadgeInset
-+        : UX.tabCountBadgeInset
++        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeInset : UX.tabCountBadgeInset
 +    }
-+
++    
 +    private var badgeFontSize: CGFloat {
-+        return tabCountBadgeStyle == .compact
-+        ? UX.compactTabCountBadgeFontSize
-+        : UX.tabCountBadgeFontSize
++        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeFontSize : UX.tabCountBadgeFontSize
 +    }
-+
++    
 +    private func applyTabCountPrivateStyle(isPrivate: Bool) {
-+        // Distinguish modes: private uses the filled glyph + a dimmer tint.
 +        let baseName = isPrivate ? "reynard.square.on.square.fill" : "reynard.square.on.square"
 +        let systemFallback = isPrivate ? "square.on.square.fill" : "square.on.square"
 +        let image = UIImage(named: baseName, in: .main, compatibleWith: traitCollection)
@@ -1868,22 +1668,67 @@ index 5383025..3904c17 100644
 +        )
 +        tintColor = isPrivate ? .secondaryLabel : .label
 +    }
++    
+     // MARK: - View Setup
      
-     // MARK: - Button
-     
-@@ -204,6 +336,7 @@ final class ToolbarButton: UIButton {
-         case .download: return "reynard.arrow.down.circle"
-         case .newTab: return "reynard.plus"
-         case .sidebar: return "reynard.sidebar.left"
+     private func configureAppearance() {
+diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarItem.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarItem.swift
+index 7de1085..7aac7ce 100644
+--- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarItem.swift
++++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolbarItem.swift
+@@ -17,6 +17,8 @@ enum ToolbarItem: String, CaseIterable, Codable {
+     case history
+     case bookmarks
+     case addBookmark
++    /// Edge UI: star -- add the page to 收藏夹 (Favorites).
++    case favorite
+     case downloads
+     case settings
+     case reader
+@@ -35,6 +37,7 @@ enum ToolbarItem: String, CaseIterable, Codable {
+         case .history: return NSLocalizedString("History", comment: "")
+         case .bookmarks: return NSLocalizedString("Bookmarks", comment: "")
+         case .addBookmark: return NSLocalizedString("Add Bookmark", comment: "")
++        case .favorite: return "添加到收藏夹"
+         case .downloads: return NSLocalizedString("Downloads", comment: "")
+         case .settings: return NSLocalizedString("Settings", comment: "")
+         case .reader: return NSLocalizedString("Show Reader", comment: "")
+@@ -55,6 +58,7 @@ enum ToolbarItem: String, CaseIterable, Codable {
+         case .history: return "reynard.clock"
+         case .bookmarks: return "reynard.book"
+         case .addBookmark: return "reynard.bookmark"
 +        case .favorite: return "reynard.star"
+         case .downloads: return "reynard.arrow.down.circle"
+         case .settings: return "reynard.gearshape"
+         case .reader: return "reynard.text.page"
+@@ -75,8 +79,10 @@ enum ToolbarPlacement {
+     
+     var defaultItems: [ToolbarItem] {
+         switch self {
+-        case .bottomToolbar: return [.back, .forward, .share, .library, .tabOverview]
+-        case .topToolbar: return [.share, .newTab, .tabOverview]
++        // Edge UI phone row: back, forward, new tab, tabs, menu (⋯).
++        case .bottomToolbar: return [.back, .forward, .newTab, .tabOverview, .library]
++        // Edge UI: share, favourite (star), tabs, menu (⋯).
++        case .topToolbar: return [.share, .favorite, .tabOverview, .library]
+         }
+     }
+     
+@@ -92,7 +98,8 @@ enum ToolbarPlacement {
+         case .bottomToolbar:
+             return ToolbarItem.allCases
+         case .topToolbar:
+-            return ToolbarItem.allCases.filter { ![.back, .forward, .library].contains($0) }
++            // Edge UI: the menu (⋯) lives on the top toolbar too.
++            return ToolbarItem.allCases.filter { ![.back, .forward].contains($0) }
          }
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index c377d41..67e0ca1 100644
+index 8a43219..a9027da 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-@@ -10,14 +10,19 @@ import UIKit
+@@ -10,7 +10,7 @@ import UIKit
  
  final class TopToolbar: UIView {
      private enum UX {
@@ -1891,36 +1736,10 @@ index c377d41..67e0ca1 100644
 +        static let topToolbarContentHeight: CGFloat = 54
          static let topToolbarButtonStackHeight: CGFloat = 30
          static let topToolbarStandardButtonStackWidth: CGFloat = 126
-+        // Landscape / pad address-bar right side has 4 static buttons
-+        // (share, favorite, tab-overview, hamburger) plus the download button,
-+        // which only appears while a download is active. The width formula is
-+        // computed dynamically (see trailingWidth).
-+        static let trailingButtonStackWidth: CGFloat = (4 * 30) + (3 * 10)
-         static let topToolbarHorizontalInset: CGFloat = 12
-         static let topToolbarButtonSpacing: CGFloat = 10
-+        static let topToolbarTrailingButtonSpacing: CGFloat = 14
-         static let topToolbarAddressBarSpacing: CGFloat = 12
-         static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
--        static let topToolbarAddressBarWidthLimit: CGFloat = 650
-         static let backgroundViewHorizontalExtension: CGFloat = 16
-         static let borderWidth: CGFloat = 0.5
-     }
-@@ -36,6 +41,8 @@ final class TopToolbar: UIView {
-     var onShare: (() -> Void)?
-     var onNewTab: (() -> Void)?
-     var onTabOverview: (() -> Void)?
-+    var onFavorite: (() -> Void)?
-+    var onMenu: (() -> Void)?
-     
-     private let contentView: UIView = {
-         let view = UIView()
-@@ -44,15 +51,16 @@ final class TopToolbar: UIView {
-         return view
+         static let topToolbarTrailingButtonWidth: CGFloat = 42
+@@ -40,13 +40,12 @@ final class TopToolbar: UIView {
      }()
      
-+    /// Solid, opaque theme surface for the address / function row. The Edge UI
-+    /// uses a flat theme colour instead of a translucent material so the web
-+    /// page can never show through the top chrome.
      private let backgroundView: UIVisualEffectView = {
 -        let effect: UIVisualEffect
 -        if #available(iOS 26.0, *) {
@@ -1929,16 +1748,16 @@ index c377d41..67e0ca1 100644
 -            effect = UIBlurEffect(style: .systemChromeMaterial)
 -        }
 -        let view = UIVisualEffectView(effect: effect)
-+        // Keep the UIVisualEffectView as the container (constraints/layout code
-+        // depend on it) but disable the effect so it renders as a plain surface.
++        // Edge UI: a solid, opaque theme surface instead of a translucent
++        // material, so the page can never show through the top chrome. The
++        // UIVisualEffectView stays as the container (layout depends on it).
 +        let view = UIVisualEffectView(effect: nil)
-         view.translatesAutoresizingMaskIntoConstraints = false
 +        view.backgroundColor = EdgeChromePalette.surface
 +        view.contentView.backgroundColor = EdgeChromePalette.surface
+         view.translatesAutoresizingMaskIntoConstraints = false
          return view
      }()
-     
-@@ -60,9 +68,6 @@ final class TopToolbar: UIView {
+@@ -55,9 +54,6 @@ final class TopToolbar: UIView {
          let view = UIView()
          view.translatesAutoresizingMaskIntoConstraints = false
          view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
@@ -1948,146 +1767,22 @@ index c377d41..67e0ca1 100644
          return view
      }()
      
-@@ -106,11 +111,20 @@ final class TopToolbar: UIView {
-         target: self,
-         action: #selector(tabOverviewTapped)
-     )
-+    private lazy var favoriteButton = ToolbarButton(
-+        buttonType: .favorite,
-+        target: self,
-+        action: #selector(favoriteTapped)
-+    )
-+    private lazy var menuButton = ToolbarButton(
-+        buttonType: .library,
-+        target: self,
-+        action: #selector(menuTapped)
-+    )
-     private let buttonMenus = ToolbarButtonMenus()
+@@ -346,6 +342,11 @@ final class TopToolbar: UIView {
      
-     private lazy var leadingButtons: UIStackView = {
--        downloadButton.isHidden = true
--        let stack = UIStackView(arrangedSubviews: [sidebarButton, downloadButton, backButton, forwardButton, libraryButton])
-+        let stack = UIStackView(arrangedSubviews: [sidebarButton, backButton, forwardButton, libraryButton])
-         stack.translatesAutoresizingMaskIntoConstraints = false
-         stack.axis = .horizontal
-         stack.spacing = UX.topToolbarButtonSpacing
-@@ -119,10 +133,14 @@ final class TopToolbar: UIView {
-     }()
+     @objc private func sidebarTapped() { onSidebar?() }
      
-     private lazy var trailingButtons: UIStackView = {
--        let stack = UIStackView(arrangedSubviews: [shareButton, newTabButton, tabOverviewButton])
-+        // Landscape / pad address-bar right side: download (when active), share,
-+        // favorite, tab-overview, hamburger menu. Spacing is +1 vs the leading
-+        // side (11 instead of 10) for a slightly airier right cluster.
-+        downloadButton.isHidden = true
-+        let stack = UIStackView(arrangedSubviews: [downloadButton, shareButton, favoriteButton, tabOverviewButton, menuButton])
-         stack.translatesAutoresizingMaskIntoConstraints = false
-         stack.axis = .horizontal
--        stack.spacing = UX.topToolbarButtonSpacing
-+        stack.spacing = UX.topToolbarTrailingButtonSpacing
-         stack.distribution = .fillEqually
-         return stack
-     }()
-@@ -150,12 +168,10 @@ final class TopToolbar: UIView {
-     private var trailingWidthConstraint: NSLayoutConstraint!
-     private var standardAddressBarConstraints: [NSLayoutConstraint] = []
-     private var compactAddressBarConstraints: [NSLayoutConstraint] = []
--    private var widthLimitedStandardAddressBarConstraints: [NSLayoutConstraint] = []
-     
-     private var layoutState: LayoutState = .hidden
-     private var layoutInterfaceIdiom: UIUserInterfaceIdiom = .unspecified
-     private var layoutSidebarButtonVisible = false
--    private var isUsingStandardAddressBarWidthLimit = false
-     
-     // MARK: - Lifecycle
-     
-@@ -189,14 +205,6 @@ final class TopToolbar: UIView {
-                 addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
-                 addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
-             ]
--            widthLimitedStandardAddressBarConstraints = [
--                addressBar.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
--                addressBar.widthAnchor.constraint(equalToConstant: UX.topToolbarAddressBarWidthLimit),
--                addressBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingButtons.trailingAnchor, constant: UX.topToolbarAddressBarSpacing),
--                addressBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingButtons.leadingAnchor, constant: -UX.topToolbarAddressBarSpacing),
--                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
--                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
--            ]
-             compactAddressBarConstraints = [
-                 addressBar.leadingAnchor.constraint(
-                     equalTo: contentLayoutGuide.leadingAnchor,
-@@ -213,8 +221,7 @@ final class TopToolbar: UIView {
-     }
-     
-     func detachAddressBar() {
--        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
--        isUsingStandardAddressBarWidthLimit = false
-+        NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
-     }
-     
-     func sharePopoverSourceView() -> UIView {
-@@ -255,18 +262,22 @@ final class TopToolbar: UIView {
-                 sidebarButtonVisible: sidebarButtonVisible,
-                 showsDownloads: downloadButton.isShowingDownloads
-             )
--            trailingWidthConstraint.constant = isCompact ? 0 : UX.topToolbarStandardButtonStackWidth
-+            trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(
-+                showsDownloads: downloadButton.isShowingDownloads
-+            )
-             
-             sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
-             libraryButton.isHidden = interfaceIdiom == .pad
-             downloadButton.isHidden = isCompact || !downloadButton.isShowingDownloads
-             
--            NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
--            isUsingStandardAddressBarWidthLimit = false
-+            NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
-             if isCompact {
-                 NSLayoutConstraint.activate(compactAddressBarConstraints)
-             } else {
--                setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
-+                // Wide (standard) layout: the address bar always stretches all
-+                // the way between the leading and trailing button groups (the
-+                // old 650pt center cap is gone), so the plain set is enough.
-+                NSLayoutConstraint.activate(standardAddressBarConstraints)
-             }
-             layoutIfNeeded()
-         }
-@@ -345,6 +356,10 @@ final class TopToolbar: UIView {
-             for: .normal
-         )
-     }
-+
++    /// Tab count on the tab-overview button (Edge UI badge).
 +    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
-+        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
++        button(for: .tabOverview).setTabCount(count, isPrivate: isPrivate)
 +    }
-     
-     func syncSidebarButton(splitViewController: UISplitViewController?) {
-         sidebarButton.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
-@@ -370,6 +385,8 @@ final class TopToolbar: UIView {
-     @objc private func shareTapped() { onShare?() }
-     @objc private func newTabTapped() { onNewTab?() }
-     @objc private func tabOverviewTapped() { onTabOverview?() }
-+    @objc private func favoriteTapped() { onFavorite?() }
-+    @objc private func menuTapped() { onMenu?() }
-     
-     // MARK: - View Setup
-     
-@@ -391,7 +408,7 @@ final class TopToolbar: UIView {
-         contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
-         backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
-         leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
--        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
-+        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.trailingButtonStackWidth)
-         
-         NSLayoutConstraint.activate([
-             backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
-@@ -432,62 +449,35 @@ final class TopToolbar: UIView {
-         return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
-         + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
++    
+     @objc private func itemTapped(_ sender: ToolbarButton) {
+         guard case .item(let item) = sender.toolbarButtonType else {
+             return
+@@ -465,23 +466,9 @@ final class TopToolbar: UIView {
      }
--    
--    private var shouldLimitStandardAddressBarWidth: Bool {
+     
+     private var shouldLimitStandardAddressBarWidth: Bool {
 -        let layoutInsets = contentLayoutInsets
 -        let safeWidth = bounds.width - layoutInsets.left - layoutInsets.right
 -        guard safeWidth > 0 else { return false }
@@ -2105,172 +1800,17 @@ index c377d41..67e0ca1 100644
 -        ) * 2
 -        
 -        return centeredWidth > UX.topToolbarAddressBarWidthLimit
--    }
--    
--    private var contentLayoutInsets: UIEdgeInsets {
--        if #available(iOS 26.0, *) {
--            return edgeInsets(for: .safeArea(cornerAdaptation: .horizontal))
--        }
--        
--        return safeAreaInsets
-+
-+    private func trailingWidth(showsDownloads: Bool) -> CGFloat {
-+        // Four static buttons (share, favorite, tab-overview, hamburger) plus
-+        // the download button when a download is active.
-+        let visibleButtonCount = 4 + (showsDownloads ? 1 : 0)
-+        return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
-+        + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarTrailingButtonSpacing)
++        // Edge UI: the wide address bar always stretches between the leading
++        // and trailing buttons (no 650pt centred cap).
++        return false
      }
      
-     private func updateStandardAddressBarLayout() {
-+        // The wide address bar is always pinned between the two button groups;
-+        // re-assert those constraints (no width cap exists anymore).
-         guard layoutState == .standard else {
-             return
-         }
-         
--        setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
--    }
--    
--    private func setStandardAddressBarWidthLimitEnabled(_ isEnabled: Bool) {
--        let activeConstraints = isEnabled ? widthLimitedStandardAddressBarConstraints : standardAddressBarConstraints
--        guard activeConstraints.contains(where: { !$0.isActive }) || isUsingStandardAddressBarWidthLimit != isEnabled else {
--            return
--        }
--        
--        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints)
--        NSLayoutConstraint.activate(activeConstraints)
--        isUsingStandardAddressBarWidthLimit = isEnabled
-+        NSLayoutConstraint.activate(standardAddressBarConstraints)
-     }
-     
-     private func updateDownloadButtonVisibility() {
-         let isCompact = layoutState == .compact
--        downloadButton.isHidden = layoutState != .standard || !downloadButton.isShowingDownloads
-+        let showsDownloads = downloadButton.isShowingDownloads
-+        downloadButton.isHidden = layoutState != .standard || !showsDownloads
-         leadingWidthConstraint.constant = isCompact ? 0 : leadingWidth(
-             interfaceIdiom: layoutInterfaceIdiom,
-             sidebarButtonVisible: layoutSidebarButtonVisible,
--            showsDownloads: downloadButton.isShowingDownloads
-+            showsDownloads: showsDownloads
-         )
-+        trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(showsDownloads: showsDownloads)
-         updateStandardAddressBarLayout()
-         layoutIfNeeded()
-     }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/ColorPicker/ColorPicker.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/ColorPicker/ColorPicker.swift
-index 2233c03..386541f 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/ColorPicker/ColorPicker.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/ColorPicker/ColorPicker.swift
-@@ -31,7 +31,7 @@ final class ColorPicker: NSObject, UIPopoverPresentationControllerDelegate {
-     
-     private func showColorPicker(initialColor: UIColor) {
-         guard let geckoView = geckoView,
--              let presenter = UIApplication.shared.topViewController() else {
-+              let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/DateTimePicker/DateTimePicker.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/DateTimePicker/DateTimePicker.swift
-index 433d849..9a55e92 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/DateTimePicker/DateTimePicker.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/DateTimePicker/DateTimePicker.swift
-@@ -33,7 +33,7 @@ final class DateTimePicker: NSObject, UIPopoverPresentationControllerDelegate {
-     
-     private func showDatePicker(value: String, min: String, max: String, step: String) {
-         guard let geckoView = geckoView,
--              let presenter = UIApplication.shared.topViewController() else {
-+              let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerDocumentPicker.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerDocumentPicker.swift
-index ea4af6d..1890cf0 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerDocumentPicker.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerDocumentPicker.swift
-@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
- 
- extension FilePicker {
-     func presentDocumentPicker() {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(with: nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMediaPicker.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMediaPicker.swift
-index bc7999b..0a9f75d 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMediaPicker.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMediaPicker.swift
-@@ -63,7 +63,7 @@ extension FilePicker {
-     
-     @available(iOS 14.0, *)
-     private func presentPhotoLibraryPicker() {
--        guard let presenter = UIApplication.shared.topViewController(),
-+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView),
-               let filter = photoLibraryFilter else {
-             finish(with: nil)
-             return
-@@ -82,7 +82,7 @@ extension FilePicker {
-     }
-     
-     private func presentLegacyMediaPicker(sourceType: UIImagePickerController.SourceType) {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(with: nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMenu.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMenu.swift
-index 728886d..e934696 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMenu.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/FilePicker/FilePickerMenu.swift
-@@ -65,7 +65,7 @@ extension FilePicker {
-     }
-     
-     func showActionSheet(in geckoView: UIView) {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(with: nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/PermissionPrompt/PermissionPromptPresenter.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/PermissionPrompt/PermissionPromptPresenter.swift
-index 8a34fe9..836d805 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/PermissionPrompt/PermissionPromptPresenter.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/PermissionPrompt/PermissionPromptPresenter.swift
-@@ -16,7 +16,7 @@ struct PermissionPromptPresenter: PermissionPromptPresenting {
-         cancelTitle: String,
-         for session: GeckoSession
-     ) async -> Bool {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(containing: session.engineView) else {
-             return false
-         }
-         
+     private var contentLayoutInsets: UIEdgeInsets {
 diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
-index b961265..54d799f 100644
+index e05832b..de7def5 100644
 --- a/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
 +++ b/browser/Reynard/Client/Interface/ContentView/WebContent/PromptPresenter.swift
-@@ -16,11 +16,19 @@ final class PromptPresenter: PromptPresenting {
-     private var dateTimePickers: [String: DateTimePicker] = [:]
-     private var filePickers: [String: FilePicker] = [:]
-     
-+    /// The window owning the session currently being prompted, so a remote prompt
-+    /// coming from a background window's session is presented in that window
-+    /// instead of over whichever window happens to be frontmost. `PromptPresenter`
-+    /// is created per window (per `TabManagerImpl`), so this can only ever refer to
-+    /// this window's own scene.
-+    private weak var presentationWindow: UIWindow?
-+    
-     // MARK: - Lifecycle
-     
-     init() {}
-     
-     func present(_ request: PromptRequest, for session: GeckoSession) async -> PromptResponse? {
-+        presentationWindow = session.engineView?.window
-         switch request {
-         case .alert(let request):
-             await presentAlert(request: request)
-@@ -33,7 +41,7 @@ final class PromptPresenter: PromptPresenting {
+@@ -36,7 +36,7 @@ final class PromptPresenter: PromptPresenting {
              return await presentText(request: request)
              
          case .auth(let request):
@@ -2279,7 +1819,7 @@ index b961265..54d799f 100644
              
          case .beforeUnload(let request):
              return await presentBeforeUnload(request: request)
-@@ -55,6 +63,9 @@ final class PromptPresenter: PromptPresenting {
+@@ -58,6 +58,9 @@ final class PromptPresenter: PromptPresenting {
              
          case .share(let request):
              return await presentShare(session: session, request: request)
@@ -2289,47 +1829,16 @@ index b961265..54d799f 100644
          }
      }
      
-@@ -82,7 +93,7 @@ final class PromptPresenter: PromptPresenting {
-     // MARK: - Basic Prompts
-     
-     private func presentAlert(request: AlertPromptRequest) async {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
-             return
-         }
-         
-@@ -101,7 +112,7 @@ final class PromptPresenter: PromptPresenting {
-     }
-     
-     private func presentButton(request: ButtonPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
-             return nil
-         }
-         
-@@ -142,7 +153,7 @@ final class PromptPresenter: PromptPresenting {
-     }
-     
-     private func presentText(request: TextPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
-             return nil
-         }
-         
-@@ -167,11 +178,7 @@ final class PromptPresenter: PromptPresenting {
+@@ -170,7 +173,7 @@ final class PromptPresenter: PromptPresenting {
          }
      }
      
 -    private func presentAuth(request: AuthPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
--            return nil
--        }
--        
 +    private func presentAuth(request: AuthPromptRequest, session: GeckoSession) async -> PromptResponse? {
-         let host = URL(string: request.uri)?.host
-         let title = host.map {
-             String(format: NSLocalizedString("Sign in to %@", comment: "Authentication host"), $0)
-@@ -181,21 +188,84 @@ final class PromptPresenter: PromptPresenting {
+         guard let presenter = UIApplication.shared.topViewController(in: window()) else {
+             return nil
+         }
+@@ -184,21 +187,84 @@ final class PromptPresenter: PromptPresenting {
          : NSLocalizedString("Your login information will not be sent securely.", comment: "")
          let passwordOnly = request.mode == "password"
          
@@ -2392,7 +1901,7 @@ index b961265..54d799f 100644
 +        username: String,
 +        password: String
 +    ) async -> (username: String, password: String)? {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
++        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
 +            return nil
 +        }
 +        
@@ -2418,7 +1927,7 @@ index b961265..54d799f 100644
                      textField.textContentType = .username
                      textField.autocapitalizationType = .none
                      textField.autocorrectionType = .no
-@@ -204,23 +274,181 @@ final class PromptPresenter: PromptPresenting {
+@@ -207,21 +273,179 @@ final class PromptPresenter: PromptPresenting {
              
              alert.addTextField { textField in
                  textField.placeholder = NSLocalizedString("Password", comment: "")
@@ -2436,17 +1945,17 @@ index b961265..54d799f 100644
 +                let resolvedUsername = passwordOnly ? username : alert.textFields?.first?.text ?? ""
 +                let resolvedPassword = alert.textFields?.last?.text ?? ""
 +                result = (username: resolvedUsername, password: resolvedPassword)
-             })
-             presenter.present(alert, animated: true)
-         }
-     }
-     
++            })
++            presenter.present(alert, animated: true)
++        }
++    }
++    
 +    /// Account chooser shown when an origin has more than one saved login.
 +    private func presentAuthAccountPicker(
 +        logins: [LoginRecord],
 +        title: String
 +    ) async -> AuthAccountChoice {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
++        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
 +            return .cancelled
 +        }
 +        
@@ -2538,7 +2047,7 @@ index b961265..54d799f 100644
 +    
 +    /// Yes/no confirmation used by both the HTTP-auth and web-form save flows.
 +    private func confirmSaveLogin(username: String, host: String) async -> Bool {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
++        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
 +            return false
 +        }
 +        
@@ -2556,11 +2065,11 @@ index b961265..54d799f 100644
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Not Now", comment: ""), style: .cancel))
 +            alert.addAction(UIAlertAction(title: NSLocalizedString("Save", comment: ""), style: .default) { _ in
 +                accepted = true
-+            })
-+            presenter.present(alert, animated: true)
-+        }
-+    }
-+    
+             })
+             presenter.present(alert, animated: true)
+         }
+     }
+     
 +    /// Handles Gecko's `Autocomplete:Save:Login` prompt emitted when a page
 +    /// submits a login form. Private browsing declines (nothing is persisted).
 +    private func presentLoginSave(
@@ -2600,30 +2109,9 @@ index b961265..54d799f 100644
 +    }
 +    
      private func presentBeforeUnload(request: BeforeUnloadPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+         guard let presenter = UIApplication.shared.topViewController(in: window()) else {
              return nil
-         }
-         
-@@ -246,7 +474,7 @@ final class PromptPresenter: PromptPresenting {
-     }
-     
-     private func presentFolderUpload(request: FolderUploadPromptRequest) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
-             return nil
-         }
-         
-@@ -372,7 +600,7 @@ final class PromptPresenter: PromptPresenting {
-         session: GeckoSession,
-         request: SharePromptRequest
-     ) async -> PromptResponse? {
--        guard let presenter = UIApplication.shared.topViewController() as? BrowserViewController,
-+        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) as? BrowserViewController,
-               let sourceView = session.engineView else {
-             return nil
-         }
-@@ -448,6 +676,13 @@ final class PromptPresenter: PromptPresenting {
+@@ -448,6 +672,13 @@ final class PromptPresenter: PromptPresenting {
      }
  }
  
@@ -2637,62 +2125,6 @@ index b961265..54d799f 100644
  private final class WebShareActivityItemSource: NSObject, UIActivityItemSource {
      private let item: Any
      private let title: String
-diff --git a/browser/Reynard/Client/Interface/ContentView/WebContent/SelectPicker/SelectPicker.swift b/browser/Reynard/Client/Interface/ContentView/WebContent/SelectPicker/SelectPicker.swift
-index 44430b8..db515e8 100644
---- a/browser/Reynard/Client/Interface/ContentView/WebContent/SelectPicker/SelectPicker.swift
-+++ b/browser/Reynard/Client/Interface/ContentView/WebContent/SelectPicker/SelectPicker.swift
-@@ -116,7 +116,7 @@ final class SelectPicker: NSObject, UIAdaptivePresentationControllerDelegate {
-     }
-     
-     private func showSingleSelectFallback(in geckoView: UIView) {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(nil)
-             return
-         }
-@@ -224,7 +224,7 @@ final class SelectPicker: NSObject, UIAdaptivePresentationControllerDelegate {
-     
-     private func showMultiSelect() {
-         guard let geckoView = geckoView,
--              let presenter = UIApplication.shared.topViewController() else {
-+              let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
-             finish(nil)
-             return
-         }
-diff --git a/browser/Reynard/Client/Interface/Coordinators/DownloadsCoordinator.swift b/browser/Reynard/Client/Interface/Coordinators/DownloadsCoordinator.swift
-index 2becaae..9bd62b3 100644
---- a/browser/Reynard/Client/Interface/Coordinators/DownloadsCoordinator.swift
-+++ b/browser/Reynard/Client/Interface/Coordinators/DownloadsCoordinator.swift
-@@ -10,10 +10,19 @@ import UIKit
- protocol DownloadsCoordinatorDelegate: AnyObject {
-     var downloadsShouldRefreshLayoutForStoreChange: Bool { get }
-     
-+    /// The window this coordinator's alerts belong to, so a confirmation for an
-+    /// asynchronous download is presented in the right scene when several
-+    /// windows are open. Defaults to `nil` (globally frontmost window).
-+    var downloadsPresentingWindow: UIWindow? { get }
-+    
-     func downloadsCoordinator(_ coordinator: DownloadsCoordinator, didUpdate summary: DownloadStoreSummary)
-     func downloadsCoordinatorDidRequestLayoutRefresh(_ coordinator: DownloadsCoordinator)
- }
- 
-+extension DownloadsCoordinatorDelegate {
-+    var downloadsPresentingWindow: UIWindow? { nil }
-+}
-+
- final class DownloadsCoordinator {
-     private struct ConfirmationRequest {
-         let download: DownloadStore.PendingDownload
-@@ -119,7 +128,8 @@ final class DownloadsCoordinator {
-                     Haptics.success()
-                     self?.resolveConfirmation(shouldStartDownload: true)
-                 },
--            ]
-+            ],
-+            in: delegate?.downloadsPresentingWindow
-         )
-     }
-     
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeLibraryPanel.swift
 new file mode 100644
 index 0000000..8d2e5be
@@ -2823,10 +2255,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..777d88e
+index 0000000..ac4f3a1
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,346 @@
+@@ -0,0 +1,347 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -3010,7 +2442,7 @@ index 0000000..777d88e
 +    /// Shares the current page (reuses the standard share sheet).
 +    private func presentShareCurrentPage() {
 +        guard let tab = tabManager.selectedTab,
-+              let url = tabManager.shareableURL(for: tab) else {
++              let url = tab.shareableURL else {
 +            return
 +        }
 +        let sourceView = browserChrome.sharePopoverSourceView()
@@ -3072,9 +2504,10 @@ index 0000000..777d88e
 +        guard let translateURL = URL(string: "https://translate.google.com/translate?\(query)") else {
 +            return
 +        }
-+        _ = tabManager.createRegularTab(
++        _ = tabManager.createTab(
 +            selecting: true,
 +            target: .end,
++            mode: .regular,
 +            url: translateURL.absoluteString,
 +            loadImmediately: true
 +        )
@@ -3175,10 +2608,10 @@ index 0000000..777d88e
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
 new file mode 100644
-index 0000000..fa452b3
+index 0000000..aa0f2c8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+LocalFile.swift
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,74 @@
 +//
 +//  BrowserViewController+LocalFile.swift
 +//  Reynard
@@ -3226,9 +2659,10 @@ index 0000000..fa452b3
 +            guard let self, let servedURL else {
 +                return
 +            }
-+            _ = self.tabManager.createRegularTab(
++            _ = self.tabManager.createTab(
 +                selecting: true,
 +                target: .end,
++                mode: .regular,
 +                url: servedURL.absoluteString,
 +                loadImmediately: true
 +            )
@@ -7956,7 +7390,7 @@ index 0000000..e3fe8da
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/HomepageRootContent.swift b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageRootContent.swift
 new file mode 100644
-index 0000000..a145d1a
+index 0000000..8e1c367
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageRootContent.swift
 @@ -0,0 +1,60 @@
@@ -7993,23 +7427,23 @@ index 0000000..a145d1a
 +
 +extension HomepageViewController: EdgeStartPageViewControllerDelegate {
 +    func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestOpenURL url: URL, disposition: TabOpenDisposition) {
-+        homepageDelegate?.homepageViewController(self, didRequestOpenURL: url, disposition: disposition)
++        homepageDelegate?.homepageSection(controller, didRequestOpenURL: url, disposition: disposition)
 +    }
 +    
 +    func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestShareURL url: URL, sourceView: UIView) {
-+        homepageDelegate?.homepageViewController(self, didRequestShareURL: url, sourceView: sourceView)
++        homepageDelegate?.homepageSection(controller, didRequestShareURL: url, sourceView: sourceView)
 +    }
 +    
 +    func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestHideFromSuggestions siteID: Int64) {
-+        homepageDelegate?.homepageViewController(self, didRequestHideFromSuggestions: siteID)
++        homepageDelegate?.homepageSection(controller, didRequestHideFromSuggestions: siteID)
 +    }
 +    
 +    func edgeStartPage(_ controller: EdgeStartPageViewController, didSelectRecentlyClosedTab id: UUID) {
-+        homepageDelegate?.homepageViewController(self, didSelectRecentlyClosedTab: id)
++        homepageDelegate?.homepageSection(controller, didSelectRecentlyClosedTab: id)
 +    }
 +    
 +    func edgeStartPageDidSelectFolder(_ folder: BookmarkFolderSnapshot) {
-+        homepageRootViewControllerDidSelectFolder(folder)
++        showFolder(folder)
 +    }
 +    
 +    func edgeStartPageDidRequestAddressBarFocus(_ controller: EdgeStartPageViewController) {
@@ -8017,7 +7451,7 @@ index 0000000..a145d1a
 +    }
 +    
 +    func edgeStartPageDidStartScrolling() {
-+        homepageDelegate?.homepageViewControllerDidStartScrolling()
++        homepageDelegate?.homepageDidStartScrolling()
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/HomepageWeatherDetailViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/HomepageWeatherDetailViewController.swift
@@ -9453,13 +8887,13 @@ index 0000000..850a8a7
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift b/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
-index cf2bdfc..ea7a5f2 100644
+index 7a9d529..ff26f7a 100644
 --- a/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/HomepageOverlayCoordinator.swift
-@@ -35,7 +35,10 @@ final class HomepageOverlayCoordinator {
-     private weak var delegate: HomepageOverlayCoordinatorDelegate?
-     private let overlayCoordinator: OverlayCoordinator
-     private unowned let toolbarController: ToolbarController
+@@ -33,7 +33,10 @@ final class HomepageOverlayCoordinator {
+     private unowned let browserChrome: BrowserChrome
+     private unowned let contentView: ContentView
+     private unowned let tabManager: TabManager
 -    private let homepageViewController: HomepageViewController
 +    /// Edge start page for homepage tabs; upstream homepage for the address-bar overlay.
 +    private let edgeHomepageViewController: HomepageViewController
@@ -9468,10 +8902,10 @@ index cf2bdfc..ea7a5f2 100644
      private var presentationIntent: HomepagePresentationIntent = .inactive
      
      private struct HomepagePresentation: Equatable {
-@@ -54,9 +57,14 @@ final class HomepageOverlayCoordinator {
-         self.delegate = delegate
-         self.overlayCoordinator = overlayCoordinator
-         self.toolbarController = toolbarController
+@@ -58,9 +61,14 @@ final class HomepageOverlayCoordinator {
+         self.browserChrome = browserChrome
+         self.contentView = contentView
+         self.tabManager = tabManager
 -        homepageViewController = HomepageViewController()
 -        homepageViewController.homepageDelegate = self
 -        homepageViewController.setPrivateBrowsing(isPrivateBrowsing)
@@ -9486,7 +8920,7 @@ index cf2bdfc..ea7a5f2 100644
      }
      
      // MARK: - State
-@@ -117,15 +125,28 @@ final class HomepageOverlayCoordinator {
+@@ -120,15 +128,28 @@ final class HomepageOverlayCoordinator {
              return nil
          }
          
@@ -9519,7 +8953,7 @@ index cf2bdfc..ea7a5f2 100644
          overlayCoordinator.dismiss(.homepage, on: otherHost(from: presentation.host), animated: false)
          
          guard !overlayCoordinator.contains(.homepage, on: presentation.host),
-@@ -423,3 +444,15 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
+@@ -426,3 +447,15 @@ extension HomepageOverlayCoordinator: HomepageSectionDelegate {
          delegate?.updateHomepageLayout(animated: false, duration: UX.layoutAnimationDuration)
      }
  }
@@ -9532,17 +8966,24 @@ index cf2bdfc..ea7a5f2 100644
 +        // and would immediately resign the address bar we just focused.
 +        overlayCoordinator.clearAddressBarScrollDismissal(for: .homepage)
 +        delegate?.updateHomepageLayout(animated: true, duration: UX.layoutAnimationDuration)
-+        delegate?.homepageChrome.addressBar.focusForHardwareKeyboard()
++        browserChrome.addressBar.focusForHardwareKeyboard()
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift b/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
-index 0a43704..18f75f3 100644
+index dd33e07..973b374 100644
 --- a/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/HomepageViewController.swift
-@@ -22,8 +22,9 @@ protocol HomepageViewControllerDelegate: AnyObject {
- 
+@@ -10,11 +10,15 @@ import UIKit
  final class HomepageViewController: UINavigationController {
-     weak var homepageDelegate: HomepageViewControllerDelegate?
+     weak var homepageDelegate: HomepageSectionDelegate? {
+         didSet {
+-            rootViewController.delegate = homepageDelegate
++            // The classic homepage reports straight to the section delegate;
++            // the Edge start page reports through this controller
++            // (EdgeStartPageViewControllerDelegate, HomepageRootContent.swift).
++            (rootViewController as? HomepageRootViewController)?.delegate = homepageDelegate
+         }
+     }
 +    weak var addressBarDelegate: HomepageViewControllerAddressBarDelegate?
      
 -    private let rootViewController: HomepageRootViewController
@@ -9550,7 +8991,7 @@ index 0a43704..18f75f3 100644
      private let bookmarkStore: BookmarkStore
      private var isPrivateBrowsing: Bool
      private var contentMode: HomepageContentMode = .embeddedNarrow
-@@ -39,15 +40,21 @@ final class HomepageViewController: UINavigationController {
+@@ -30,14 +34,20 @@ final class HomepageViewController: UINavigationController {
          return super.preferredStatusBarStyle
      }
      
@@ -9563,13 +9004,11 @@ index 0a43704..18f75f3 100644
 -            isPrivateBrowsing: isPrivateBrowsing
 -        )
 -        super.init(rootViewController: rootViewController)
--        rootViewController.delegate = self
 +        switch style {
 +        case .classic:
 +            let classic = HomepageRootViewController(bookmarkStore: bookmarkStore, isPrivateBrowsing: isPrivateBrowsing)
 +            rootViewController = classic
 +            super.init(rootViewController: classic)
-+            classic.delegate = self
 +        case .edge:
 +            let edge = EdgeStartPageViewController(bookmarkStore: bookmarkStore, isPrivateBrowsing: isPrivateBrowsing)
 +            rootViewController = edge
@@ -9579,7 +9018,7 @@ index 0a43704..18f75f3 100644
      }
      
      required init?(coder: NSCoder) {
-@@ -75,7 +82,7 @@ final class HomepageViewController: UINavigationController {
+@@ -65,7 +75,7 @@ final class HomepageViewController: UINavigationController {
      func setContentMode(_ contentMode: HomepageContentMode) {
          self.contentMode = contentMode
          viewControllers.forEach { viewController in
@@ -9588,7 +9027,7 @@ index 0a43704..18f75f3 100644
          }
          if isViewLoaded {
              updateNavigationBarAppearance()
-@@ -94,7 +101,7 @@ final class HomepageViewController: UINavigationController {
+@@ -84,7 +94,7 @@ final class HomepageViewController: UINavigationController {
          
          self.visibleContentInsets = visibleContentInsets
          viewControllers.forEach { viewController in
@@ -9597,7 +9036,7 @@ index 0a43704..18f75f3 100644
          }
      }
      
-@@ -105,7 +112,7 @@ final class HomepageViewController: UINavigationController {
+@@ -95,7 +105,7 @@ final class HomepageViewController: UINavigationController {
          
          self.isPrivateBrowsing = isPrivateBrowsing
          viewControllers.forEach { viewController in
@@ -9700,10 +9139,10 @@ index 455c732..0ed577c 100644
          return CGRect(origin: CGPoint(x: x, y: y), size: metrics.itemSize)
      }
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-index bf26062..59713b5 100644
+index 83543bc..90827c1 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/Favorites/FavoritesSectionViewController.swift
-@@ -55,7 +55,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -51,7 +51,7 @@ final class FavoritesSectionViewController: UIViewController {
      }()
      
      private let titleLabel: UILabel = {
@@ -9712,7 +9151,7 @@ index bf26062..59713b5 100644
          label.translatesAutoresizingMaskIntoConstraints = false
          label.font = FavoritesSectionViewController.titleFont
          label.textColor = .label
-@@ -75,6 +75,36 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -71,6 +71,36 @@ final class FavoritesSectionViewController: UIViewController {
      
      private let collectionLayout = FavoritesCollectionViewLayout()
      
@@ -9749,7 +9188,7 @@ index bf26062..59713b5 100644
      private lazy var collectionView: UICollectionView = {
          let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionLayout)
          collectionView.translatesAutoresizingMaskIntoConstraints = false
-@@ -91,6 +121,10 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -87,6 +117,10 @@ final class FavoritesSectionViewController: UIViewController {
              FavoriteFolderCollectionViewCell.self,
              forCellWithReuseIdentifier: FavoriteFolderCollectionViewCell.reuseIdentifier
          )
@@ -9760,7 +9199,7 @@ index bf26062..59713b5 100644
          return collectionView
      }()
      
-@@ -137,6 +171,31 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -133,6 +167,31 @@ final class FavoritesSectionViewController: UIViewController {
          applyFavoriteItemLimit()
      }
      
@@ -9792,7 +9231,7 @@ index bf26062..59713b5 100644
      // MARK: - Configuration
      
      private func configureAppearance() {
-@@ -246,13 +305,14 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -242,13 +301,14 @@ final class FavoritesSectionViewController: UIViewController {
          displayedFavoriteItems = currentFavoriteItems()
          updateShowAllButton()
          collectionView.reloadData()
@@ -9809,7 +9248,7 @@ index bf26062..59713b5 100644
              return allFavoriteItems
          }
          
-@@ -264,7 +324,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -260,7 +320,7 @@ final class FavoritesSectionViewController: UIViewController {
      }
      
      private var hasExpandableFavorites: Bool {
@@ -9818,7 +9257,7 @@ index bf26062..59713b5 100644
              return false
          }
          
-@@ -337,6 +397,22 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -333,6 +393,22 @@ final class FavoritesSectionViewController: UIViewController {
      
      // MARK: - Layout
      
@@ -9841,7 +9280,7 @@ index bf26062..59713b5 100644
      private func invalidateFavoriteLayout() {
          lastLaidOutWidth = -1
          UIView.performWithoutAnimation {
-@@ -363,7 +439,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -359,7 +435,7 @@ final class FavoritesSectionViewController: UIViewController {
              collectionLayout.metrics = metrics
          }
          
@@ -9850,16 +9289,7 @@ index bf26062..59713b5 100644
          let rowCount = Int(ceil(CGFloat(displayedItemCount) / CGFloat(metrics.columnCount)))
          let contentHeight = metrics.contentHeight(rowCount: rowCount)
          guard abs((collectionHeightConstraint?.constant ?? 0) - contentHeight) > 0.5 else {
-@@ -426,7 +502,7 @@ final class FavoritesSectionViewController: UIViewController {
-         let viewController = EditBookmarkViewController(bookmark: bookmark, store: bookmarkStore)
-         let navigationController = UINavigationController(rootViewController: viewController)
-         navigationController.modalPresentationStyle = .pageSheet
--        UIApplication.shared.topViewController()?.present(navigationController, animated: true)
-+        UIApplication.shared.topViewController(containing: view)?.present(navigationController, animated: true)
-     }
-     
-     func deleteFavoriteBookmark(_ bookmark: BookmarkSnapshot) {
-@@ -456,6 +532,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -452,6 +528,7 @@ final class FavoritesSectionViewController: UIViewController {
              let translation = gestureRecognizer.translation(in: collectionView)
              let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
              guard let indexPath = collectionView.indexPathForItem(at: startLocation),
@@ -9867,7 +9297,7 @@ index bf26062..59713b5 100644
                    let cell = collectionView.cellForItem(at: indexPath),
                    collectionView.beginInteractiveMovementForItem(at: indexPath) else {
                  return
-@@ -481,6 +558,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -477,6 +554,7 @@ final class FavoritesSectionViewController: UIViewController {
      @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
          let location = gestureRecognizer.location(in: collectionView)
          guard let indexPath = collectionView.indexPathForItem(at: location),
@@ -9875,7 +9305,7 @@ index bf26062..59713b5 100644
                let cell = collectionView.cellForItem(at: indexPath) else {
              return
          }
-@@ -494,6 +572,7 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -490,6 +568,7 @@ final class FavoritesSectionViewController: UIViewController {
          switch gestureRecognizer.state {
          case .began:
              guard let indexPath = collectionView.indexPathForItem(at: pressLocation),
@@ -9883,7 +9313,7 @@ index bf26062..59713b5 100644
                    let cell = collectionView.cellForItem(at: indexPath) else {
                  return
              }
-@@ -624,10 +703,19 @@ final class FavoritesSectionViewController: UIViewController {
+@@ -620,10 +699,19 @@ final class FavoritesSectionViewController: UIViewController {
  
  extension FavoritesSectionViewController: UICollectionViewDataSource, UICollectionViewDelegate {
      func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -9904,7 +9334,7 @@ index bf26062..59713b5 100644
          switch displayedFavoriteItems[indexPath.item] {
          case let .bookmark(bookmark):
              let cell = collectionView.dequeueReusableCell(
-@@ -655,6 +743,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -651,6 +739,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
      }
      
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -9915,7 +9345,7 @@ index bf26062..59713b5 100644
          guard displayedFavoriteItems.indices.contains(indexPath.item) else {
              return
          }
-@@ -671,6 +763,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
+@@ -667,6 +759,19 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
          return displayedFavoriteItems.indices.contains(indexPath.item)
      }
      
@@ -10085,7 +9515,7 @@ index 28377e6..19076b8 100644
      
      // MARK: - Actions
 diff --git a/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift b/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
-index 69bd566..29667bc 100644
+index fce2964..149e19f 100644
 --- a/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
 +++ b/browser/Reynard/Client/Interface/Homepage/Sections/RecentlyClosedTabs/RecentlyClosedTabsSectionViewController.swift
 @@ -32,7 +32,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
@@ -10097,7 +9527,7 @@ index 69bd566..29667bc 100644
          label.translatesAutoresizingMaskIntoConstraints = false
          label.font = RecentlyClosedTabsSectionViewController.titleFont
          label.textColor = .label
-@@ -123,6 +123,16 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
+@@ -124,6 +124,16 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
          invalidateCollectionLayout()
      }
      
@@ -10127,7 +9557,7 @@ index 7f723fd..0ca560e 100644
          if navigationController?.presentingViewController is BrowserViewController {
              navigationController?.dismiss(animated: true)
 diff --git a/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift b/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
-index 514685b..003d9e8 100644
+index b51b684..51eb481 100644
 --- a/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
 +++ b/browser/Reynard/Client/Interface/Library/Downloads/DownloadsViewController.swift
 @@ -147,11 +147,23 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
@@ -10217,10 +9647,10 @@ index 514685b..003d9e8 100644
          let pathExtension = (item.fileURL?.pathExtension ?? URL(fileURLWithPath: item.fileName).pathExtension).lowercased()
          if pathExtension == "html" || pathExtension == "htm" || pathExtension == "xhtml" {
 diff --git a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift b/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
-index 1897494..0f189e2 100644
+index c5f60fe..e16bea2 100644
 --- a/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
 +++ b/browser/Reynard/Client/Interface/Library/History/HistoryViewController.swift
-@@ -464,6 +464,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
+@@ -462,6 +462,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
          browserViewController.loadViewIfNeeded()
          browserViewController.exitFullscreenIfNeeded()
          browserViewController.tabManager.browse(to: item.url.absoluteString)
@@ -10846,54 +10276,6 @@ index d7d7b96..e3a17b6 100644
          case .httpsOnlyMode:
              let destination = HTTPSOnlyModePreferencesViewController()
              viewController.navigationController?.pushViewController(destination, animated: true)
-diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Updates/UpdateReleaseNotesCell.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Updates/UpdateReleaseNotesCell.swift
-index a24b9ae..fb67c53 100644
---- a/browser/Reynard/Client/Interface/Library/Settings/Sections/Updates/UpdateReleaseNotesCell.swift
-+++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/Updates/UpdateReleaseNotesCell.swift
-@@ -139,7 +139,7 @@ final class UpdateReleaseNotesCell: UITableViewCell, UITextViewDelegate {
-         in characterRange: NSRange,
-         interaction: UITextItemInteraction
-     ) -> Bool {
--        guard let viewController = UIApplication.shared.topViewController() else {
-+        guard let viewController = UIApplication.shared.topViewController(containing: textView) else {
-             return false
-         }
-         
-diff --git a/browser/Reynard/Client/Interface/Printing/PagePrintPreparationAlert.swift b/browser/Reynard/Client/Interface/Printing/PagePrintPreparationAlert.swift
-index 12ddda6..e232c78 100644
---- a/browser/Reynard/Client/Interface/Printing/PagePrintPreparationAlert.swift
-+++ b/browser/Reynard/Client/Interface/Printing/PagePrintPreparationAlert.swift
-@@ -10,9 +10,10 @@ import UIKit
- @MainActor
- enum PagePrintPreparationAlert {
-     static func prepare(
-+        in window: UIWindow? = nil,
-         _ operation: @escaping @MainActor () async throws -> URL
-     ) async throws -> URL {
--        guard let presenter = UIApplication.shared.topViewController() else {
-+        guard let presenter = UIApplication.shared.topViewController(for: window) else {
-             throw PagePrintPreparationError.unavailable
-         }
-         return try await PagePrintPreparation(operation: operation).run(from: presenter)
-diff --git a/browser/Reynard/Client/Interface/Printing/PagePrintPresenter.swift b/browser/Reynard/Client/Interface/Printing/PagePrintPresenter.swift
-index 8606424..d065af5 100644
---- a/browser/Reynard/Client/Interface/Printing/PagePrintPresenter.swift
-+++ b/browser/Reynard/Client/Interface/Printing/PagePrintPresenter.swift
-@@ -9,12 +9,12 @@ import UIKit
- 
- @MainActor
- enum PagePrintPresenter {
--    static func present(pdfFileURL: URL, jobName: String?) async throws {
-+    static func present(pdfFileURL: URL, jobName: String?, in window: UIWindow? = nil) async throws {
-         defer {
-             try? FileManager.default.removeItem(at: pdfFileURL)
-         }
-         guard UIPrintInteractionController.isPrintingAvailable,
--              let presenter = UIApplication.shared.topViewController() else {
-+              let presenter = UIApplication.shared.topViewController(for: window) else {
-             throw PagePrintError.unavailable
-         }
-         
 diff --git a/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift b/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift
 index 34ad160..e31f4a2 100644
 --- a/browser/Reynard/Client/Interface/Sidebar/SidebarCoordinator.swift
@@ -11048,17 +10430,18 @@ index 9da113a..eb58ee6 100644
          NotificationCenter.default.addObserver(
              self,
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBar.swift b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-index 7f65843..e0e97f8 100644
+index f9572c2..a4598a3 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBar.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBar.swift
-@@ -14,13 +14,25 @@ protocol TabBarDataSource: AnyObject {
-     
+@@ -10,6 +10,7 @@ import UIKit
+ protocol TabBarDataSource: TabListSource {
      func selectTab(at index: Int, mode: TabMode)
      func closeTab(at index: Int, mode: TabMode)
 +    func duplicateTab(at index: Int, mode: TabMode)
      func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode)
+     func moveTab(withID tabID: UUID, to destinationIndex: Int)
  }
- 
+@@ -17,7 +18,18 @@ protocol TabBarDataSource: TabListSource {
  final class TabBar: UIView {
      private enum UX {
          static let tabBarHeight: CGFloat = 36
@@ -11078,7 +10461,7 @@ index 7f65843..e0e97f8 100644
      }
      
      enum Visibility: Equatable {
-@@ -41,6 +53,9 @@ final class TabBar: UIView {
+@@ -32,6 +44,9 @@ final class TabBar: UIView {
      }
      
      weak var dataSource: TabBarDataSource?
@@ -11087,8 +10470,8 @@ index 7f65843..e0e97f8 100644
 +    var onNewTab: (() -> Void)?
      
      private(set) var visibility: Visibility = .hidden
-     private(set) var reorderState: ReorderState = .idle
-@@ -60,8 +75,23 @@ final class TabBar: UIView {
+     private var pendingExpandedTabID: UUID?
+@@ -50,8 +65,23 @@ final class TabBar: UIView {
      
      private let tabCollection = TabBarCollection()
      private lazy var presentation = TabBarPresentation(tabBar: self)
@@ -11096,7 +10479,7 @@ index 7f65843..e0e97f8 100644
 +
 +    private lazy var newTabButton: ToolbarButton = {
 +        let button = ToolbarButton(
-+            buttonType: .newTab,
++            buttonType: .item(.newTab),
 +            target: self,
 +            action: #selector(newTabTapped)
 +        )
@@ -11113,7 +10496,7 @@ index 7f65843..e0e97f8 100644
      
      // MARK: - Lifecycle
      
-@@ -77,6 +107,21 @@ final class TabBar: UIView {
+@@ -67,6 +97,21 @@ final class TabBar: UIView {
          fatalError("init(coder:) has not been implemented")
      }
      
@@ -11135,13 +10518,9 @@ index 7f65843..e0e97f8 100644
      override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
          let hitView = super.hitTest(point, with: event)
          return hitView === self && tabCollection.transform.ty < 0 ? nil : hitView
-@@ -104,42 +149,33 @@ final class TabBar: UIView {
-     
-     func cellLayout(at index: Int) -> CellLayout {
-         let tabs = dataSource?.tabs ?? []
--        let horizontalInset = tabCollection.adjustedContentInset.left + tabCollection.adjustedContentInset.right
--        let containerWidth = tabCollection.bounds.width > 1 ? tabCollection.bounds.width : bounds.width
--        let availableWidth = max(0, containerWidth - horizontalInset)
+@@ -98,38 +143,32 @@ final class TabBar: UIView {
+         let containerWidth = tabCollection.bounds.width > 1 ? tabCollection.bounds.width : bounds.width
+         let availableWidth = max(0, containerWidth - horizontalInset)
          let layoutTabCount = max(1, tabs.count)
 -        let equalTabWidth = floor(availableWidth / CGFloat(layoutTabCount))
 +        let fixedTabWidth = TabBarCell.expandedMinimumWidth
@@ -11191,7 +10570,7 @@ index 7f65843..e0e97f8 100644
 +    /// True once the tabs no longer fit at their minimum width; the collection
 +    /// then scrolls and the "+" stays pinned to the right edge.
 +    private var isScrollable: Bool {
-+        let tabCount = CGFloat(dataSource?.tabs.count ?? 0)
++        let tabCount = CGFloat(dataSource?.activeTabs.count ?? 0)
 +        guard tabCount > 0 else {
 +            return false
          }
@@ -11201,7 +10580,7 @@ index 7f65843..e0e97f8 100644
      }
      
      // MARK: - Updates
-@@ -156,6 +192,7 @@ final class TabBar: UIView {
+@@ -146,6 +185,7 @@ final class TabBar: UIView {
              tabCollection.reloadTabs()
          }
          displayedTabIDs = tabs.map { $0.id }
@@ -11209,7 +10588,7 @@ index 7f65843..e0e97f8 100644
      }
      
      func reloadTab(at index: Int) {
-@@ -250,29 +287,111 @@ final class TabBar: UIView {
+@@ -240,29 +280,111 @@ final class TabBar: UIView {
      
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
@@ -11295,7 +10674,7 @@ index 7f65843..e0e97f8 100644
 +            return
 +        }
 +        
-+        let tabCount = dataSource?.tabs.count ?? 0
++        let tabCount = dataSource?.activeTabs.count ?? 0
 +        // In scroll mode the strip takes the whole available width so the "+"
 +        // parks on the right edge instead of trailing the content.
 +        let total = isScrollable
@@ -11323,7 +10702,7 @@ index 7f65843..e0e97f8 100644
      }
      
      // MARK: - Layout State
-@@ -313,11 +432,74 @@ final class TabBar: UIView {
+@@ -303,11 +425,74 @@ final class TabBar: UIView {
          return reorderedTabs[index]
      }
      
@@ -11399,7 +10778,7 @@ index 7f65843..e0e97f8 100644
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..2840964 100644
+index aa1450a..da63718 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 @@ -10,7 +10,12 @@ import UIKit
@@ -11441,15 +10820,18 @@ index aa1450a..2840964 100644
          static let borderWidth: CGFloat = 0.5
      }
      
-@@ -33,7 +44,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -33,7 +44,9 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      static let reuseIdentifier = "TabBarCell"
 -    private static let minimumVisibleTabTitle = "WWWWW"
++    /// Drag preview geometry used by TabBarCollection.
++    static let contentInsets = UX.contentInsets
++    static let contentCornerRadius = UX.contentCornerRadius
      
      static var expandedMinimumWidth: CGFloat {
          return UX.expandedTabMinimumWidth
-@@ -43,6 +53,15 @@ final class TabBarCell: UICollectionViewCell {
+@@ -43,6 +56,15 @@ final class TabBarCell: UICollectionViewCell {
          return UX.collapsedTabMinimumWidth
      }
      
@@ -11465,7 +10847,7 @@ index aa1450a..2840964 100644
      static var contentCornerRadius: CGFloat {
          return UX.contentCornerRadius
      }
-@@ -52,14 +71,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -52,14 +74,9 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      private static let fallbackFavicon = UIImage(named: "reynard.globe")
@@ -11481,7 +10863,7 @@ index aa1450a..2840964 100644
      
      private let tabContentView: UIView = {
          let view = UIView()
-@@ -67,6 +81,14 @@ final class TabBarCell: UICollectionViewCell {
+@@ -67,6 +84,14 @@ final class TabBarCell: UICollectionViewCell {
          return view
      }()
      
@@ -11496,7 +10878,7 @@ index aa1450a..2840964 100644
      private let faviconView: UIImageView = {
          let imageView = UIImageView()
          imageView.translatesAutoresizingMaskIntoConstraints = false
-@@ -83,7 +105,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -83,7 +108,9 @@ final class TabBarCell: UICollectionViewCell {
          label.font = UIFont.systemFont(ofSize: UX.tabTitleFontSize, weight: .semibold)
          label.textColor = .secondaryLabel
          label.numberOfLines = 1
@@ -11507,7 +10889,7 @@ index aa1450a..2840964 100644
          return label
      }()
      
-@@ -93,7 +117,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -93,7 +120,7 @@ final class TabBarCell: UICollectionViewCell {
              button.isPointerInteractionEnabled = true
          }
          button.translatesAutoresizingMaskIntoConstraints = false
@@ -11516,7 +10898,7 @@ index aa1450a..2840964 100644
          button.setPreferredSymbolConfiguration(
              UIImage.SymbolConfiguration(pointSize: UX.tabCloseButtonSymbolPointSize, weight: .regular),
              forImageIn: .normal
-@@ -137,11 +161,18 @@ final class TabBarCell: UICollectionViewCell {
+@@ -137,11 +164,18 @@ final class TabBarCell: UICollectionViewCell {
      
      override func prepareForReuse() {
          super.prepareForReuse()
@@ -11535,7 +10917,7 @@ index aa1450a..2840964 100644
      override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
          super.traitCollectionDidChange(previousTraitCollection)
          guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-@@ -149,6 +180,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -149,6 +183,7 @@ final class TabBarCell: UICollectionViewCell {
          }
          
          updateBorderColor()
@@ -11543,7 +10925,7 @@ index aa1450a..2840964 100644
      }
      
      // MARK: - Configuration
-@@ -160,17 +192,21 @@ final class TabBarCell: UICollectionViewCell {
+@@ -160,17 +195,21 @@ final class TabBarCell: UICollectionViewCell {
          cellWidth: CGFloat
      ) {
          tabID = tab.id
@@ -11571,7 +10953,7 @@ index aa1450a..2840964 100644
          let isCollapsed = layoutMode == .faviconOnly || isTooNarrowForTitle
          
          titleLabel.isHidden = isCollapsed
-@@ -180,7 +216,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -180,7 +219,10 @@ final class TabBarCell: UICollectionViewCell {
          expandedTrailingConstraint.isActive = !isCollapsed
          collapsedTrailingConstraint.isActive = isCollapsed
          expandedTitleWidthConstraint.isActive = !isCollapsed
@@ -11583,7 +10965,7 @@ index aa1450a..2840964 100644
      }
      
      func containsCloseButton(at point: CGPoint) -> Bool {
-@@ -192,14 +231,35 @@ final class TabBarCell: UICollectionViewCell {
+@@ -192,14 +234,35 @@ final class TabBarCell: UICollectionViewCell {
          return closeButton.frame.contains(convertedPoint)
      }
      
@@ -11622,7 +11004,7 @@ index aa1450a..2840964 100644
      }
      
      private func configureHierarchy() {
-@@ -223,9 +283,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -223,9 +286,9 @@ final class TabBarCell: UICollectionViewCell {
      private func configureConstraints() {
          expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
          collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
@@ -11635,7 +11017,7 @@ index aa1450a..2840964 100644
          
          NSLayoutConstraint.activate([
              tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
-@@ -233,7 +293,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -233,7 +296,6 @@ final class TabBarCell: UICollectionViewCell {
              tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
              tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
              
@@ -11643,7 +11025,7 @@ index aa1450a..2840964 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +309,101 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +312,101 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
@@ -11746,150 +11128,28 @@ index aa1450a..2840964 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index 6da82ce..fdf37d9 100644
+index e4460af..4bd0d2a 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-@@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
-             return attributes
-         }
-         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
--        guard tabCount > 1 else {
-+        guard tabCount > 0 else {
-             return attributes
-         }
-         
--        for index in 0..<(tabCount - 1) {
-+        // Separators sit between tabs and after the last (right-most) tab;
-+        // none before the first one.
-+        for index in 0..<tabCount {
-             guard showsSeparator(after: index),
-                   let separatorAttributes = separatorAttributes(after: index, in: rect) else {
-                 continue
-@@ -83,12 +85,12 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
-             return false
-         }
-         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
--        guard tabCount > 1,
--              index >= 0,
--              index < tabCount - 1 else {
-+        guard index >= 0, index < tabCount else {
-             return false
-         }
--        
-+        if index == tabCount - 1 {
-+            return !tabBar.isTabSelected(at: index)
-+        }
-         return !tabBar.isTabSelected(at: index) && !tabBar.isTabSelected(at: index + 1)
-     }
+@@ -135,6 +135,8 @@ final class TabBarCollection: UICollectionView {
      
-@@ -96,12 +98,16 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
-         after index: Int,
-         in rect: CGRect?
-     ) -> UICollectionViewLayoutAttributes? {
--        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)),
--              let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) else {
-+        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)) else {
-             return nil
-         }
--        
--        let centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
-+        let centerX: CGFloat
-+        if let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) {
-+            centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
-+        } else {
-+            // After the last tab: same gap as between two tabs.
-+            centerX = leftAttributes.frame.maxX + max(minimumInteritemSpacing, minimumLineSpacing) / 2
-+        }
-         let frame = CGRect(
-             x: centerX - (UX.separatorWidth / 2),
-             y: leftAttributes.frame.midY - (UX.separatorHeight / 2),
-@@ -140,6 +146,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-     }
+     private(set) var dragSourceIndex: Int?
+     private(set) var dragDestinationIndex: Int?
++    /// Set once the drag has lifted, so reloaded cells keep the slot empty.
++    private var isShowingDragPlaceholder = false
      
-     private weak var tabBar: TabBar?
-+    
-+    /// Reports whether the strip can still be scrolled towards each edge, so
-+    /// the tab bar can show or hide its soft edge hints.
-+    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
-     private let layout: TabBarCollectionLayout
-     private var lastLayoutWidth: CGFloat = 0
-     private var isUpdatingTabs = false
-@@ -194,6 +204,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-         guard !isUpdatingTabs else {
-             return
-         }
-+        // Cell widths come from the tab bar, so a resize needs a fresh layout
-+        // pass before the visible cells are reconfigured.
-+        collectionViewLayout.invalidateLayout()
-         updateScrollability()
-         refreshVisibleTabs()
-         revealSelectedTab()
-@@ -246,29 +259,33 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-         layout.prepareForInsertion(at: insertedIndexPaths)
-         updateLayout()
-         isUpdatingTabs = true
--        performBatchUpdates({
--            if !deletedIndexPaths.isEmpty {
--                deleteItems(at: deletedIndexPaths)
--            }
--            if !insertedIndexPaths.isEmpty {
--                insertItems(at: insertedIndexPaths)
--            }
--        }, completion: { [weak self] _ in
--            guard let self else {
--                return
--            }
-+        // Opening or closing a tab must not repaint the whole strip: no insert
-+        // or delete animation, and no animated scroll afterwards.
-+        UIView.performWithoutAnimation {
-+            performBatchUpdates({
-+                if !deletedIndexPaths.isEmpty {
-+                    deleteItems(at: deletedIndexPaths)
-+                }
-+                if !insertedIndexPaths.isEmpty {
-+                    insertItems(at: insertedIndexPaths)
-+                }
-+            }, completion: { [weak self] _ in
-+                guard let self else {
-+                    return
-+                }
-+                
-+                self.finishTabUpdate()
-+            })
-             
--            self.finishTabUpdate()
--        })
--        
--        if shouldRevealRightmostTab {
--            updateScrollability()
--            layoutIfNeeded()
--            scrollToItem(
--                at: IndexPath(item: tabCount - 1, section: 0),
--                at: .right,
--                animated: true
--            )
-+            if shouldRevealRightmostTab {
-+                updateScrollability()
-+                layoutIfNeeded()
-+                scrollToItem(
-+                    at: IndexPath(item: tabCount - 1, section: 0),
-+                    at: .right,
-+                    animated: false
-+                )
-+            }
-         }
-     }
-     
-@@ -313,40 +330,31 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
+     init() {
+         let layout = TabBarCollectionLayout()
+@@ -278,40 +280,27 @@ final class TabBarCollection: UICollectionView {
      }
      
      private func updateScrollability() {
--        let tabCount = tabBar?.dataSource?.tabs.count ?? 0
+-        let tabCount = tabBar?.dataSource?.activeTabs.count ?? 0
 -        let horizontalInsets = adjustedContentInset.left + adjustedContentInset.right
 -        let baseWidth = bounds.width > 1 ? bounds.width : tabBar?.bounds.width ?? 0
 -        let availableWidth = max(0, baseWidth - horizontalInsets)
--        let selectedIndex = tabBar?.dataSource?.selectedTabID.flatMap { selectedTabID in
--            tabBar?.dataSource?.tabs.firstIndex { $0.id == selectedTabID }
+-        let selectedIndex = tabBar?.dataSource?.selectedTab.flatMap { selectedTab in
+-            tabBar?.dataSource?.activeTabs.firstIndex { $0.id == selectedTab.id }
 -        }
 -        let pendingIndex = tabBar?.pendingExpandedTabIndex
 -        
@@ -11916,8 +11176,8 @@ index 6da82ce..fdf37d9 100644
 -            let otherWidth = floor(remainingWidth / CGFloat(otherCount))
 -            return otherWidth <= TabBarCell.collapsedMinimumWidth
 -        }()
-+        // Tabs stop shrinking at their minimum width and the strip starts
-+        // scrolling instead, so the trailing "+" never rides with the content.
++        // Edge UI: tabs stop shrinking at their minimum width and the strip
++        // scrolls instead, so the trailing "+" never rides with the content.
 +        let contentWidth = collectionViewLayout.collectionViewContentSize.width
 +        let canScroll = contentWidth > bounds.width + 0.5
 +        isScrollEnabled = canScroll
@@ -11938,137 +11198,77 @@ index 6da82ce..fdf37d9 100644
 +        let canScrollLeft = canScroll && contentOffset.x > 0.5
 +        let canScrollRight = canScroll && contentOffset.x + bounds.width < contentWidth - 0.5
 +        scrollStateDidChange(canScrollLeft, canScrollRight)
-+    }
-+    
-+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
-+        notifyScrollState()
      }
      
      private func refreshVisibleTabs() {
-@@ -395,8 +403,19 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-     private func configureAppearance() {
-         translatesAutoresizingMaskIntoConstraints = false
-         backgroundColor = .clear
-+        // Tabs must not paint over the "+" while the strip scrolls, so the
-+        // collection clips; the edge hints cover the flare that gets cut.
-+        clipsToBounds = true
-         showsHorizontalScrollIndicator = false
--        contentInset = .zero
-+        // Side padding equal to the fillet reach: the strip clips (so tabs can
-+        // never paint over the "+"), and this keeps the first/last fillet
-+        // inside those bounds instead of cutting them off.
-+        contentInset = UIEdgeInsets(
-+            top: 0,
-+            left: 0,
-+            bottom: 0,
-+            right: TabBarCell.flareWidth
-+        )
-         contentInsetAdjustmentBehavior = .never
-     }
-     
-@@ -404,12 +423,24 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-         layout.scrollDirection = .horizontal
-         layout.minimumLineSpacing = 0
-         layout.minimumInteritemSpacing = 0
--        layout.sectionInset = .zero
-+        layout.sectionInset = UIEdgeInsets(
-+            top: 0,
-+            left: TabBarCell.flareWidth,
-+            bottom: 0,
-+            right: 0
-+        )
-     }
-     
-     private func configureCollection() {
-         dataSource = self
-         delegate = self
-+        // System drag & drop for reordering: a tab lifted by its context menu
-+        // can be dragged straight away (the custom reorder press is cancelled
-+        // once the menu takes over the touch).
-+        dragDelegate = self
-+        dropDelegate = self
-+        dragInteractionEnabled = true
-+        reorderingCadence = .immediate
-         scrollsToTop = false
-         register(TabBarCell.self, forCellWithReuseIdentifier: TabBarCell.reuseIdentifier)
-         layout.register(
-@@ -418,6 +449,10 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-         )
-     }
-     
-+    private var pendingPressLocation: CGPoint?
-+    private var pendingPressIndexPath: IndexPath?
-+    private var isReordering = false
-+    
-     private func configureGestures() {
-         let longPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleReorderLongPress(_:)))
-         longPressGesture.minimumPressDuration = UX.tabReorderMinimumPressDuration
-@@ -425,19 +460,140 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
-         addGestureRecognizer(longPressGesture)
-     }
-     
-+    /// Let the reorder press run alongside the context menu's own press: holding
-+    /// still shows the menu, moving the finger reorders (and dismisses it).
-+    func gestureRecognizer(
-+        _ gestureRecognizer: UIGestureRecognizer,
-+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-+    ) -> Bool {
-+        return gestureRecognizer is UILongPressGestureRecognizer && gestureRecognizer.view === self
+@@ -405,6 +394,7 @@ extension TabBarCollection: UICollectionViewDataSource {
+         }
+         
+         configure(tabBarCell, at: indexPath)
++        tabBarCell.setDragPlaceholder(isShowingDragPlaceholder && indexPath.item == dragSourceIndex)
+         tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
+             guard let self,
+                   let tabBarCell,
+@@ -418,6 +408,140 @@ extension TabBarCollection: UICollectionViewDataSource {
+ }
+ 
+ extension TabBarCollection: UICollectionViewDelegate {
++    func scrollViewDidScroll(_ scrollView: UIScrollView) {
++        notifyScrollState()
 +    }
 +    
-     // MARK: - Reordering
-     
-     @objc private func handleReorderLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
-         let location = gestureRecognizer.location(in: self)
-         switch gestureRecognizer.state {
-         case .began:
--            beginReordering(at: location)
-+            // Shrink the tab so the hold is visible, then open the menu when the
-+            // timer fires -- the user should not have to lift the finger.
-+            // Holding still opens the system context menu (lift, shadow,
-+            // rounded preview -- same interaction as the address bar). This
-+            // gesture only turns into reordering once the finger moves.
-+            pendingPressLocation = location
-+            pendingPressIndexPath = indexPathForItem(at: location)
-+            isReordering = false
-         case .changed:
-+            if !isReordering {
-+                guard let start = pendingPressLocation else {
-+                    return
-+                }
-+                let distance = hypot(location.x - start.x, location.y - start.y)
-+                guard distance > 6 else {
-+                    return
-+                }
-+                isReordering = true
-+                if #available(iOS 14.0, *) {
-+                    contextMenuInteraction?.dismissMenu()
-+                }
-+                beginReordering(at: location)
-+            }
-             updateReordering(at: location)
-         case .ended:
--            finishReordering(cancelled: false)
-+            if isReordering {
-+                finishReordering(cancelled: false)
-+            }
-+            clearPendingPress()
-         default:
--            finishReordering(cancelled: true)
-+            if isReordering {
-+                finishReordering(cancelled: true)
-+            }
-+            clearPendingPress()
++    // MARK: Context menu (same system interaction as the address bar)
++    
++    func collectionView(
++        _ collectionView: UICollectionView,
++        contextMenuConfigurationForItemAt indexPath: IndexPath,
++        point: CGPoint
++    ) -> UIContextMenuConfiguration? {
++        guard dragSourceIndex == nil,
++              let dataSource = tabBar?.dataSource,
++              dataSource.activeTabs.indices.contains(indexPath.item) else {
++            return nil
++        }
++        if let cell = cellForItem(at: indexPath) as? TabBarCell,
++           cell.containsCloseButton(at: convert(point, to: cell)) {
++            return nil
++        }
++        let index = indexPath.item
++        let mode = dataSource.selectedTabMode
++        let tabCount = dataSource.activeTabs.count
++        return UIContextMenuConfiguration(identifier: NSNumber(value: index), previewProvider: nil) { [weak self] _ in
++            self?.makeTabMenu(index: index, tabCount: tabCount, mode: mode)
 +        }
 +    }
 +    
-+    private func clearPendingPress() {
-+        pendingPressLocation = nil
-+        pendingPressIndexPath = nil
-+        isReordering = false
++    func collectionView(
++        _ collectionView: UICollectionView,
++        previewForHighlightingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
++    ) -> UITargetedPreview? {
++        return tabPreview(for: configuration)
 +    }
 +    
-+    // MARK: - Tab Menu
++    func collectionView(
++        _ collectionView: UICollectionView,
++        previewForDismissingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
++    ) -> UITargetedPreview? {
++        return tabPreview(for: configuration)
++    }
++    
++    /// Lifts the tab itself with rounded corners, like the address bar pill.
++    private func tabPreview(for configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
++        guard let index = (configuration.identifier as? NSNumber)?.intValue,
++              let cell = cellForItem(at: IndexPath(item: index, section: 0)) else {
++            return nil
++        }
++        let parameters = UIPreviewParameters()
++        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
++        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
++        parameters.backgroundColor = traitCollection.userInterfaceStyle == .dark
++            ? UIColor.secondarySystemBackground
++            : UIColor.systemBackground
++        return UITargetedPreview(view: cell, parameters: parameters)
++    }
 +    
 +    private func makeTabMenu(index: Int, tabCount: Int, mode: TabMode) -> UIMenu {
 +        let duplicate = UIAction(
@@ -12121,7 +11321,7 @@ index 6da82ce..fdf37d9 100644
 +    }
 +    
 +    private func closeTabs(after index: Int, mode: TabMode) {
-+        guard let count = tabBar?.dataSource?.tabs.count, index < count - 1 else {
++        guard let count = tabBar?.dataSource?.activeTabs.count, index < count - 1 else {
 +            return
 +        }
 +        for position in stride(from: count - 1, to: index, by: -1) {
@@ -12139,195 +11339,45 @@ index 6da82ce..fdf37d9 100644
 +    }
 +    
 +    private func closeOtherTabs(keeping index: Int, mode: TabMode) {
-+        guard let count = tabBar?.dataSource?.tabs.count, count > 1 else {
++        guard let count = tabBar?.dataSource?.activeTabs.count, count > 1 else {
 +            return
 +        }
 +        for position in stride(from: count - 1, through: 0, by: -1) where position != index {
 +            tabBar?.dataSource?.closeTab(at: position, mode: mode)
-         }
-     }
-     
-@@ -742,6 +898,7 @@ extension TabBarCollection: UICollectionViewDataSource {
-         }
-         
-         configure(tabBarCell, at: indexPath)
-+        tabBarCell.setDragPlaceholder(indexPath.item == dropCurrentIndex)
-         tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
-             guard let self,
-                   let tabBarCell,
-@@ -759,6 +916,59 @@ extension TabBarCollection: UICollectionViewDelegate {
++        }
++    }
++    
+     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
-     
-+    // MARK: Context menu (same system interaction as the address bar)
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        contextMenuConfigurationForItemAt indexPath: IndexPath,
-+        point: CGPoint
-+    ) -> UIContextMenuConfiguration? {
-+        guard !isReordering,
-+              let dataSource = tabBar?.dataSource,
-+              dataSource.tabs.indices.contains(indexPath.item) else {
-+            return nil
-+        }
-+        if let cell = cellForItem(at: indexPath) as? TabBarCell,
-+           cell.containsCloseButton(at: convert(point, to: cell)) {
-+            return nil
-+        }
-+        let index = indexPath.item
-+        let mode = dataSource.selectedMode
-+        let tabCount = dataSource.tabs.count
-+        return UIContextMenuConfiguration(identifier: NSNumber(value: index), previewProvider: nil) { [weak self] _ in
-+            self?.makeTabMenu(index: index, tabCount: tabCount, mode: mode)
-+        }
-+    }
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        previewForHighlightingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
-+    ) -> UITargetedPreview? {
-+        return tabPreview(for: configuration)
-+    }
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        previewForDismissingContextMenuWithConfiguration configuration: UIContextMenuConfiguration
-+    ) -> UITargetedPreview? {
-+        return tabPreview(for: configuration)
-+    }
-+    
-+    /// Lifts the tab itself with rounded corners, like the address bar pill.
-+    private func tabPreview(for configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
-+        guard let index = (configuration.identifier as? NSNumber)?.intValue,
-+              let cell = cellForItem(at: IndexPath(item: index, section: 0)) else {
-+            return nil
-+        }
-+        let parameters = UIPreviewParameters()
-+        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
-+        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
-+        parameters.backgroundColor = traitCollection.userInterfaceStyle == .dark
-+            ? UIColor.secondarySystemBackground
-+            : UIColor.systemBackground
-+        return UITargetedPreview(view: cell, parameters: parameters)
-+    }
-+    
-     func collectionView(
-         _ collectionView: UICollectionView,
-         targetIndexPathForMoveFromItemAt originalIndexPath: IndexPath,
-@@ -796,3 +1006,107 @@ extension TabBarCollection: UICollectionViewDelegateFlowLayout {
-         return CGSize(width: cellLayout.width, height: bounds.height)
+@@ -473,7 +597,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
+         return parameters
      }
- }
-+
-+// MARK: - Drag & drop reordering (continues from the context menu lift)
-+
-+/// Index the lifted tab currently occupies while a system drag is running.
-+/// The tab is moved live as the finger passes other tabs, so the rest of the
-+/// strip slides aside immediately (like the press-and-drag reorder).
-+private var tabDropCurrentIndexKey: UInt8 = 0
-+
-+extension TabBarCollection: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
-+    fileprivate var dropCurrentIndex: Int? {
-+        get { objc_getAssociatedObject(self, &tabDropCurrentIndexKey) as? Int }
-+        set { objc_setAssociatedObject(self, &tabDropCurrentIndexKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-+    }
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        itemsForBeginning session: UIDragSession,
-+        at indexPath: IndexPath
-+    ) -> [UIDragItem] {
-+        guard !isReordering,
-+              let dataSource = tabBar?.dataSource,
-+              dataSource.tabs.indices.contains(indexPath.item) else {
-+            return []
-+        }
-+        let item = UIDragItem(itemProvider: NSItemProvider())
-+        item.localObject = indexPath.item
-+        dropCurrentIndex = indexPath.item
-+        return [item]
-+    }
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        dragPreviewParametersForItemAt indexPath: IndexPath
-+    ) -> UIDragPreviewParameters? {
-+        guard let cell = cellForItem(at: indexPath) else {
-+            return nil
-+        }
-+        let parameters = UIDragPreviewParameters()
-+        let bounds = cell.bounds.insetBy(dx: 1, dy: 2)
-+        parameters.visiblePath = UIBezierPath(roundedRect: bounds, cornerRadius: min(10, bounds.height / 2))
-+        return parameters
-+    }
-+    
-+    func collectionView(_ collectionView: UICollectionView, dragSessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool {
-+        return true
-+    }
-+    
+     
 +    func collectionView(_ collectionView: UICollectionView, dragSessionWillBegin session: UIDragSession) {
-+        // The lift preview has been snapshotted by now; empty the original
-+        // slot so it doesn't show a second copy under the finger.
-+        guard let current = dropCurrentIndex else {
++        // Edge UI: the lift preview has been snapshotted by now; leave the
++        // original slot empty (keeps its width, shows nothing) so only the
++        // lifted copy is visible.
++        guard let sourceIndex = dragSourceIndex else {
 +            return
 +        }
-+        (cellForItem(at: IndexPath(item: current, section: 0)) as? TabBarCell)?.setDragPlaceholder(true)
++        isShowingDragPlaceholder = true
++        (cellForItem(at: IndexPath(item: sourceIndex, section: 0)) as? TabBarCell)?.setDragPlaceholder(true)
 +    }
 +    
-+    func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
-+        dropCurrentIndex = nil
+     func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
++        isShowingDragPlaceholder = false
 +        for case let cell as TabBarCell in visibleCells {
 +            cell.setDragPlaceholder(false)
 +        }
-+        collectionViewLayout.invalidateLayout()
-+    }
-+    
-+    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
-+        return session.localDragSession != nil
-+    }
-+    
-+    func collectionView(
-+        _ collectionView: UICollectionView,
-+        dropSessionDidUpdate session: UIDropSession,
-+        withDestinationIndexPath destinationIndexPath: IndexPath?
-+    ) -> UICollectionViewDropProposal {
-+        guard session.localDragSession != nil, let current = dropCurrentIndex else {
-+            return UICollectionViewDropProposal(operation: .forbidden)
-+        }
-+        let location = session.location(in: self)
-+        if let target = indexPathForItem(at: location)?.item,
-+           target != current,
-+           let count = tabBar?.dataSource?.tabs.count,
-+           (0..<count).contains(target),
-+           (0..<count).contains(current) {
-+            // Move now so the other tabs reflow under the finger.
-+            dropCurrentIndex = target
-+            performBatchUpdates({
-+                self.tabBar?.requestMoveTab(from: current, to: target)
-+                self.moveItem(at: IndexPath(item: current, section: 0), to: IndexPath(item: target, section: 0))
-+            }, completion: { [weak self] _ in
-+                self?.collectionViewLayout.invalidateLayout()
-+            })
-+        }
-+        return UICollectionViewDropProposal(operation: .move, intent: .unspecified)
-+    }
-+    
-+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
-+        guard let dropItem = coordinator.items.first, let current = dropCurrentIndex else {
-+            return
-+        }
-+        // The tab already sits at its final slot; just land the preview there.
-+        coordinator.drop(dropItem.dragItem, toItemAt: IndexPath(item: current, section: 0))
-+        dropCurrentIndex = nil
-+        collectionViewLayout.invalidateLayout()
-+    }
-+}
+         dragSourceIndex = nil
+         dragDestinationIndex = nil
+         clipsToBounds = true
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
-index 15c4768..526739d 100644
+index 3433792..83427e7 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabOverview/TabOverviewCollection.swift
-@@ -60,7 +60,60 @@ final class TabOverviewCollection: NSObject {
+@@ -45,7 +45,60 @@ final class TabOverviewCollection: NSObject {
      private var swipeState: SwipeState = .idle
      private(set) var mode: TabOverview.Mode = .regularTabs
      
@@ -12389,7 +11439,7 @@ index 15c4768..526739d 100644
      
      lazy var privateTabsCollectionView: UICollectionView = {
          let view = makeTabCollectionView()
-@@ -158,6 +211,7 @@ final class TabOverviewCollection: NSObject {
+@@ -143,6 +196,7 @@ final class TabOverviewCollection: NSObject {
      func reloadTabCards() {
          tabChangeAnimationState.insertionPlaceholderMode = nil
          allCollectionViews.forEach { $0.reloadData() }
@@ -12397,7 +11447,7 @@ index 15c4768..526739d 100644
          restoreActiveTabCardCloseSwipeIfNeeded()
          refreshTabIdentitySnapshot()
      }
-@@ -286,6 +340,7 @@ final class TabOverviewCollection: NSObject {
+@@ -271,6 +325,7 @@ final class TabOverviewCollection: NSObject {
              return
          }
          
@@ -12405,7 +11455,7 @@ index 15c4768..526739d 100644
          insertTabCards(regularInsertions, in: regularTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .regularTabs, previousCount: previousRegularCount)
          deleteTabCards(regularDeletions, in: regularTabsCollectionView)
          insertTabCards(privateInsertions, in: privateTabsCollectionView, insertionPlaceholderMode: insertionPlaceholderMode, mode: .privateTabs, previousCount: previousPrivateCount)
-@@ -321,7 +376,6 @@ final class TabOverviewCollection: NSObject {
+@@ -305,7 +360,6 @@ final class TabOverviewCollection: NSObject {
      private func makePrivateModeIntroView() -> UIView {
          let container = UIView()
          container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -12413,7 +11463,7 @@ index 15c4768..526739d 100644
          let imageView = UIImageView(image: UIImage(named: "private.mode.icon")?.withRenderingMode(.alwaysTemplate))
          imageView.translatesAutoresizingMaskIntoConstraints = false
          imageView.contentMode = .scaleAspectFit
-@@ -339,11 +393,12 @@ final class TabOverviewCollection: NSObject {
+@@ -323,11 +377,12 @@ final class TabOverviewCollection: NSObject {
          subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
          subtitleLabel.adjustsFontForContentSizeCategory = true
          subtitleLabel.numberOfLines = 0
@@ -12428,17 +11478,17 @@ index 15c4768..526739d 100644
          NSLayoutConstraint.activate([
              imageView.widthAnchor.constraint(equalToConstant: UX.privateModeIntroIconSideLength),
 diff --git a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
-index 74e7fad..79a3c32 100644
+index 85d248a..24fc7d1 100644
 --- a/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 +++ b/browser/Reynard/Client/Interface/TabOverview/TabOverviewPresentation.swift
 @@ -471,11 +471,11 @@ final class TabOverviewPresentation {
          tabOverview.setMode(overviewMode, animated: false)
-         let selectedIndex = dataSource.selectedIndex
+         let selectedIndex = dataSource.selectedTabIndex
          context.containerView.layoutIfNeeded()
 -        let topChromeView = context.browserChrome.topToolbarTransitionView()
 +        let topChromeView = context.browserChrome.topChromeTransitionView()
          context.prepareTabOverviewPresentation()
-         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedMode)
+         dataSource.captureThumbnail(forTabAt: selectedIndex, mode: dataSource.selectedTabMode)
          if let topChromeView {
 -            topChromeView.frame = context.browserChrome.topToolbarTransitionFrame(in: context.containerView)
 +            topChromeView.frame = context.browserChrome.topChromeTransitionFrame(in: context.containerView)
@@ -12455,7 +11505,7 @@ index 74e7fad..79a3c32 100644
          transitionView.transform = webpagePreviewTransitionTransform(
              contentFrame: finalContentFrame,
 diff --git a/browser/Reynard/Client/Preferences/BrowserPreferences.swift b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
-index d4e93c2..355981b 100644
+index 7b0171c..51ebb5e 100644
 --- a/browser/Reynard/Client/Preferences/BrowserPreferences.swift
 +++ b/browser/Reynard/Client/Preferences/BrowserPreferences.swift
 @@ -38,9 +38,9 @@ final class BrowserPreferences {
@@ -12635,10 +11685,10 @@ index 86ad6fc..9d9fc9a 100644
                let host = URLUtils.normalizedHost(fromRawURI: permission.uri) else {
              return .prompt
 diff --git a/browser/Reynard/Client/Shared/AlertPresenter.swift b/browser/Reynard/Client/Shared/AlertPresenter.swift
-index e387c64..adfd9e9 100644
+index 6f85e44..58947d3 100644
 --- a/browser/Reynard/Client/Shared/AlertPresenter.swift
 +++ b/browser/Reynard/Client/Shared/AlertPresenter.swift
-@@ -24,13 +24,18 @@ enum AlertPresenter {
+@@ -24,6 +24,10 @@ enum AlertPresenter {
          }
      }
      
@@ -12649,21 +11699,11 @@ index e387c64..adfd9e9 100644
      static func show(
          title: String?,
          message: String?,
--        buttons: [Button] = [Button(title: NSLocalizedString("OK", comment: ""))]
-+        buttons: [Button] = [Button(title: NSLocalizedString("OK", comment: ""))],
-+        in window: UIWindow? = nil
-     ) {
-         DispatchQueue.main.async {
--            guard let presenter = UIApplication.shared.topViewController() else {
-+            guard let presenter = UIApplication.shared.topViewController(for: window) else {
-                 return
-             }
-             
 diff --git a/browser/Reynard/Client/Stores/DownloadStore.swift b/browser/Reynard/Client/Stores/DownloadStore.swift
-index 117c74b..c07b483 100644
+index 07ae3c1..cae68ca 100644
 --- a/browser/Reynard/Client/Stores/DownloadStore.swift
 +++ b/browser/Reynard/Client/Stores/DownloadStore.swift
-@@ -458,6 +458,30 @@ final class DownloadStore: NSObject {
+@@ -471,6 +471,30 @@ final class DownloadStore: NSObject {
          }
      }
      
@@ -13335,98 +12375,22 @@ index 0000000..d47ae19
 +        return string(from: statement, at: index)
 +    }
 +}
-diff --git a/browser/Reynard/Client/Stores/TabManagementStore.swift b/browser/Reynard/Client/Stores/TabManagementStore.swift
-index f27cb22..42b85dd 100644
---- a/browser/Reynard/Client/Stores/TabManagementStore.swift
-+++ b/browser/Reynard/Client/Stores/TabManagementStore.swift
-@@ -70,6 +70,11 @@ final class TabManagementStore {
-     }
+diff --git a/browser/Reynard/Client/TabManagement/TabManager.swift b/browser/Reynard/Client/TabManagement/TabManager.swift
+index 0e5c9e3..82635a3 100644
+--- a/browser/Reynard/Client/TabManagement/TabManager.swift
++++ b/browser/Reynard/Client/TabManagement/TabManager.swift
+@@ -135,6 +135,10 @@ final class TabManager: NSObject {
      
-     private let fileManager: FileManager
-+    /// An ephemeral store keeps its state in memory (plus a throw-away temp
-+    /// directory for thumbnails) instead of the shared on-disk database. It is
-+    /// used by additional (Stage Manager) windows so their persistence can never
-+    /// clobber the primary window's saved tab list.
-+    private let isEphemeral: Bool
-     private let storage: StorageURLs
-     private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.TabManagementStore.Queue", qos: .userInitiated)
-     private var database: OpaquePointer?
-@@ -79,16 +84,24 @@ final class TabManagementStore {
-     
-     // MARK: - Lifecycle
-     
--    init(fileManager: FileManager = .default) {
-+    init(fileManager: FileManager = .default, isEphemeral: Bool = false) {
-         self.fileManager = fileManager
-+        self.isEphemeral = isEphemeral
-         
--        guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
--            fatalError("Application Support directory is unavailable")
-+        let directoryURL: URL
-+        if isEphemeral {
-+            // Throw-away directory: used only for this window's thumbnail cache.
-+            directoryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-+                .appendingPathComponent("TabManagement-Ephemeral-\(UUID().uuidString)", isDirectory: true)
-+        } else {
-+            guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-+                fatalError("Application Support directory is unavailable")
-+            }
-+            
-+            directoryURL = applicationSupportDirectoryURL
-+                .appendingPathComponent("AppData", isDirectory: true)
-+                .appendingPathComponent("TabManagement", isDirectory: true)
-         }
--        
--        let directoryURL = applicationSupportDirectoryURL
--            .appendingPathComponent("AppData", isDirectory: true)
--            .appendingPathComponent("TabManagement", isDirectory: true)
-         self.storage = StorageURLs(
-             directoryURL: directoryURL,
-             databaseURL: directoryURL.appendingPathComponent("TabManagement", isDirectory: false),
-@@ -389,7 +402,10 @@ final class TabManagementStore {
-         
-         var database: OpaquePointer?
-         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
--        guard sqlite3_open_v2(storage.databaseURL.path, &database, flags, nil) == SQLITE_OK else {
-+        // An ephemeral store lives entirely in memory: nothing is written to the
-+        // shared on-disk database, so it cannot disturb the primary window.
-+        let databasePath = isEphemeral ? ":memory:" : storage.databaseURL.path
-+        guard sqlite3_open_v2(databasePath, &database, flags, nil) == SQLITE_OK else {
-             if let database {
-                 sqlite3_close(database)
-             }
-diff --git a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-index 734e3d8..3ba8f37 100644
---- a/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-+++ b/browser/Reynard/Client/TabManagement/TabManagerImpl.swift
-@@ -65,6 +65,10 @@ final class TabManagerImplementation: NSObject, TabManager {
-     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
-     private var selectionCounter = 0
-     
+     private let regularTabList = TabList()
+     private let privateTabList = TabList()
 +    private static let invisibleInputScalars: Set<UInt32> = [
 +        0x2005, 0x2006, 0x2009, 0x200A, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF,
 +    ]
 +    
-     private lazy var lenientURLExpression: NSRegularExpression = {
-         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
-         return try! NSRegularExpression(pattern: pattern)
-@@ -661,6 +665,15 @@ final class TabManagerImplementation: NSObject, TabManager {
-         regularTabs[index].state.showsStartupHomepage = true
-     }
+     private(set) var selectedTabMode: TabMode = .regular
      
-+    /// Initial tab for an ADDITIONAL (Stage Manager) window: exactly one fresh
-+    /// tab showing the homepage, with no tab restoration and without writing
-+    /// anything back to the shared persisted tab list (that window uses an
-+    /// isolated ephemeral store).
-+    func createHomepageWindowInitialTab() {
-+        let index = addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
-+        regularTabs[index].state.showsStartupHomepage = true
-+    }
-+    
-     @discardableResult
-     func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
-         let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
-@@ -925,7 +938,12 @@ final class TabManagerImplementation: NSObject, TabManager {
+     var regularTabs: [Tab] {
+@@ -1033,7 +1037,12 @@ final class TabManager: NSObject {
      }
      
      func browse(to term: String, in tab: Tab) {
@@ -13440,7 +12404,11 @@ index 734e3d8..3ba8f37 100644
          guard !navigationInput.isEmpty else {
              return
          }
-@@ -1386,11 +1404,19 @@ extension TabManagerImplementation: ContentDelegate {
+diff --git a/browser/Reynard/Client/TabManagement/TabSessionHandler.swift b/browser/Reynard/Client/TabManagement/TabSessionHandler.swift
+index bb0f355..3dac24b 100644
+--- a/browser/Reynard/Client/TabManagement/TabSessionHandler.swift
++++ b/browser/Reynard/Client/TabManagement/TabSessionHandler.swift
+@@ -333,11 +333,19 @@ extension TabSessionHandler: ContentDelegate {
      }
      
      func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
@@ -13450,40 +12418,27 @@ index 734e3d8..3ba8f37 100644
 +        // offer Save (back to a file opened from Files) / Save As. Only if
 +        // that fails, fall back to re-downloading the original URL.
 +        Task { @MainActor [weak self] in
-+            if await PdfSaveCoordinator.handle(session: session, request: request, window: nil) {
++            if await PdfSaveCoordinator.handle(session: session, request: request, window: session.engineView?.window) {
 +                return
 +            }
 +            guard let self,
 +                  let download = DownloadStore.shared.pendingDownload(from: request) else {
 +                return
 +            }
-+            self.delegate?.tabManager(self, didRequestDownload: download)
++            self.delegate?.tabSessionHandler(self, didRequestDownload: download)
          }
 -        
--        delegate?.tabManager(self, didRequestDownload: download)
+-        delegate?.tabSessionHandler(self, didRequestDownload: download)
      }
  }
  
-diff --git a/browser/Reynard/Resources/Info.plist b/browser/Reynard/Resources/Info.plist
-index 7af267b..bd44990 100644
---- a/browser/Reynard/Resources/Info.plist
-+++ b/browser/Reynard/Resources/Info.plist
-@@ -20,7 +20,7 @@
- 	<key>UIApplicationSceneManifest</key>
- 	<dict>
- 		<key>UIApplicationSupportsMultipleScenes</key>
--		<false/>
-+		<true/>
- 		<key>UISceneConfigurations</key>
- 		<dict>
- 			<key>UIWindowSceneSessionRoleApplication</key>
 diff --git a/browser/Reynard/SceneDelegate.swift b/browser/Reynard/SceneDelegate.swift
-index f5cb73e..25dd582 100644
+index 8687198..98906c3 100644
 --- a/browser/Reynard/SceneDelegate.swift
 +++ b/browser/Reynard/SceneDelegate.swift
-@@ -10,10 +10,25 @@ import UIKit
- class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+@@ -11,6 +11,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
      var window: UIWindow?
+     private var browserWindow: BrowserWindow?
      
 +    /// Process-level bookkeeping: the first scene connected in this process is
 +    /// the primary window and restores the shared tab set. Any subsequent scene
@@ -13497,17 +12452,6 @@ index f5cb73e..25dd582 100644
      func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
          guard let windowScene = (scene as? UIWindowScene) else { return }
          
--        let browserViewController = BrowserViewController()
-+        let isAdditionalWindow = SceneDelegate.hasConnectedScene
-+        SceneDelegate.hasConnectedScene = true
-+        
-+        let browserViewController = BrowserViewController(
-+            canHostSidebar: false,
-+            startsWithHomepage: isAdditionalWindow
-+        )
-         browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
-         
-         let window = UIWindow(windowScene: windowScene)
 diff --git a/patches/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs.patch b/patches/toolkit/components/pdfjs/content/PdfStreamConverter.sys.mjs.patch
 deleted file mode 100644
 index f7b93a4..0000000
@@ -13567,27 +12511,22 @@ index 2afb90e..0000000
 -  content/web/viewer.html (content/web/viewer-geckoview.html)
 diff --git a/patches/zz-edge-ui/autofill-keyboard-guard.patch b/patches/zz-edge-ui/autofill-keyboard-guard.patch
 new file mode 100644
-index 0000000..8327f4d
+index 0000000..032fdfb
 --- /dev/null
 +++ b/patches/zz-edge-ui/autofill-keyboard-guard.patch
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,27 @@
 +diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
-+index ea1839d..0055d2c 100644
++index 7c13120..41103dc 100644
 +--- a/widget/uikit/GeckoEditableSupport.mm
 ++++ b/widget/uikit/GeckoEditableSupport.mm
-+@@ -4247,9 +4247,26 @@ NS_IMETHODIMP AutofillListener::OnEvent(const nsAString& aEvent,
-+     return;
-+   }
-+ 
-++  // Edge UI: these are private UIKit classes whose shape differs between
-++  // iPadOS versions; check each step instead of crashing with an
-++  // unrecognized selector when a login field gets focus.
-++  if (![keyboard respondsToSelector:@selector(keyboardStateManager)]) {
-++    return;
-++  }
-+   id<GeckoKeyboardAutofillState> keyboardState =
-+       (id<GeckoKeyboardAutofillState>)[keyboard keyboardStateManager];
++@@ -4251,7 +4251,21 @@ NS_IMETHODIMP AutofillListener::OnEvent(const nsAString& aEvent,
++       [keyboard respondsToSelector:@selector(keyboardStateManager)]
++           ? (id<GeckoKeyboardAutofillState>)[keyboard keyboardStateManager]
++           : (id<GeckoKeyboardAutofillState>)keyboard;
 +-  [keyboardState.autofillController.autofillGroup removeObjectsForKeys:@[
+++  // Edge UI: these are private UIKit classes whose shape differs between
+++  // iPadOS versions; check each remaining step instead of crashing with an
+++  // unrecognized selector when a login field gets focus.
 ++  if (![keyboardState respondsToSelector:@selector(autofillController)]) {
 ++    return;
 ++  }
