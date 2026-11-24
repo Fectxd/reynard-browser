@@ -10,6 +10,12 @@ import GeckoView
 import UIKit
 
 final class SessionManager {
+    struct SessionHandoff {
+        let pageBackgroundColor: UIColor?
+        let externalResponseReferenceCount: Int?
+        let websiteModeOverrides: [String: Bool]?
+    }
+    
     private let sessionSettings: SessionSettingsManager
     private let tabStore: TabManagementStore
     private let permissionStore: SitePermissionStore
@@ -114,6 +120,35 @@ final class SessionManager {
         }
         session.setFocused(false)
         session.setActive(false)
+    }
+    
+    func detach(_ session: GeckoSession, forTab tabID: UUID) -> SessionHandoff {
+        let identifier = ObjectIdentifier(session)
+        deactivate(session)
+        trackingProtection.removeSession(session)
+        
+        return SessionHandoff(
+            pageBackgroundColor: pageBackgroundColors.removeValue(forKey: identifier),
+            externalResponseReferenceCount: externalResponseReferenceCounts.removeValue(forKey: identifier),
+            websiteModeOverrides: sessionSettings.websiteMode.takeWebsiteOverrides(for: tabID)
+        )
+    }
+    
+    func attach(
+        _ session: GeckoSession,
+        asTab tabID: UUID,
+        handoff: SessionHandoff,
+        delegates: SessionDelegates
+    ) {
+        let identifier = ObjectIdentifier(session)
+        pageBackgroundColors[identifier] = handoff.pageBackgroundColor
+        externalResponseReferenceCounts[identifier] = handoff.externalResponseReferenceCount
+        sessionSettings.websiteMode.restoreWebsiteOverrides(handoff.websiteModeOverrides, for: tabID)
+        bindDelegates(to: session, delegates: delegates)
+        
+        Task { @MainActor [weak self] in
+            await self?.trackingProtection.refreshBlockedTrackers(for: session)
+        }
     }
     
     // MARK: - Application Lifecycle
@@ -278,17 +313,6 @@ final class SessionManager {
     
     func setPageBackgroundColor(_ color: UIColor, for session: GeckoSession) {
         pageBackgroundColors[ObjectIdentifier(session)] = color
-    }
-    
-    // MARK: - Addon Tab State
-    
-    func setAddonTabActive(_ active: Bool, for session: GeckoSession) {
-        session.setAddonTabActive(active)
-    }
-    
-    func transferAddonTabActivation(from previousSession: GeckoSession, to replacementSession: GeckoSession) {
-        setAddonTabActive(false, for: previousSession)
-        setAddonTabActive(true, for: replacementSession)
     }
     
     // MARK: - Website Settings

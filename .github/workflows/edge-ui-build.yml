@@ -133,7 +133,7 @@ jobs:
           # Pinned to the upstream commit edge-ui was last merged with, so an
           # upstream refactor can't break pushes before it has been merged.
           # Bump this together with each upstream merge.
-          UPSTREAM_REF: ${{ inputs.upstream_ref || '7d5633f7f6d9df0c2aa832537a8b25f59296df3a' }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref || 'a8b89d480c2f6b4d90b7ecee6abd3bf582fc8e3c' }}
 
       # Reset browser/, engine/ and patches/ to the upstream revision and replay
       # tools/edge-ui on top. This proves on every build that the customisation

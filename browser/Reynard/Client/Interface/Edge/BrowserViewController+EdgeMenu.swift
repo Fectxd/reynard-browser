@@ -181,7 +181,7 @@ extension BrowserViewController {
     /// Shares the current page (reuses the standard share sheet).
     private func presentShareCurrentPage() {
         guard let tab = tabManager.selectedTab,
-              let url = tabManager.shareableURL(for: tab) else {
+              let url = tab.shareableURL else {
             return
         }
         let sourceView = browserChrome.sharePopoverSourceView()
@@ -243,9 +243,10 @@ extension BrowserViewController {
         guard let translateURL = URL(string: "https://translate.google.com/translate?\(query)") else {
             return
         }
-        _ = tabManager.createRegularTab(
+        _ = tabManager.createTab(
             selecting: true,
             target: .end,
+            mode: .regular,
             url: translateURL.absoluteString,
             loadImmediately: true
         )

@@ -7,15 +7,12 @@
 
 import UIKit
 
-protocol TabBarDataSource: AnyObject {
-    var tabs: [Tab] { get }
-    var selectedTabID: UUID? { get }
-    var selectedMode: TabMode { get }
-    
+protocol TabBarDataSource: TabListSource {
     func selectTab(at index: Int, mode: TabMode)
     func closeTab(at index: Int, mode: TabMode)
     func duplicateTab(at index: Int, mode: TabMode)
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode)
+    func moveTab(withID tabID: UUID, to destinationIndex: Int)
 }
 
 final class TabBar: UIView {
@@ -41,12 +38,6 @@ final class TabBar: UIView {
         case visible
     }
     
-    enum ReorderState: Equatable {
-        case idle
-        case pending
-        case active
-    }
-    
     struct CellLayout {
         let width: CGFloat
         let mode: TabBarCell.LayoutMode
@@ -58,7 +49,6 @@ final class TabBar: UIView {
     var onNewTab: (() -> Void)?
     
     private(set) var visibility: Visibility = .hidden
-    private(set) var reorderState: ReorderState = .idle
     private var pendingExpandedTabID: UUID?
     private var displayedTabIDs: [UUID]?
     
@@ -66,7 +56,7 @@ final class TabBar: UIView {
         guard let pendingExpandedTabID else {
             return nil
         }
-        return dataSource?.tabs.firstIndex { $0.id == pendingExpandedTabID }
+        return dataSource?.activeTabs.firstIndex { $0.id == pendingExpandedTabID }
     }
     
     var standardHeight: CGFloat {
@@ -78,7 +68,7 @@ final class TabBar: UIView {
 
     private lazy var newTabButton: ToolbarButton = {
         let button = ToolbarButton(
-            buttonType: .newTab,
+            buttonType: .item(.newTab),
             target: self,
             action: #selector(newTabTapped)
         )
@@ -148,7 +138,10 @@ final class TabBar: UIView {
     }
     
     func cellLayout(at index: Int) -> CellLayout {
-        let tabs = dataSource?.tabs ?? []
+        let tabs = dataSource?.activeTabs ?? []
+        let horizontalInset = tabCollection.adjustedContentInset.left + tabCollection.adjustedContentInset.right
+        let containerWidth = tabCollection.bounds.width > 1 ? tabCollection.bounds.width : bounds.width
+        let availableWidth = max(0, containerWidth - horizontalInset)
         let layoutTabCount = max(1, tabs.count)
         let fixedTabWidth = TabBarCell.expandedMinimumWidth
         
@@ -171,7 +164,7 @@ final class TabBar: UIView {
     /// True once the tabs no longer fit at their minimum width; the collection
     /// then scrolls and the "+" stays pinned to the right edge.
     private var isScrollable: Bool {
-        let tabCount = CGFloat(dataSource?.tabs.count ?? 0)
+        let tabCount = CGFloat(dataSource?.activeTabs.count ?? 0)
         guard tabCount > 0 else {
             return false
         }
@@ -182,7 +175,7 @@ final class TabBar: UIView {
     
     func reloadTabs() {
         clearInvalidPendingExpansion()
-        let tabs = dataSource?.tabs ?? []
+        let tabs = dataSource?.activeTabs ?? []
         let (insertedIndices, deletedIndices) = changedTabIndices(in: tabs)
         if !insertedIndices.isEmpty && deletedIndices.isEmpty {
             tabCollection.updateTabs(inserting: insertedIndices)
@@ -199,15 +192,15 @@ final class TabBar: UIView {
         tabCollection.reloadTab(at: index)
     }
     
-    func setPendingExpansion(at index: Int?) {
-        pendingExpandedTabID = index.flatMap { dataSource?.tabs[safe: $0]?.id }
-        if index != nil {
+    func setPendingExpansion(to tab: Tab?) {
+        pendingExpandedTabID = tab?.id
+        if tab != nil {
             tabCollection.reloadTabs()
         }
     }
     
     func isTabSelected(at index: Int) -> Bool {
-        guard let tabs = dataSource?.tabs,
+        guard let tabs = dataSource?.activeTabs,
               tabs.indices.contains(index) else {
             return false
         }
@@ -216,14 +209,14 @@ final class TabBar: UIView {
     }
     
     func isTabSelected(id: UUID) -> Bool {
-        guard let tabs = dataSource?.tabs else {
+        guard let tabs = dataSource?.activeTabs else {
             return false
         }
         
         let selectedTabID = pendingExpandedTabID.flatMap { pendingTabID in
             tabs.first { $0.id == pendingTabID }?.id
         }
-        ?? dataSource?.selectedTabID
+        ?? dataSource?.selectedTab?.id
         return id == selectedTabID
     }
     
@@ -256,15 +249,11 @@ final class TabBar: UIView {
     
     // MARK: - Collection Coordination
     
-    func updateReorderState(_ state: ReorderState) {
-        reorderState = state
-    }
-    
     func requestSelectTab(at index: Int) {
         guard let dataSource else {
             return
         }
-        dataSource.selectTab(at: index, mode: dataSource.selectedMode)
+        dataSource.selectTab(at: index, mode: dataSource.selectedTabMode)
     }
     
     func requestCloseTab(at index: Int) {
@@ -272,15 +261,19 @@ final class TabBar: UIView {
         guard let dataSource else {
             return
         }
-        dataSource.closeTab(at: index, mode: dataSource.selectedMode)
+        dataSource.closeTab(at: index, mode: dataSource.selectedTabMode)
     }
     
     func requestMoveTab(from sourceIndex: Int, to destinationIndex: Int) {
         guard let dataSource else {
             return
         }
-        dataSource.moveTab(from: sourceIndex, to: destinationIndex, mode: dataSource.selectedMode)
-        displayedTabIDs = dataSource.tabs.map { $0.id }
+        dataSource.moveTab(from: sourceIndex, to: destinationIndex, mode: dataSource.selectedTabMode)
+        displayedTabIDs = dataSource.activeTabs.map { $0.id }
+    }
+    
+    func requestMoveTab(_ tab: Tab, to destinationIndex: Int) {
+        dataSource?.moveTab(withID: tab.id, to: destinationIndex)
     }
     
     // MARK: - View Setup
@@ -367,7 +360,7 @@ final class TabBar: UIView {
             return
         }
         
-        let tabCount = dataSource?.tabs.count ?? 0
+        let tabCount = dataSource?.activeTabs.count ?? 0
         // In scroll mode the strip takes the whole available width so the "+"
         // parks on the right edge instead of trailing the content.
         let total = isScrollable

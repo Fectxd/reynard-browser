@@ -8,41 +8,17 @@
 import GeckoView
 import UIKit
 
-extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDelegate {
-    // MARK: - AddonCoordinatorDataSource
-    
-    var selectedAddonSession: GeckoSession? {
-        return tabManager.selectedTab?.session
-    }
-    
-    var isSelectedAddonTabPrivate: Bool {
-        return tabManager.selectedTab?.isPrivate == true
-    }
-    
-    var addonTabs: [Tab] {
-        return tabManager.activeTabs
-    }
-    
-    var selectedAddonTabMode: TabMode {
-        return tabManager.selectedTabMode
-    }
-    
+extension BrowserViewController: AddonCoordinatorDelegate {
     var shouldPresentAddonPopupAsPopover: Bool {
         return browserLayout.chromeMode == .pad
     }
-    
-    func indexOfAddonTab(for session: GeckoSession) -> Int? {
-        return tabManager.tabIndex(for: session)
-    }
-    
-    // MARK: - AddonCoordinatorDelegate
     
     func refreshAddonChrome(_ coordinator: AddonCoordinator) {
         refreshAddressBar()
     }
     
     func performAfterAddonMenuDismissal(_ coordinator: AddonCoordinator, work: @escaping () -> Void) {
-        browserChrome.performAfterAddressBarMenuDismissal(work)
+        browserChrome.addressBar.performAfterMenuDismissal(work)
     }
     
     func presentAddonViewController(_ coordinator: AddonCoordinator, _ viewController: UIViewController) {
@@ -50,18 +26,19 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
             guard let self else {
                 return
             }
+            
             UIApplication.shared.topViewController(from: self).present(viewController, animated: true)
         }
         
         if let popupViewController = viewController as? AddonPopupViewController,
            let popover = popupViewController.popoverPresentationController {
             toolbarController.lock(for: .addonPopover)
-            let sourceButton = browserChrome.addressBarButton
+            let sourceButton = browserChrome.addressBar.addressBarButton
             popover.sourceView = sourceButton
             popover.sourceRect = sourceButton.bounds
             popover.permittedArrowDirections = .up
             popover.delegate = popupViewController
-            browserChrome.performAfterAddressBarMenuDismissal(presentViewController)
+            browserChrome.addressBar.performAfterMenuDismissal(presentViewController)
             return
         }
         
@@ -69,8 +46,6 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
     }
     
     func presentAddonAlert(_ coordinator: AddonCoordinator, title: String?, message: String) {
-        // Present in this window: add-on events are per-scene, so the alert must
-        // not land on another window that happens to be frontmost.
         AlertPresenter.show(title: title, message: message, in: view.window)
     }
     
@@ -84,38 +59,17 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
         return true
     }
     
-    func createAddonTab(
-        _ coordinator: AddonCoordinator,
-        selecting: Bool,
-        url: String?,
-        windowId: String?,
-        at index: Int?,
-        loadImmediately: Bool
-    ) -> Tab? {
-        return tabManager.createRegularTab(
-            selecting: selecting,
-            windowId: windowId,
-            target: index.map(TabInsertionTarget.index) ?? .end,
-            url: url,
-            loadImmediately: loadImmediately
-        )
-    }
-    
-    func selectAddonTab(_ coordinator: AddonCoordinator, at index: Int, mode: TabMode?) {
-        tabManager.selectTab(at: index, mode: mode)
-    }
-    
-    func closeAddonTab(_ coordinator: AddonCoordinator, at index: Int, mode: TabMode?) {
-        tabManager.removeTab(at: index, mode: mode, behavior: .recent)
-    }
-    
     @MainActor
-    func confirmAddonDownload(_ coordinator: AddonCoordinator, options: [String: Any?]) async -> DownloadStore.WebExtensionDownloadItem? {
+    func confirmAddonDownload(
+        _ coordinator: AddonCoordinator,
+        options: [String: Any?]
+    ) async -> DownloadStore.WebExtensionDownloadItem? {
         guard let pendingDownload = DownloadStore.shared.pendingDownload(
             from: options
         ) else {
             return nil
         }
+        
         return await downloadsCoordinator.confirmWebExtensionDownload(pendingDownload)
     }
     

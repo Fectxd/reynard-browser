@@ -45,9 +45,10 @@ extension BrowserViewController {
             guard let self, let servedURL else {
                 return
             }
-            _ = self.tabManager.createRegularTab(
+            _ = self.tabManager.createTab(
                 selecting: true,
                 target: .end,
+                mode: .regular,
                 url: servedURL.absoluteString,
                 loadImmediately: true
             )

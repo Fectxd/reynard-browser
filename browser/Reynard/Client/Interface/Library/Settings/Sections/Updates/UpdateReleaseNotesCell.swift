@@ -139,7 +139,7 @@ final class UpdateReleaseNotesCell: UITableViewCell, UITextViewDelegate {
         in characterRange: NSRange,
         interaction: UITextItemInteraction
     ) -> Bool {
-        guard let viewController = UIApplication.shared.topViewController(containing: textView) else {
+        guard let viewController = UIApplication.shared.topViewController(in: window) else {
             return false
         }
         

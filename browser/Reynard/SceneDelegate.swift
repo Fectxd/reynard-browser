@@ -9,6 +9,7 @@ import UIKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
+    private var browserWindow: BrowserWindow?
     
     /// Process-level bookkeeping: the first scene connected in this process is
     /// the primary window and restores the shared tab set. Any subsequent scene
@@ -22,20 +23,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
-        let isAdditionalWindow = SceneDelegate.hasConnectedScene
-        SceneDelegate.hasConnectedScene = true
-        
-        let browserViewController = BrowserViewController(
-            canHostSidebar: false,
-            startsWithHomepage: isAdditionalWindow
-        )
-        browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
-        
-        let window = UIWindow(windowScene: windowScene)
-        window.overrideUserInterfaceStyle = AppAppearanceController.userInterfaceStyle(for: Prefs.AppearanceSettings.appAppearance)
-        window.rootViewController = browserViewController
-        window.makeKeyAndVisible()
-        self.window = window
+        let draggedTabID = connectionOptions.userActivities.lazy.compactMap(\.draggedTabID).first
+        let browserWindow = BrowserWindowManager.shared.connect(windowScene, draggedTabID: draggedTabID)
+        window = browserWindow.window
+        self.browserWindow = browserWindow
         
         handleIncomingURLContexts(connectionOptions.urlContexts)
     }
@@ -44,25 +35,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         handleIncomingURLContexts(URLContexts)
     }
     
-    func sceneDidDisconnect(_ scene: UIScene) {}
-    
-    func sceneDidBecomeActive(_ scene: UIScene) {
-        guard let browserViewController = window?.rootViewController as? BrowserViewController else {
+    func sceneDidDisconnect(_ scene: UIScene) {
+        guard let browserWindow else {
             return
         }
         
-        browserViewController.startScreenOrientationHandling()
-        browserViewController.sessionManager.applicationDidBecomeActive()
-        browserViewController.tabManager.applicationDidBecomeActive()
+        BrowserWindowManager.shared.disconnect(browserWindow)
+        self.browserWindow = nil
+        window = nil
+    }
+    
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        guard let browserWindow else {
+            return
+        }
+        
+        BrowserWindowManager.shared.activate(browserWindow)
+        browserWindow.sceneDidBecomeActive()
     }
     
     func sceneWillResignActive(_ scene: UIScene) {
-        guard let browserViewController = window?.rootViewController as? BrowserViewController else {
-            return
-        }
-        
-        browserViewController.stopScreenOrientationHandling()
-        browserViewController.sessionManager.applicationWillResignActive()
+        browserWindow?.sceneWillResignActive()
     }
     
     func windowScene(
@@ -71,38 +64,24 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         interfaceOrientation previousInterfaceOrientation: UIInterfaceOrientation,
         traitCollection previousTraitCollection: UITraitCollection
     ) {
-        (window?.rootViewController as? BrowserViewController)?
-            .screenOrientationChanged(to: windowScene.interfaceOrientation)
+        browserWindow?.interfaceOrientationDidChange(to: windowScene.interfaceOrientation)
     }
     
     func sceneWillEnterForeground(_ scene: UIScene) {
-        (window?.rootViewController as? BrowserViewController)?
-            .sessionManager.setApplicationForeground(true)
+        browserWindow?.setForeground(true)
     }
     
     func sceneDidEnterBackground(_ scene: UIScene) {
-        (window?.rootViewController as? BrowserViewController)?
-            .sessionManager.setApplicationForeground(false)
+        browserWindow?.setForeground(false)
     }
     
     private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
-        guard let incomingURL = urlContexts.first?.url else {
-            return
-        }
-        handleIncomingURL(incomingURL)
-    }
-    
-    private func handleIncomingURL(_ incomingURL: URL) {
-        guard let browserViewController = window?.rootViewController as? BrowserViewController,
+        guard let incomingURL = urlContexts.first?.url,
               let resolvedURL = resolvedBrowserURL(from: incomingURL) else {
             return
         }
         
-        DispatchQueue.main.async {
-            browserViewController.loadViewIfNeeded()
-            browserViewController.sidebarCoordinator.loadContentIfNeeded()
-            browserViewController.sidebarCoordinator.openExternalURL(resolvedURL)
-        }
+        browserWindow?.openExternalURL(resolvedURL)
     }
     
     private func resolvedBrowserURL(from incomingURL: URL) -> URL? {

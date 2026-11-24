@@ -14,10 +14,8 @@ extension BrowserViewController: DownloadsCoordinatorDelegate {
         && browserLayout.chromeMode == .pad
     }
     
-    /// Download confirmations belong to this window, not whichever window is
-    /// frontmost when an asynchronous download finishes.
-    var downloadsPresentingWindow: UIWindow? {
-        return viewIfLoaded?.window
+    var downloadsConfirmationWindow: UIWindow? {
+        return view.window
     }
     
     func downloadsCoordinator(_ coordinator: DownloadsCoordinator, didUpdate summary: DownloadStoreSummary) {

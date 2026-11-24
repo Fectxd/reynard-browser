@@ -22,32 +22,25 @@ final class ToolbarButton: UIButton {
         static let standardSymbolPointSize: CGFloat = 20
         static let newTabSymbolPointSize: CGFloat = 20
         static let downloadSymbolPointSize: CGFloat = 17
+        // Edge UI tab-count badge.
         static let tabCountBadgeSideLength: CGFloat = 14
         static let tabCountBadgeInset: CGFloat = 2
         static let tabCountBadgeFontSize: CGFloat = 9
-        // The phone (narrow) bottom toolbar button row is short, so its tab
-        // badge uses a smaller, more inset pill that is guaranteed to stay
-        // fully inside the visible button.
+        // The phone (narrow) bottom toolbar row is short, so its badge is a
+        // smaller, more inset pill that stays fully inside the button.
         static let compactTabCountBadgeSideLength: CGFloat = 12
         static let compactTabCountBadgeInset: CGFloat = 3
         static let compactTabCountBadgeFontSize: CGFloat = 8
     }
     
-    enum ButtonType {
-        case back
-        case forward
-        case share
-        case library
-        case tabOverview
-        case download
-        case newTab
-        case sidebar
-        case favorite
-    }
-    
     enum TabCountBadgeStyle {
         case standard
         case compact
+    }
+    
+    enum ButtonType: Equatable {
+        case item(ToolbarItem)
+        case sidebar
     }
     
     private lazy var downloadIconView: UIImageView = {
@@ -79,9 +72,12 @@ final class ToolbarButton: UIButton {
     }()
     
     private lazy var downloadProgressFillWidthConstraint = downloadProgressFillView.widthAnchor.constraint(equalToConstant: 0)
-
-    // Tab-overview count badge (bottom-right corner). Lazy so it only exists
-    // for the tab-overview button.
+    
+    let toolbarButtonType: ButtonType
+    private let tabCountBadgeStyle: TabCountBadgeStyle
+    
+    // Tab-overview count badge (lower-right of the glyph). Lazy so it only
+    // exists for the tab-overview button.
     private lazy var tabCountBadgeView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -93,7 +89,7 @@ final class ToolbarButton: UIButton {
         }
         return view
     }()
-
+    
     private lazy var tabCountBadgeLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -105,9 +101,6 @@ final class ToolbarButton: UIButton {
         label.textAlignment = .center
         return label
     }()
-
-    private let toolbarButtonType: ButtonType
-    private let tabCountBadgeStyle: TabCountBadgeStyle
     private(set) var isShowingDownloads = false
     
     // MARK: - Lifecycle
@@ -148,7 +141,7 @@ final class ToolbarButton: UIButton {
     }
     
     override var intrinsicContentSize: CGSize {
-        let sideLength = toolbarButtonType == .download
+        let sideLength = toolbarButtonType == .item(.downloads)
         ? UX.downloadButtonSideLength
         : UX.standardButtonSideLength
         return CGSize(width: sideLength, height: sideLength)
@@ -157,7 +150,7 @@ final class ToolbarButton: UIButton {
     // MARK: - Updates
     
     func applyDownloadSummary(_ summary: DownloadStoreSummary) {
-        guard toolbarButtonType == .download else {
+        guard toolbarButtonType == .item(.downloads) else {
             return
         }
         
@@ -169,15 +162,80 @@ final class ToolbarButton: UIButton {
             }
         }
         
-        let configuration = UIImage.SymbolConfiguration(pointSize: UX.downloadSymbolPointSize, weight: .regular)
-        downloadIconView.image = UIImage(named: "reynard.arrow.down.circle", in: .main, with: configuration)
-        
         let progress = min(max(CGFloat(summary.aggregateProgress), 0), 1)
         let showsProgress = summary.activeCount > 0
         downloadProgressTrackView.isHidden = !showsProgress
         downloadProgressFillView.isHidden = !showsProgress
         downloadProgressFillWidthConstraint.constant = UX.downloadProgressTrackWidth * progress
         accessibilityLabel = NSLocalizedString("Downloads", comment: "")
+    }
+    
+    // MARK: - Tab Count Badge (Edge UI)
+    
+    /// Shows the tab count on the tab-overview button and swaps the glyph for
+    /// private vs regular mode.
+    func setTabCount(_ count: Int, isPrivate: Bool) {
+        guard toolbarButtonType == .item(.tabOverview) else {
+            return
+        }
+        
+        let normalizedCount = max(count, 0)
+        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
+        tabCountBadgeView.isHidden = normalizedCount == 0
+        tabCountBadgeView.layer.cornerRadius = badgeSideLength / 2
+        applyTabCountPrivateStyle(isPrivate: isPrivate)
+        accessibilityValue = normalizedCount == 0 ? nil : "\(normalizedCount)"
+        accessibilityLabel = isPrivate
+        ? NSLocalizedString("Private Tabs", comment: "")
+        : NSLocalizedString("Tabs", comment: "")
+    }
+    
+    private func configureTabCountViewsIfNeeded() {
+        guard toolbarButtonType == .item(.tabOverview) else {
+            return
+        }
+        
+        clipsToBounds = false
+        addSubview(tabCountBadgeView)
+        tabCountBadgeView.addSubview(tabCountBadgeLabel)
+        // Anchored to the button centre with a fixed offset, so the pill stays
+        // on the glyph's lower-right however wide the button is stretched.
+        let badgeCenterOffset = (UX.standardButtonSideLength / 2) - badgeInset - (badgeSideLength / 2)
+        NSLayoutConstraint.activate([
+            tabCountBadgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: badgeCenterOffset),
+            tabCountBadgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: badgeCenterOffset),
+            tabCountBadgeView.heightAnchor.constraint(equalToConstant: badgeSideLength),
+            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: badgeSideLength),
+            
+            tabCountBadgeLabel.leadingAnchor.constraint(equalTo: tabCountBadgeView.leadingAnchor, constant: 3),
+            tabCountBadgeLabel.trailingAnchor.constraint(equalTo: tabCountBadgeView.trailingAnchor, constant: -3),
+            tabCountBadgeLabel.centerYAnchor.constraint(equalTo: tabCountBadgeView.centerYAnchor),
+        ])
+    }
+    
+    private var badgeSideLength: CGFloat {
+        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeSideLength : UX.tabCountBadgeSideLength
+    }
+    
+    private var badgeInset: CGFloat {
+        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeInset : UX.tabCountBadgeInset
+    }
+    
+    private var badgeFontSize: CGFloat {
+        return tabCountBadgeStyle == .compact ? UX.compactTabCountBadgeFontSize : UX.tabCountBadgeFontSize
+    }
+    
+    private func applyTabCountPrivateStyle(isPrivate: Bool) {
+        let baseName = isPrivate ? "reynard.square.on.square.fill" : "reynard.square.on.square"
+        let systemFallback = isPrivate ? "square.on.square.fill" : "square.on.square"
+        let image = UIImage(named: baseName, in: .main, compatibleWith: traitCollection)
+            ?? UIImage(systemName: systemFallback)
+        setImage(image, for: .normal)
+        setPreferredSymbolConfiguration(
+            UIImage.SymbolConfiguration(pointSize: UX.standardSymbolPointSize, weight: .regular),
+            forImageIn: .normal
+        )
+        tintColor = isPrivate ? .secondaryLabel : .label
     }
     
     // MARK: - View Setup
@@ -190,11 +248,11 @@ final class ToolbarButton: UIButton {
     }
     
     private func configureImage() {
-        guard toolbarButtonType != .download else {
+        guard toolbarButtonType != .item(.downloads) else {
             return
         }
         setImage(UIImage(named: symbolName), for: .normal)
-        let pointSize = toolbarButtonType == .newTab
+        let pointSize = toolbarButtonType == .item(.newTab)
         ? UX.newTabSymbolPointSize
         : UX.standardSymbolPointSize
         setPreferredSymbolConfiguration(
@@ -208,9 +266,12 @@ final class ToolbarButton: UIButton {
     }
     
     private func configureDownloadViewsIfNeeded() {
-        guard toolbarButtonType == .download else {
+        guard toolbarButtonType == .item(.downloads) else {
             return
         }
+        
+        let configuration = UIImage.SymbolConfiguration(pointSize: UX.downloadSymbolPointSize, weight: .regular)
+        downloadIconView.image = UIImage(named: "reynard.arrow.down.circle", in: .main, with: configuration)
         
         layer.masksToBounds = false
         clipsToBounds = false
@@ -240,103 +301,13 @@ final class ToolbarButton: UIButton {
             downloadProgressFillWidthConstraint,
         ])
     }
-
-    private func configureTabCountViewsIfNeeded() {
-        guard toolbarButtonType == .tabOverview else {
-            return
-        }
-
-        clipsToBounds = false
-        addSubview(tabCountBadgeView)
-        tabCountBadgeView.addSubview(tabCountBadgeLabel)
-
-        // Anchor the pill to the BUTTON CENTER with a fixed offset rather than
-        // to the button's edges. On the phone (compact) bottom toolbar the tab
-        // button is much wider than the centered glyph (fillEqually), so edge
-        // anchoring made the pill float away from the icon and drift with the
-        // button's width. Center-based anchoring keeps it glued to the glyph's
-        // lower-right regardless of the button's width. The offset is constant:
-        // side/2 - inset - pill/2 = +6 for both styles.
-        let badgeCenterOffset = (UX.standardButtonSideLength / 2) - badgeInset - (badgeSideLength / 2)
-        NSLayoutConstraint.activate([
-            tabCountBadgeView.centerXAnchor.constraint(equalTo: centerXAnchor, constant: badgeCenterOffset),
-            tabCountBadgeView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: badgeCenterOffset),
-            tabCountBadgeView.heightAnchor.constraint(equalToConstant: badgeSideLength),
-            tabCountBadgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: badgeSideLength),
-
-            tabCountBadgeLabel.leadingAnchor.constraint(equalTo: tabCountBadgeView.leadingAnchor, constant: 3),
-            tabCountBadgeLabel.trailingAnchor.constraint(equalTo: tabCountBadgeView.trailingAnchor, constant: -3),
-            tabCountBadgeLabel.centerYAnchor.constraint(equalTo: tabCountBadgeView.centerYAnchor),
-        ])
-    }
-
-    /// Shows the current tab count on the tab-overview button (bottom-right
-    /// corner) and swaps the icon to reflect private vs regular mode.
-    func setTabCount(_ count: Int, isPrivate: Bool) {
-        guard toolbarButtonType == .tabOverview else {
-            return
-        }
-
-        let normalizedCount = max(count, 0)
-        tabCountBadgeLabel.text = normalizedCount > 99 ? "99+" : "\(normalizedCount)"
-        tabCountBadgeView.isHidden = normalizedCount == 0
-        tabCountBadgeView.layer.cornerRadius = badgeSideLength / 2
-
-        applyTabCountPrivateStyle(isPrivate: isPrivate)
-
-        accessibilityValue = normalizedCount == 0 ? nil : "\(normalizedCount)"
-        accessibilityLabel = isPrivate
-        ? NSLocalizedString("Private Tabs", comment: "")
-        : NSLocalizedString("Tabs", comment: "")
-    }
-
-    // MARK: - Tab Count Badge Metrics
-
-    private var badgeSideLength: CGFloat {
-        return tabCountBadgeStyle == .compact
-        ? UX.compactTabCountBadgeSideLength
-        : UX.tabCountBadgeSideLength
-    }
-
-    private var badgeInset: CGFloat {
-        return tabCountBadgeStyle == .compact
-        ? UX.compactTabCountBadgeInset
-        : UX.tabCountBadgeInset
-    }
-
-    private var badgeFontSize: CGFloat {
-        return tabCountBadgeStyle == .compact
-        ? UX.compactTabCountBadgeFontSize
-        : UX.tabCountBadgeFontSize
-    }
-
-    private func applyTabCountPrivateStyle(isPrivate: Bool) {
-        // Distinguish modes: private uses the filled glyph + a dimmer tint.
-        let baseName = isPrivate ? "reynard.square.on.square.fill" : "reynard.square.on.square"
-        let systemFallback = isPrivate ? "square.on.square.fill" : "square.on.square"
-        let image = UIImage(named: baseName, in: .main, compatibleWith: traitCollection)
-            ?? UIImage(systemName: systemFallback)
-        setImage(image, for: .normal)
-        setPreferredSymbolConfiguration(
-            UIImage.SymbolConfiguration(pointSize: UX.standardSymbolPointSize, weight: .regular),
-            forImageIn: .normal
-        )
-        tintColor = isPrivate ? .secondaryLabel : .label
-    }
     
     // MARK: - Button
     
     private var symbolName: String {
         switch toolbarButtonType {
-        case .back: return "reynard.chevron.backward"
-        case .forward: return "reynard.chevron.forward"
-        case .share: return "reynard.square.and.arrow.up"
-        case .library: return "reynard.ellipsis.circle"
-        case .tabOverview: return "reynard.square.on.square"
-        case .download: return "reynard.arrow.down.circle"
-        case .newTab: return "reynard.plus"
+        case .item(let item): return item.symbolName
         case .sidebar: return "reynard.sidebar.left"
-        case .favorite: return "reynard.star"
         }
     }
     

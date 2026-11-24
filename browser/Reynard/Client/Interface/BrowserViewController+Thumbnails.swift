@@ -11,9 +11,8 @@ extension BrowserViewController {
     // MARK: - Tab Thumbnails
     
     @discardableResult
-    func captureThumbnail(forTabAt index: Int, mode: TabMode) -> UIImage? {
-        let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
-        guard let tab = tabs[safe: index] else {
+    func captureThumbnail(for tab: Tab?) -> UIImage? {
+        guard let tab else {
             return nil
         }
         
@@ -24,7 +23,7 @@ extension BrowserViewController {
             return nil
         }
         
-        tabManager.updateThumbnail(thumbnail, forTabAt: index, mode: mode)
+        tabManager.updateThumbnail(thumbnail, for: tab)
         return thumbnail
     }
     
@@ -43,7 +42,7 @@ extension BrowserViewController {
             return
         }
         
-        tabManager.updateThumbnail(thumbnail, forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
+        tabManager.updateThumbnail(thumbnail, for: tab)
         tabManager.updateHistoryThumbnail(
             thumbnail,
             for: tab,

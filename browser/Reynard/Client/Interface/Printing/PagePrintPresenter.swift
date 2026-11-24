@@ -9,12 +9,12 @@ import UIKit
 
 @MainActor
 enum PagePrintPresenter {
-    static func present(pdfFileURL: URL, jobName: String?, in window: UIWindow? = nil) async throws {
+    static func present(pdfFileURL: URL, jobName: String?, in window: UIWindow?) async throws {
         defer {
             try? FileManager.default.removeItem(at: pdfFileURL)
         }
         guard UIPrintInteractionController.isPrintingAvailable,
-              let presenter = UIApplication.shared.topViewController(for: window) else {
+              let presenter = UIApplication.shared.topViewController(in: window) else {
             throw PagePrintError.unavailable
         }
         

@@ -7,41 +7,11 @@
 
 import UIKit
 
-extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoordinatorDelegate, HomepageOverlayCoordinatorDelegate, AddressBarSearchDelegate {
-    // MARK: - Content Overlay Host
-    
-    var overlayParentViewController: UIViewController {
-        return self
-    }
-    
+extension BrowserViewController: SearchOverlayCoordinatorDelegate, HomepageOverlayCoordinatorDelegate, AddressBarSearchDelegate {
     // MARK: - Search Overlay Delegate
     
     var searchLayout: BrowserLayout {
         return browserLayout
-    }
-    
-    var searchChrome: BrowserChrome {
-        return browserChrome
-    }
-    
-    var searchContentView: ContentView {
-        return contentView
-    }
-    
-    var searchSelectedTabMode: TabMode {
-        return tabManager.selectedTabMode
-    }
-    
-    var searchSelectedTabID: UUID? {
-        return tabManager.selectedTab?.id
-    }
-    
-    var searchActiveTabs: [Tab] {
-        return tabManager.activeTabs
-    }
-    
-    var isSearchAddressBarEditing: Bool {
-        return browserChrome.isAddressBarEditing
     }
     
     var searchWidthMode: SearchWidthMode {
@@ -54,14 +24,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func updateSearchLayout(animated: Bool, duration: TimeInterval) {
         updateBrowserLayout(animated: animated, duration: duration)
-    }
-    
-    func browseSearchTerm(_ term: String) {
-        tabManager.browse(to: term)
-    }
-    
-    func selectSearchTab(at index: Int, mode: TabMode) {
-        tabManager.selectTab(at: index, mode: mode)
     }
     
     func endSearchEditing() {
@@ -79,14 +41,12 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
         if isHalfSplitScreenOrSmaller {
             return .fourColumn
         }
+        
         if isSidebarOverlayLayout {
             return .sixColumn
         }
+        
         return .eightColumn
-    }
-    
-    var homepageSelectedTab: Tab? {
-        return tabManager.selectedTab
     }
     
     var isHomepageTabOverviewPresented: Bool {
@@ -95,18 +55,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     var isHomepageShowingFullscreenMedia: Bool {
         return isShowingFullscreenMedia
-    }
-    
-    var homepageChrome: BrowserChrome {
-        return browserChrome
-    }
-    
-    var homepageContentView: ContentView {
-        return contentView
-    }
-    
-    var homepageTabActions: ContextMenuTabActions {
-        return ContextMenuTabActions(tabManager: tabManager, sessionManager: sessionManager)
     }
     
     func openURLFromHomepage(_ url: URL, disposition: TabOpenDisposition) {
@@ -125,21 +73,16 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
             target = tabManager.selectedTabMode == .private ? .afterSelected : .end
         }
         
-        let tabIndex = tabManager.createTab(selecting: disposition != .backgroundTab, target: target, mode: mode)
-        let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
-        guard let tab = tabs[safe: tabIndex] else {
-            return
-        }
-        
+        let tab = tabManager.createTab(selecting: disposition != .backgroundTab, target: target, mode: mode)
         tabManager.browse(to: url.absoluteString, in: tab)
         guard disposition != .backgroundTab else {
             return
         }
         
-        captureThumbnail(forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
-        tabBar.setPendingExpansion(at: tabIndex)
-        browserChrome.animateAutomaticTabTransition(to: tab) { [weak self] in
-            self?.tabManager.selectTab(at: tabIndex, mode: mode)
+        captureThumbnail(for: tabManager.selectedTab)
+        tabBar.setPendingExpansion(to: tab)
+        browserChrome.addressBar.animateAutomaticTabTransition(to: tab) { [weak self] in
+            self?.tabManager.selectTab(tab)
         }
     }
     
@@ -153,10 +96,6 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func openSettingsFromHomepage() {
         presentLibrary(initialSection: .settings)
-    }
-    
-    func restoreClosedTabFromHomepage(id: UUID) -> Bool {
-        return tabManager.restoreRecentlyClosedTab(id: id)
     }
     
     func endHomepageEditing() {

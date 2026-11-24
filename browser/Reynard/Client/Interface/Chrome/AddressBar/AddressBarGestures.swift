@@ -7,21 +7,18 @@
 
 import UIKit
 
-protocol AddressBarGestureDelegate: AnyObject {
+protocol AddressBarGestureDelegate: TabListSource {
     var transitionContainerView: UIView { get }
     var transitionContentView: ContentView { get }
     var chromeMode: BrowserChromeMode { get }
     var isSearchFocused: Bool { get }
     var isTabOverviewPresented: Bool { get }
     var isTabOverviewTransitionRunning: Bool { get }
-    var selectedTabIndex: Int { get }
-    var selectedTabMode: TabMode { get }
-    var activeTabs: [Tab] { get }
     
     func selectTabFromGesture(at index: Int, mode: TabMode)
     func pageBackgroundColor(for tab: Tab) -> UIColor
-    func createTabForSwipe() -> Int
-    func setPendingTabExpansion(at index: Int?)
+    func createTabForSwipe() -> Tab
+    func setPendingTabExpansion(to tab: Tab?)
     func presentTabOverviewFromGesture(animated: Bool)
     func addressBarTransitionWillBegin(prepareForGesture: Bool)
     func addressBarTransitionDidEnd()
@@ -698,9 +695,9 @@ final class AddressBarGestures: NSObject {
             )
         }
         let mode = delegate.selectedTabMode
-        let createdIndex = delegate.createTabForSwipe()
-        delegate.setPendingTabExpansion(at: createdIndex)
-        guard delegate.activeTabs.indices.contains(createdIndex) else {
+        let createdTab = delegate.createTabForSwipe()
+        delegate.setPendingTabExpansion(to: createdTab)
+        guard let createdIndex = delegate.activeTabs.firstIndex(where: { $0 === createdTab }) else {
             resetHorizontalTransition()
             return
         }
@@ -708,8 +705,7 @@ final class AddressBarGestures: NSObject {
         horizontalTargetIndex = createdIndex
         horizontalDirection = 1
         
-        let targetTab = delegate.activeTabs[createdIndex]
-        prepareHorizontalTarget(for: targetTab, direction: 1, pageWidth: width, delegate: delegate)
+        prepareHorizontalTarget(for: createdTab, direction: 1, pageWidth: width, delegate: delegate)
         applySourceAddressBarTransform(CGAffineTransform(translationX: barPresentationTranslation, y: 0))
         
         finishHorizontalTabSwitch(to: createdIndex, mode: mode)

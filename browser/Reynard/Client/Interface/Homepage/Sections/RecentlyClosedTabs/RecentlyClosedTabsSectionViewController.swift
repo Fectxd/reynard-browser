@@ -100,6 +100,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
         configureHierarchy()
         configureConstraints()
         observeHomepageSettings()
+        observeRecentlyClosedTabs()
         reloadClosedTabs()
     }
     
@@ -191,6 +192,24 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
     }
     
     @objc private func homepageSettingsDidChange() {
+        reloadClosedTabs()
+    }
+    
+    private func observeRecentlyClosedTabs() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(recentlyClosedTabsDidChange),
+            name: .recentlyClosedTabsDidChange,
+            object: nil
+        )
+    }
+    
+    @objc private func recentlyClosedTabsDidChange() {
+        let storedTabIDs = tabStore.recentlyClosedTabs(limit: Prefs.HomepageSettings.recentlyClosedTabLimit).map(\.id)
+        guard storedTabIDs != closedTabs.map(\.id) else {
+            return
+        }
+        
         reloadClosedTabs()
     }
     

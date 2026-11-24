@@ -37,7 +37,12 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
         guard tabManager.selectedTab?.session.engineView?.isFirstResponder != true else {
             return
         }
+        
         requestContentKeyboardFocus()
+    }
+    
+    var contentBrowserViewController: BrowserViewController {
+        return sidebarCoordinator.contentBrowser?.sidebarContentViewController as? BrowserViewController ?? self
     }
     
     var sidebarHostViewController: UIViewController {
@@ -61,7 +66,9 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
     }
     
     func makeSidebarContentController() -> SidebarContentController {
-        return BrowserViewController(canHostSidebar: false)
+        let browserViewController = BrowserViewController(canHostSidebar: false, startup: startup)
+        browserViewController.sessionManager.setApplicationForeground(sessionManager.isForeground)
+        return browserViewController
     }
     
     func sidebarCoordinatorDidChangeVisibility(_ coordinator: SidebarCoordinator, animated: Bool) {

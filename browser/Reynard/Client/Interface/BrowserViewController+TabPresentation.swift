@@ -9,63 +9,73 @@ import GeckoView
 import UIKit
 
 extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOverviewDelegate, TabOverviewPresentationContext {
-    // MARK: - Shared Tab Data
+    // MARK: - TabListSource
     
-    var tabs: [Tab] {
+    var regularTabs: [Tab] {
+        return tabManager.regularTabs
+    }
+    
+    var privateTabs: [Tab] {
+        return tabManager.privateTabs
+    }
+    
+    var activeTabs: [Tab] {
         return tabManager.activeTabs
     }
     
-    var selectedTabID: UUID? {
-        return tabManager.selectedTab?.id
-    }
-    
-    var selectedMode: TabMode {
+    var selectedTabMode: TabMode {
         return tabManager.selectedTabMode
     }
+    
+    var selectedTabIndex: Int {
+        return tabManager.selectedTabIndex
+    }
+    
+    var selectedTab: Tab? {
+        return tabManager.selectedTab
+    }
+    
+    // MARK: - Shared Tab Actions
     
     func selectTab(at index: Int, mode: TabMode) {
         browserChrome.dismissActionBar(animated: false)
         toolbarController.reset()
+        guard let tab = tabManager.tabs(for: mode)[safe: index] else {
+            return
+        }
+        
         if mode == tabManager.selectedTabMode,
-           index != tabManager.selectedTabIndex {
+           tab !== tabManager.selectedTab {
             if tabOverview.isPresented || tabOverview.isTransitionRunning {
-                tabManager.selectTab(at: index, mode: mode)
+                tabManager.selectTab(tab)
                 return
             }
             
-            captureThumbnail(forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
-            tabManager.selectTab(at: index, mode: mode)
+            captureThumbnail(for: tabManager.selectedTab)
+            tabManager.selectTab(tab)
             return
         }
-        tabManager.selectTab(at: index, mode: mode)
-    }
-    
-    /// Opens a copy of the tab (same URL) right after it and selects the copy.
-    func duplicateTab(at index: Int, mode: TabMode) {
-        guard tabs.indices.contains(index) else {
-            return
-        }
-        let sourceURL = tabs[index].url
-        toolbarController.reset()
-        _ = tabManager.addTab(selecting: true, at: index + 1, isPrivate: mode == .private)
-        if let sourceURL {
-            tabManager.selectedTab?.session.load(sourceURL)
-        }
+        
+        tabManager.selectTab(tab)
     }
     
     func closeTab(at index: Int, mode: TabMode) {
         toolbarController.reset()
+        guard let tab = tabManager.tabs(for: mode)[safe: index] else {
+            return
+        }
+        
         let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
-        let isClosingLastTabOfMode = (mode == .private ? tabManager.privateTabs : tabManager.regularTabs).count == 1
+        let isClosingLastTabOfMode = tabManager.tabs(for: mode).count == 1
         if isTabOverviewActive, isClosingLastTabOfMode {
             // Keep the overview open on its empty state ("打开新标签页").
             tabOverview.prepareNextTabChangesWithoutAnimation()
-            tabManager.removeTab(at: index, mode: mode, behavior: .none)
+            tabManager.removeTab(tab, behavior: .none)
             return
         }
         
         let behavior: TabRemovalBehavior = isTabOverviewActive ? .none : .recent
-        tabManager.removeTab(at: index, mode: mode, behavior: behavior)
+        tabManager.removeTab(tab, behavior: behavior)
         if isClosingLastTabOfMode {
             presentTabOverviewAfterClosingLastTab(mode: mode)
         }
@@ -85,23 +95,35 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         tabOverview.setMode(TabOverview.Mode(tabMode: mode), animated: false)
     }
     
+    /// Opens a copy of the tab (same URL) right after it and selects the copy.
+    func duplicateTab(at index: Int, mode: TabMode) {
+        guard let source = tabManager.tabs(for: mode)[safe: index] else {
+            return
+        }
+        toolbarController.reset()
+        _ = tabManager.createTab(
+            selecting: true,
+            target: .index(index + 1),
+            mode: mode,
+            url: source.url,
+            loadImmediately: true
+        )
+    }
+    
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode) {
         toolbarController.reset()
         tabManager.moveTab(from: sourceIndex, to: destinationIndex, mode: mode)
     }
     
+    func moveTab(withID tabID: UUID, to destinationIndex: Int) {
+        toolbarController.reset()
+        BrowserWindowManager.shared.moveTab(withID: tabID, to: self, at: destinationIndex)
+    }
+    
     // MARK: - TabOverviewDataSource
     
-    var regularTabs: [Tab] {
-        return tabManager.regularTabs
-    }
-    
-    var privateTabs: [Tab] {
-        return tabManager.privateTabs
-    }
-    
-    var selectedIndex: Int {
-        return tabManager.selectedTabIndex
+    func captureThumbnail(forTabAt index: Int, mode: TabMode) -> UIImage? {
+        return captureThumbnail(for: tabManager.tabs(for: mode)[safe: index])
     }
     
     // MARK: - TabOverviewDelegate
@@ -127,7 +149,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     }
     
     func tabOverviewDidRequestClearPendingTabExpansion(_ tabOverview: TabOverview) {
-        tabBar.setPendingExpansion(at: nil)
+        tabBar.setPendingExpansion(to: nil)
     }
     
     // MARK: - TabOverviewPresentationContext
@@ -163,7 +185,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         if visible {
             toolbarController.lock(for: .tabOverview)
             dismissEdgeLibraryPanel(animated: false)
-            if browserChrome.performAfterTransition({ [weak self] in
+            if browserChrome.addressBar.performAfterTransition({ [weak self] in
                 self?.setTabOverviewVisible(true, animated: animated)
             }) {
                 return
@@ -175,9 +197,84 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
             homepageOverlayCoordinator.tabOverviewWillPresent()
             searchOverlayCoordinator.tabOverviewWillPresent()
         }
+        
         tabOverview.setPresented(visible, animated: animated)
         if !visible {
             homepageOverlayCoordinator.updatePresentation(animated: animated)
+        }
+    }
+    
+    // MARK: - Tab Actions
+    
+    func createNewTab(mode: TabMode? = nil) {
+        let targetMode = mode ?? (tabOverview.isPresented ? tabOverview.mode.tabMode : tabManager.selectedTabMode)
+        toolbarController.reset()
+        dismissAddressBarEditingAndOverlays()
+        
+        if tabOverview.isPresented {
+            createTabFromOverview(mode: targetMode)
+        } else {
+            let tab = tabManager.createTab(selecting: true, mode: targetMode)
+            applyNewTabDisplayOption(to: tab)
+            tabBar.setPendingExpansion(to: tab)
+            setTabOverviewVisible(false, animated: true)
+        }
+    }
+    
+    func createNewTabAnimated(mode: TabMode) {
+        captureThumbnail(for: tabManager.selectedTab)
+        toolbarController.reset()
+        dismissAddressBarEditingAndOverlays()
+        let target: TabInsertionTarget = tabManager.selectedTabMode == mode ? .afterSelected : .end
+        let tab = tabManager.createTab(
+            selecting: false,
+            target: target,
+            mode: mode
+        )
+        applyNewTabDisplayOption(to: tab) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            
+            self.tabBar.setPendingExpansion(to: tab)
+            self.browserChrome.addressBar.animateAutomaticTabTransition(to: tab) { [weak self] in
+                self?.tabManager.selectTab(tab)
+            }
+        }
+    }
+    
+    func applyNewTabDisplayOption(to tab: Tab, completion: ((UIImage?) -> Void)? = nil) {
+        switch Prefs.NewTabSettings.newTabDisplayOption {
+        case .homepage, .blankPage:
+            DispatchQueue.main.async { [weak self] in
+                completion?(self?.captureThumbnail(for: tab))
+            }
+        case .customURL:
+            if URLUtils.normalizedNewTabURL(from: Prefs.NewTabSettings.customNewTabURL) != nil {
+                tabManager.browse(to: Prefs.NewTabSettings.customNewTabURL, in: tab)
+            }
+            
+            completion?(nil)
+        }
+    }
+    
+    func closeTab() {
+        guard tabManager.selectedTab != nil else {
+            return
+        }
+        
+        let mode = tabManager.selectedTabMode
+        closeTab(at: tabManager.selectedTabIndex, mode: mode)
+    }
+    
+    func closeAllTabs() {
+        toolbarController.reset()
+        dismissAddressBarEditingAndOverlays()
+        let mode = tabManager.selectedTabMode
+        let shouldCreateNewTab = mode == .regular && !tabManager.regularTabs.isEmpty
+        tabManager.removeAllTabs(mode: mode)
+        if shouldCreateNewTab {
+            createNewTab(mode: .regular)
         }
     }
     
@@ -186,20 +283,20 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     private func dismissTabOverviewSelectingMostRecentTabIfNeeded() {
         if tabOverview.isPresented {
             let mode = tabOverview.mode.tabMode
-            let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
+            let tabs = tabManager.tabs(for: mode)
             guard !tabs.isEmpty else {
                 return
             }
             
             if tabManager.selectedTabMode != mode,
-               let tabIndex = tabs.indices.max(by: {
-                   tabs[$0].state.selectionOrder < tabs[$1].state.selectionOrder
-               }) {
-                tabManager.selectTab(at: tabIndex, mode: mode)
+               let tab = tabs.max(by: { $0.state.selectionOrder < $1.state.selectionOrder }) {
+                tabManager.selectTab(tab)
             }
+            
             scrollTabOverviewToTab(at: tabManager.selectedTabIndex)
             tabOverview.prepareDismissSelectionForCurrentTab()
         }
+        
         setTabOverviewVisible(false, animated: true)
     }
     
@@ -218,7 +315,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     }
     
     private func clearTabsForCurrentOverviewMode() {
-        tabBar.setPendingExpansion(at: nil)
+        tabBar.setPendingExpansion(to: nil)
         
         guard tabOverview.isPresented else {
             tabManager.removeAllTabs(mode: nil)
@@ -234,8 +331,8 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         if !tabManager.regularTabs.isEmpty {
             tabOverview.prepareNextTabChangesWithoutAnimation()
         }
+        
         tabManager.removeAllTabs(mode: .regular)
-        tabOverview.prepareNextTabChangesWithoutAnimation()
         createTabFromOverview(mode: .regular)
     }
     
@@ -244,35 +341,48 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
             return
         }
         
-        tabBar.setPendingExpansion(at: nil)
+        tabBar.setPendingExpansion(to: nil)
         let mode = tabOverview.mode.tabMode
-        let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
-        let oldTabIDs = TabManagementStore.shared.tabIDs(olderThan: cutoffDate, isPrivate: mode == .private)
-        let oldTabIndices = tabs.indices.filter { oldTabIDs.contains(tabs[$0].id) }
-        guard !oldTabIndices.isEmpty else {
+        let tabs = tabManager.tabs(for: mode)
+        let oldTabs = tabs.filter { tab in
+            guard let createdAt = tab.createdAt else {
+                return false
+            }
+            return createdAt < cutoffDate
+        }
+        guard !oldTabs.isEmpty else {
             return
         }
         
-        if oldTabIndices.count == tabs.count {
+        if oldTabs.count == tabs.count {
             clearTabsForCurrentOverviewMode()
             return
         }
         
-        oldTabIndices.reversed().forEach { index in
-            tabManager.removeTab(at: index, mode: mode, behavior: .none)
-        }
+        oldTabs.reversed().forEach { tabManager.removeTab($0, behavior: .none) }
     }
     
     func createTabFromOverview(mode: TabMode) {
-        let createdIndex = tabManager.createTab(
+        tabOverview.holdTabChanges()
+        let tab = tabManager.createTab(
             selecting: true,
             target: .end,
             mode: mode
         )
-        let previewImage = applyNewTabDisplayOption(toTabAt: createdIndex, mode: mode)
-        tabOverview.prepareDismissSelection(to: createdIndex, mode: mode, previewImage: previewImage)
-        scrollTabOverviewToTab(at: createdIndex)
-        tabBar.setPendingExpansion(at: createdIndex)
-        setTabOverviewVisible(false, animated: true)
+        applyNewTabDisplayOption(to: tab) { [weak self] previewImage in
+            guard let self else {
+                return
+            }
+            
+            self.tabOverview.releaseTabChanges()
+            guard self.tabManager.selectedTab === tab else {
+                return
+            }
+            
+            self.tabOverview.prepareDismissSelection(to: self.tabManager.selectedTabIndex, mode: mode, previewImage: previewImage)
+            self.scrollTabOverviewToTab(at: self.tabManager.selectedTabIndex)
+            self.tabBar.setPendingExpansion(to: tab)
+            self.setTabOverviewVisible(false, animated: true)
+        }
     }
 }

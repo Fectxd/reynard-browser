@@ -13,16 +13,12 @@ final class TopToolbar: UIView {
         static let topToolbarContentHeight: CGFloat = 54
         static let topToolbarButtonStackHeight: CGFloat = 30
         static let topToolbarStandardButtonStackWidth: CGFloat = 126
-        // Landscape / pad address-bar right side has 4 static buttons
-        // (share, favorite, tab-overview, hamburger) plus the download button,
-        // which only appears while a download is active. The width formula is
-        // computed dynamically (see trailingWidth).
-        static let trailingButtonStackWidth: CGFloat = (4 * 30) + (3 * 10)
+        static let topToolbarTrailingButtonWidth: CGFloat = 42
         static let topToolbarHorizontalInset: CGFloat = 12
         static let topToolbarButtonSpacing: CGFloat = 10
-        static let topToolbarTrailingButtonSpacing: CGFloat = 14
         static let topToolbarAddressBarSpacing: CGFloat = 12
         static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
+        static let topToolbarAddressBarWidthLimit: CGFloat = 650
         static let backgroundViewHorizontalExtension: CGFloat = 16
         static let borderWidth: CGFloat = 0.5
     }
@@ -34,15 +30,7 @@ final class TopToolbar: UIView {
     }
     
     var onSidebar: (() -> Void)?
-    var onBack: (() -> Void)?
-    var onForward: (() -> Void)?
-    var onLibrary: (() -> Void)?
-    var onDownloads: (() -> Void)?
-    var onShare: (() -> Void)?
-    var onNewTab: (() -> Void)?
-    var onTabOverview: (() -> Void)?
-    var onFavorite: (() -> Void)?
-    var onMenu: (() -> Void)?
+    var onItem: ((ToolbarItem) -> Void)?
     
     private let contentView: UIView = {
         let view = UIView()
@@ -51,16 +39,14 @@ final class TopToolbar: UIView {
         return view
     }()
     
-    /// Solid, opaque theme surface for the address / function row. The Edge UI
-    /// uses a flat theme colour instead of a translucent material so the web
-    /// page can never show through the top chrome.
     private let backgroundView: UIVisualEffectView = {
-        // Keep the UIVisualEffectView as the container (constraints/layout code
-        // depend on it) but disable the effect so it renders as a plain surface.
+        // Edge UI: a solid, opaque theme surface instead of a translucent
+        // material, so the page can never show through the top chrome. The
+        // UIVisualEffectView stays as the container (layout depends on it).
         let view = UIVisualEffectView(effect: nil)
-        view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = EdgeChromePalette.surface
         view.contentView.backgroundColor = EdgeChromePalette.surface
+        view.translatesAutoresizingMaskIntoConstraints = false
         return view
     }()
     
@@ -76,55 +62,19 @@ final class TopToolbar: UIView {
         target: self,
         action: #selector(sidebarTapped)
     )
-    private lazy var backButton = ToolbarButton(
-        buttonType: .back,
-        target: self,
-        action: #selector(backTapped)
-    )
-    private lazy var forwardButton = ToolbarButton(
-        buttonType: .forward,
-        target: self,
-        action: #selector(forwardTapped)
-    )
-    private lazy var libraryButton = ToolbarButton(
-        buttonType: .library,
-        target: self,
-        action: #selector(libraryTapped)
-    )
-    private lazy var downloadButton = ToolbarButton(
-        buttonType: .download,
-        target: self,
-        action: #selector(downloadsTapped)
-    )
-    private lazy var shareButton = ToolbarButton(
-        buttonType: .share,
-        target: self,
-        action: #selector(shareTapped)
-    )
-    private lazy var newTabButton = ToolbarButton(
-        buttonType: .newTab,
-        target: self,
-        action: #selector(newTabTapped)
-    )
-    private lazy var tabOverviewButton = ToolbarButton(
-        buttonType: .tabOverview,
-        target: self,
-        action: #selector(tabOverviewTapped)
-    )
-    private lazy var favoriteButton = ToolbarButton(
-        buttonType: .favorite,
-        target: self,
-        action: #selector(favoriteTapped)
-    )
-    private lazy var menuButton = ToolbarButton(
-        buttonType: .library,
-        target: self,
-        action: #selector(menuTapped)
-    )
+    private var itemButtons: [ToolbarItem: ToolbarButton] = [:]
+    private var trailingItems: [ToolbarItem] = []
     private let buttonMenus = ToolbarButtonMenus()
     
     private lazy var leadingButtons: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [sidebarButton, backButton, forwardButton, libraryButton])
+        button(for: .downloads).isHidden = true
+        let stack = UIStackView(arrangedSubviews: [
+            sidebarButton,
+            button(for: .downloads),
+            button(for: .back),
+            button(for: .forward),
+            button(for: .library),
+        ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.spacing = UX.topToolbarButtonSpacing
@@ -133,14 +83,10 @@ final class TopToolbar: UIView {
     }()
     
     private lazy var trailingButtons: UIStackView = {
-        // Landscape / pad address-bar right side: download (when active), share,
-        // favorite, tab-overview, hamburger menu. Spacing is +1 vs the leading
-        // side (11 instead of 10) for a slightly airier right cluster.
-        downloadButton.isHidden = true
-        let stack = UIStackView(arrangedSubviews: [downloadButton, shareButton, favoriteButton, tabOverviewButton, menuButton])
+        let stack = UIStackView()
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
-        stack.spacing = UX.topToolbarTrailingButtonSpacing
+        stack.spacing = UX.topToolbarButtonSpacing
         stack.distribution = .fillEqually
         return stack
     }()
@@ -168,10 +114,12 @@ final class TopToolbar: UIView {
     private var trailingWidthConstraint: NSLayoutConstraint!
     private var standardAddressBarConstraints: [NSLayoutConstraint] = []
     private var compactAddressBarConstraints: [NSLayoutConstraint] = []
+    private var widthLimitedStandardAddressBarConstraints: [NSLayoutConstraint] = []
     
     private var layoutState: LayoutState = .hidden
     private var layoutInterfaceIdiom: UIUserInterfaceIdiom = .unspecified
     private var layoutSidebarButtonVisible = false
+    private var isUsingStandardAddressBarWidthLimit = false
     
     // MARK: - Lifecycle
     
@@ -180,6 +128,8 @@ final class TopToolbar: UIView {
         configureAppearance()
         configureHierarchy()
         configureConstraints()
+        configureObservers()
+        arrangeTrailingButtons()
     }
     
     required init?(coder: NSCoder) {
@@ -205,6 +155,14 @@ final class TopToolbar: UIView {
                 addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
                 addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
             ]
+            widthLimitedStandardAddressBarConstraints = [
+                addressBar.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
+                addressBar.widthAnchor.constraint(equalToConstant: UX.topToolbarAddressBarWidthLimit),
+                addressBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingButtons.trailingAnchor, constant: UX.topToolbarAddressBarSpacing),
+                addressBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingButtons.leadingAnchor, constant: -UX.topToolbarAddressBarSpacing),
+                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
+                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
+            ]
             compactAddressBarConstraints = [
                 addressBar.leadingAnchor.constraint(
                     equalTo: contentLayoutGuide.leadingAnchor,
@@ -221,11 +179,12 @@ final class TopToolbar: UIView {
     }
     
     func detachAddressBar() {
-        NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
+        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
+        isUsingStandardAddressBarWidthLimit = false
     }
     
     func sharePopoverSourceView() -> UIView {
-        return shareButton
+        return button(for: .share)
     }
     
     func extendBackground(to bottomAnchor: NSLayoutYAxisAnchor) {
@@ -260,24 +219,20 @@ final class TopToolbar: UIView {
             leadingWidthConstraint.constant = isCompact ? 0 : leadingWidth(
                 interfaceIdiom: interfaceIdiom,
                 sidebarButtonVisible: sidebarButtonVisible,
-                showsDownloads: downloadButton.isShowingDownloads
+                showsDownloads: showsLeadingDownloadButton
             )
-            trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(
-                showsDownloads: downloadButton.isShowingDownloads
-            )
+            trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth
             
             sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
-            libraryButton.isHidden = interfaceIdiom == .pad
-            downloadButton.isHidden = isCompact || !downloadButton.isShowingDownloads
+            button(for: .library).isHidden = interfaceIdiom == .pad
+            button(for: .downloads).isHidden = isCompact || !showsDownloadButton
             
-            NSLayoutConstraint.deactivate(standardAddressBarConstraints + compactAddressBarConstraints)
+            NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
+            isUsingStandardAddressBarWidthLimit = false
             if isCompact {
                 NSLayoutConstraint.activate(compactAddressBarConstraints)
             } else {
-                // Wide (standard) layout: the address bar always stretches all
-                // the way between the leading and trailing button groups (the
-                // old 650pt center cap is gone), so the plain set is enough.
-                NSLayoutConstraint.activate(standardAddressBarConstraints)
+                setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
             }
             layoutIfNeeded()
         }
@@ -290,9 +245,33 @@ final class TopToolbar: UIView {
     // MARK: - Updates
     
     func updateNavigation(canGoBack: Bool, canGoForward: Bool, canShare: Bool) {
-        backButton.isEnabled = canGoBack
-        forwardButton.isEnabled = canGoForward
-        shareButton.isEnabled = canShare
+        button(for: .back).isEnabled = canGoBack
+        button(for: .forward).isEnabled = canGoForward
+        button(for: .share).isEnabled = canShare
+    }
+    
+    func updatePageActions(canUsePageTools: Bool, canShowReader: Bool, isBookmarked: Bool) {
+        button(for: .findInPage).isEnabled = canUsePageTools
+        button(for: .pageZoom).isEnabled = canUsePageTools
+        button(for: .reader).isEnabled = canShowReader
+        
+        button(for: .addBookmark).isEnabled = canUsePageTools
+        button(for: .addBookmark).setImage(
+            isBookmarked ? UIImage(named: "reynard.bookmark.fill") : UIImage(named: "reynard.bookmark"),
+            for: .normal
+        )
+    }
+    
+    func updateDownload(_ summary: DownloadStoreSummary) {
+        button(for: .downloads).applyDownloadSummary(summary)
+        updateButtonLayout()
+    }
+    
+    func setMenuButtonIndicatesUpdate(_ hasUpdate: Bool) {
+        button(for: .library).setImage(
+            hasUpdate ? UIImage(named: "reynard.ellipsis.circle.badge") : UIImage(named: "reynard.ellipsis.circle"),
+            for: .normal
+        )
     }
     
     func configureNavigationMenus(
@@ -300,8 +279,8 @@ final class TopToolbar: UIView {
         onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
     ) {
         buttonMenus.installNavigationMenus(
-            on: backButton,
-            forwardButton: forwardButton,
+            on: button(for: .back),
+            forwardButton: button(for: .forward),
             itemsProvider: itemsProvider,
             onSelect: onSelect,
             isReversed: false
@@ -314,7 +293,7 @@ final class TopToolbar: UIView {
         onSelect: @escaping (UUID) -> Void
     ) {
         buttonMenus.installRecentlyClosedTabsMenu(
-            on: newTabButton,
+            on: button(for: .newTab),
             isAvailable: isAvailable,
             itemsProvider: itemsProvider,
             onSelect: onSelect
@@ -323,7 +302,7 @@ final class TopToolbar: UIView {
     
     func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
         buttonMenus.installLibraryMenus(
-            on: [sidebarButton, libraryButton],
+            on: [sidebarButton, button(for: .library)],
             onSelect: onSelect
         )
     }
@@ -336,29 +315,13 @@ final class TopToolbar: UIView {
         onNewTab: @escaping () -> Void
     ) {
         buttonMenus.installTabOverviewMenus(
-            on: [tabOverviewButton],
+            on: [button(for: .tabOverview)],
             tabCountProvider: tabCountProvider,
             onCloseAllTabs: onCloseAllTabs,
             onCloseTab: onCloseTab,
             onNewPrivateTab: onNewPrivateTab,
             onNewTab: onNewTab
         )
-    }
-    
-    func updateDownload(_ summary: DownloadStoreSummary) {
-        downloadButton.applyDownloadSummary(summary)
-        updateDownloadButtonVisibility()
-    }
-    
-    func setMenuButtonIndicatesUpdate(_ hasUpdate: Bool) {
-        libraryButton.setImage(
-            hasUpdate ? UIImage(named: "reynard.ellipsis.circle.badge") : UIImage(named: "reynard.ellipsis.circle"),
-            for: .normal
-        )
-    }
-
-    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
-        tabOverviewButton.setTabCount(count, isPrivate: isPrivate)
     }
     
     func syncSidebarButton(splitViewController: UISplitViewController?) {
@@ -378,15 +341,46 @@ final class TopToolbar: UIView {
     // MARK: - Action Wiring
     
     @objc private func sidebarTapped() { onSidebar?() }
-    @objc private func backTapped() { onBack?() }
-    @objc private func forwardTapped() { onForward?() }
-    @objc private func libraryTapped() { onLibrary?() }
-    @objc private func downloadsTapped() { onDownloads?() }
-    @objc private func shareTapped() { onShare?() }
-    @objc private func newTabTapped() { onNewTab?() }
-    @objc private func tabOverviewTapped() { onTabOverview?() }
-    @objc private func favoriteTapped() { onFavorite?() }
-    @objc private func menuTapped() { onMenu?() }
+    
+    /// Tab count on the tab-overview button (Edge UI badge).
+    func setTabOverviewBadge(count: Int, isPrivate: Bool) {
+        button(for: .tabOverview).setTabCount(count, isPrivate: isPrivate)
+    }
+    
+    @objc private func itemTapped(_ sender: ToolbarButton) {
+        guard case .item(let item) = sender.toolbarButtonType else {
+            return
+        }
+        
+        onItem?(item)
+    }
+    
+    @objc private func toolbarItemsDidChange() {
+        arrangeTrailingButtons()
+        updateButtonLayout()
+    }
+    
+    // MARK: - Buttons
+    
+    private func button(for item: ToolbarItem) -> ToolbarButton {
+        if let button = itemButtons[item] {
+            return button
+        }
+        
+        let button = ToolbarButton(buttonType: .item(item), target: self, action: #selector(itemTapped(_:)))
+        itemButtons[item] = button
+        return button
+    }
+    
+    private func arrangeTrailingButtons() {
+        trailingItems = ToolbarPlacement.topToolbar.items
+        trailingButtons.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        trailingItems.forEach { trailingButtons.addArrangedSubview(button(for: $0)) }
+        
+        if !trailingItems.contains(.downloads) {
+            leadingButtons.insertArrangedSubview(button(for: .downloads), at: 1)
+        }
+    }
     
     // MARK: - View Setup
     
@@ -408,7 +402,7 @@ final class TopToolbar: UIView {
         contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
         backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
         leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
-        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.trailingButtonStackWidth)
+        trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
         
         NSLayoutConstraint.activate([
             backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
@@ -439,6 +433,27 @@ final class TopToolbar: UIView {
         ])
     }
     
+    private func configureObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(toolbarItemsDidChange),
+            name: .toolbarItemsDidChange,
+            object: nil
+        )
+    }
+    
+    private var showsDownloadButton: Bool {
+        return trailingItems.contains(.downloads) || button(for: .downloads).isShowingDownloads
+    }
+    
+    private var showsLeadingDownloadButton: Bool {
+        return !trailingItems.contains(.downloads) && button(for: .downloads).isShowingDownloads
+    }
+    
+    private var trailingWidth: CGFloat {
+        return CGFloat(trailingItems.count) * UX.topToolbarTrailingButtonWidth
+    }
+    
     private func leadingWidth(
         interfaceIdiom: UIUserInterfaceIdiom,
         sidebarButtonVisible: Bool,
@@ -449,35 +464,49 @@ final class TopToolbar: UIView {
         return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
         + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
     }
-
-    private func trailingWidth(showsDownloads: Bool) -> CGFloat {
-        // Four static buttons (share, favorite, tab-overview, hamburger) plus
-        // the download button when a download is active.
-        let visibleButtonCount = 4 + (showsDownloads ? 1 : 0)
-        return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
-        + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarTrailingButtonSpacing)
+    
+    private var shouldLimitStandardAddressBarWidth: Bool {
+        // Edge UI: the wide address bar always stretches between the leading
+        // and trailing buttons (no 650pt centred cap).
+        return false
+    }
+    
+    private var contentLayoutInsets: UIEdgeInsets {
+        if #available(iOS 26.0, *) {
+            return edgeInsets(for: .safeArea(cornerAdaptation: .horizontal))
+        }
+        
+        return safeAreaInsets
     }
     
     private func updateStandardAddressBarLayout() {
-        // The wide address bar is always pinned between the two button groups;
-        // re-assert those constraints (no width cap exists anymore).
         guard layoutState == .standard else {
             return
         }
         
-        NSLayoutConstraint.activate(standardAddressBarConstraints)
+        setStandardAddressBarWidthLimitEnabled(shouldLimitStandardAddressBarWidth)
     }
     
-    private func updateDownloadButtonVisibility() {
+    private func setStandardAddressBarWidthLimitEnabled(_ isEnabled: Bool) {
+        let activeConstraints = isEnabled ? widthLimitedStandardAddressBarConstraints : standardAddressBarConstraints
+        guard activeConstraints.contains(where: { !$0.isActive }) || isUsingStandardAddressBarWidthLimit != isEnabled else {
+            return
+        }
+        
+        NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints)
+        NSLayoutConstraint.activate(activeConstraints)
+        isUsingStandardAddressBarWidthLimit = isEnabled
+    }
+    
+    private func updateButtonLayout() {
         let isCompact = layoutState == .compact
-        let showsDownloads = downloadButton.isShowingDownloads
-        downloadButton.isHidden = layoutState != .standard || !showsDownloads
+        button(for: .downloads).isHidden = layoutState != .standard || !showsDownloadButton
         leadingWidthConstraint.constant = isCompact ? 0 : leadingWidth(
             interfaceIdiom: layoutInterfaceIdiom,
             sidebarButtonVisible: layoutSidebarButtonVisible,
-            showsDownloads: showsDownloads
+            showsDownloads: showsLeadingDownloadButton
         )
-        trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth(showsDownloads: showsDownloads)
+        trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth
         updateStandardAddressBarLayout()
         layoutIfNeeded()
     }

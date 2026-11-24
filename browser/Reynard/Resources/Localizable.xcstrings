@@ -11625,6 +11625,16 @@
         }
       }
     },
+    "Customize Toolbar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize Toolbar"
+          }
+        }
+      }
+    },
     "Dark" : {
       "comment" : "Reader mode background color",
       "localizations" : {
@@ -16693,6 +16703,16 @@
         }
       }
     },
+    "Included Items" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Included Items"
+          }
+        }
+      }
+    },
     "Incompatible" : {
       "localizations" : {
         "cs" : {
@@ -18812,6 +18832,16 @@
         }
       }
     },
+    "Menu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu"
+          }
+        }
+      }
+    },
     "Microphone" : {
       "localizations" : {
         "cs" : {
@@ -19000,6 +19030,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "深入瞭解此附加元件"
+          }
+        }
+      }
+    },
+    "More Items" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More Items"
           }
         }
       }
@@ -25893,6 +25933,16 @@
         }
       }
     },
+    "Reset Toolbar Layout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset Toolbar Layout"
+          }
+        }
+      }
+    },
     "Restart Required" : {
       "localizations" : {
         "cs" : {
@@ -32509,6 +32559,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "今天和昨天"
+          }
+        }
+      }
+    },
+    "Toolbar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toolbar"
           }
         }
       }

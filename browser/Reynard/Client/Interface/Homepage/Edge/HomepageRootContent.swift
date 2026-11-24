@@ -31,23 +31,23 @@ protocol HomepageViewControllerAddressBarDelegate: AnyObject {
 
 extension HomepageViewController: EdgeStartPageViewControllerDelegate {
     func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestOpenURL url: URL, disposition: TabOpenDisposition) {
-        homepageDelegate?.homepageViewController(self, didRequestOpenURL: url, disposition: disposition)
+        homepageDelegate?.homepageSection(controller, didRequestOpenURL: url, disposition: disposition)
     }
     
     func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestShareURL url: URL, sourceView: UIView) {
-        homepageDelegate?.homepageViewController(self, didRequestShareURL: url, sourceView: sourceView)
+        homepageDelegate?.homepageSection(controller, didRequestShareURL: url, sourceView: sourceView)
     }
     
     func edgeStartPage(_ controller: EdgeStartPageViewController, didRequestHideFromSuggestions siteID: Int64) {
-        homepageDelegate?.homepageViewController(self, didRequestHideFromSuggestions: siteID)
+        homepageDelegate?.homepageSection(controller, didRequestHideFromSuggestions: siteID)
     }
     
     func edgeStartPage(_ controller: EdgeStartPageViewController, didSelectRecentlyClosedTab id: UUID) {
-        homepageDelegate?.homepageViewController(self, didSelectRecentlyClosedTab: id)
+        homepageDelegate?.homepageSection(controller, didSelectRecentlyClosedTab: id)
     }
     
     func edgeStartPageDidSelectFolder(_ folder: BookmarkFolderSnapshot) {
-        homepageRootViewControllerDidSelectFolder(folder)
+        showFolder(folder)
     }
     
     func edgeStartPageDidRequestAddressBarFocus(_ controller: EdgeStartPageViewController) {
@@ -55,6 +55,6 @@ extension HomepageViewController: EdgeStartPageViewControllerDelegate {
     }
     
     func edgeStartPageDidStartScrolling() {
-        homepageDelegate?.homepageViewControllerDidStartScrolling()
+        homepageDelegate?.homepageDidStartScrolling()
     }
 }

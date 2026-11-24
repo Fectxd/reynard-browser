@@ -15,20 +15,15 @@ final class PromptPresenter: PromptPresenting {
     private var colorPickers: [String: ColorPicker] = [:]
     private var dateTimePickers: [String: DateTimePicker] = [:]
     private var filePickers: [String: FilePicker] = [:]
-    
-    /// The window owning the session currently being prompted, so a remote prompt
-    /// coming from a background window's session is presented in that window
-    /// instead of over whichever window happens to be frontmost. `PromptPresenter`
-    /// is created per window (per `TabManagerImpl`), so this can only ever refer to
-    /// this window's own scene.
-    private weak var presentationWindow: UIWindow?
+    private let window: () -> UIWindow?
     
     // MARK: - Lifecycle
     
-    init() {}
+    init(window: @escaping () -> UIWindow?) {
+        self.window = window
+    }
     
     func present(_ request: PromptRequest, for session: GeckoSession) async -> PromptResponse? {
-        presentationWindow = session.engineView?.window
         switch request {
         case .alert(let request):
             await presentAlert(request: request)
@@ -93,7 +88,7 @@ final class PromptPresenter: PromptPresenting {
     // MARK: - Basic Prompts
     
     private func presentAlert(request: AlertPromptRequest) async {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return
         }
         
@@ -112,7 +107,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentButton(request: ButtonPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return nil
         }
         
@@ -153,7 +148,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentText(request: TextPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return nil
         }
         
@@ -179,6 +174,10 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentAuth(request: AuthPromptRequest, session: GeckoSession) async -> PromptResponse? {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
+            return nil
+        }
+        
         let host = URL(string: request.uri)?.host
         let title = host.map {
             String(format: NSLocalizedString("Sign in to %@", comment: "Authentication host"), $0)
@@ -247,7 +246,7 @@ final class PromptPresenter: PromptPresenting {
         username: String,
         password: String
     ) async -> (username: String, password: String)? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return nil
         }
         
@@ -294,7 +293,7 @@ final class PromptPresenter: PromptPresenting {
         logins: [LoginRecord],
         title: String
     ) async -> AuthAccountChoice {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return .cancelled
         }
         
@@ -386,7 +385,7 @@ final class PromptPresenter: PromptPresenting {
     
     /// Yes/no confirmation used by both the HTTP-auth and web-form save flows.
     private func confirmSaveLogin(username: String, host: String) async -> Bool {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return false
         }
         
@@ -448,7 +447,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentBeforeUnload(request: BeforeUnloadPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return nil
         }
         
@@ -474,7 +473,7 @@ final class PromptPresenter: PromptPresenting {
     }
     
     private func presentFolderUpload(request: FolderUploadPromptRequest) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) else {
+        guard let presenter = UIApplication.shared.topViewController(in: window()) else {
             return nil
         }
         
@@ -600,7 +599,7 @@ final class PromptPresenter: PromptPresenting {
         session: GeckoSession,
         request: SharePromptRequest
     ) async -> PromptResponse? {
-        guard let presenter = UIApplication.shared.topViewController(for: presentationWindow) as? BrowserViewController,
+        guard let presenter = UIApplication.shared.topViewController(in: window()) as? BrowserViewController,
               let sourceView = session.engineView else {
             return nil
         }
@@ -647,10 +646,7 @@ final class PromptPresenter: PromptPresenting {
             return (geckoView, rect)
         }
         
-        var localRect = rect
-        let windowPoint = window.convert(rect.origin, from: nil)
-        localRect.origin = geckoView.convert(windowPoint, from: nil)
-        return (geckoView, localRect)
+        return (geckoView, geckoView.convert(rect, from: window.screen.coordinateSpace))
     }
     
     // MARK: - Helpers

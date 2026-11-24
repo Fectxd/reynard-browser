@@ -33,7 +33,7 @@ final class DateTimePicker: NSObject, UIPopoverPresentationControllerDelegate {
     
     private func showDatePicker(value: String, min: String, max: String, step: String) {
         guard let geckoView = geckoView,
-              let presenter = UIApplication.shared.topViewController(containing: geckoView) else {
+              let presenter = UIApplication.shared.topViewController(in: geckoView.window) else {
             finish(nil)
             return
         }
