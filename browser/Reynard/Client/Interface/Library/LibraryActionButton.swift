@@ -45,6 +45,39 @@ final class LibraryActionButton: UIButton {
         layer.cornerRadius = bounds.height / UX.cornerRadiusDivisor
     }
     
+    // MARK: - Menu Presentation
+    
+    // The menu used to appear first and get its shadow about a second later:
+    // the button is a filled circle, and UIKit lifted a snapshot of it (fill
+    // included) before attaching the menu's platter and shadow. Hand UIKit an
+    // explicit circular preview on a clear background instead, so the menu
+    // and its shadow come up together, like the address bar's menus.
+    @available(iOS 14.0, *)
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        return circularMenuPreview()
+    }
+    
+    @available(iOS 14.0, *)
+    override func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        previewForDismissingMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> UITargetedPreview? {
+        return circularMenuPreview()
+    }
+    
+    private func circularMenuPreview() -> UITargetedPreview? {
+        guard window != nil, bounds.width > 0 else {
+            return nil
+        }
+        let parameters = UIPreviewParameters()
+        parameters.backgroundColor = .clear
+        parameters.visiblePath = UIBezierPath(ovalIn: bounds)
+        return UITargetedPreview(view: self, parameters: parameters)
+    }
+    
     // MARK: - Updates
     
     func setIcon(named iconName: String) {
