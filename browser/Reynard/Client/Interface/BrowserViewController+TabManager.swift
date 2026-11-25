@@ -32,7 +32,8 @@ extension BrowserViewController: TabManagerDelegate {
         }
         
         tabOverview.applyPendingTabChanges()
-        let animateTabBarVisibility = tabBar.visibility != targetTabBarVisibility
+        // Edge UI (flat): the strip appears/disappears without animation.
+        let animateTabBarVisibility = false
         tabBar.reloadTabs()
         updateBrowserLayout(animated: animateTabBarVisibility)
         homepageOverlayCoordinator.updatePresentation(animated: false)
@@ -78,7 +79,8 @@ extension BrowserViewController: TabManagerDelegate {
             tabOverview.reloadTabs()
         }
         
-        let animateTabBarVisibility = tabBar.visibility != targetTabBarVisibility
+        // Edge UI (flat): the strip appears/disappears without animation.
+        let animateTabBarVisibility = false
         tabBar.reloadTabs()
         homepageOverlayCoordinator.updatePresentation(animated: false)
         updateBrowserLayout(animated: animateTabBarVisibility)
@@ -242,6 +244,12 @@ extension BrowserViewController: TabManagerDelegate {
             return
         }
         
+        // Edge UI (flat): on the wide layout a new tab just becomes current,
+        // without the sliding address-bar transition.
+        guard browserLayout.chromeMode == .phone else {
+            completion()
+            return
+        }
         captureThumbnail(for: tabManager.selectedTab)
         tabBar.setPendingExpansion(to: tab)
         browserChrome.addressBar.animateAutomaticTabTransition(to: tab, completion: completion)

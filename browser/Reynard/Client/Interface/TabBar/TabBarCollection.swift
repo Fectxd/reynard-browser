@@ -32,7 +32,7 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
             return attributes
         }
         
-        attributes.transform = CGAffineTransform(translationX: attributes.size.width, y: 0)
+        // Edge UI (flat): new tabs appear in place, no slide-in.
         return attributes
     }
     
