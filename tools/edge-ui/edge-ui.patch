@@ -394,7 +394,7 @@ index 6e08413..512d515 100644
                let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
              presentLibrary(initialSection: section)
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
-index 8568bd1..9d64f17 100644
+index 8568bd1..1283137 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 @@ -32,11 +32,13 @@ extension BrowserViewController: TabManagerDelegate {
@@ -439,20 +439,26 @@ index 8568bd1..9d64f17 100644
                      contentView.updateLoadError(for: tab)
                      contentView.resetScrollTracking()
                      toolbarController.lock(for: .pageNavigation)
-@@ -238,6 +244,12 @@ extension BrowserViewController: TabManagerDelegate {
+@@ -238,6 +244,18 @@ extension BrowserViewController: TabManagerDelegate {
              return
          }
          
 +        // Edge UI (flat): on the wide layout a new tab just becomes current,
 +        // without the sliding address-bar transition.
 +        guard browserLayout.chromeMode == .phone else {
-+            completion()
++            // Still on the next run-loop turn, like the animated path: a tab
++            // opened by the page (window.open / target=_blank) must finish
++            // being set up for the engine before it is selected, or it never
++            // loads.
++            DispatchQueue.main.async {
++                completion()
++            }
 +            return
 +        }
          captureThumbnail(for: tabManager.selectedTab)
          tabBar.setPendingExpansion(to: tab)
          browserChrome.addressBar.animateAutomaticTabTransition(to: tab, completion: completion)
-@@ -331,4 +343,12 @@ extension BrowserViewController: TabSessionHandlerDelegate {
+@@ -331,4 +349,12 @@ extension BrowserViewController: TabSessionHandlerDelegate {
              succeeded: succeeded
          )
      }
@@ -1208,10 +1214,10 @@ index 0000000..e6dd4d2
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 new file mode 100644
-index 0000000..a92f751
+index 0000000..0d7f74e
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,309 @@
 +//
 +//  LoginAutofillBar.swift
 +//  Reynard
@@ -1395,11 +1401,9 @@ index 0000000..a92f751
 +    }
 +
 +    private func refreshForFocusedField() {
-+        // Only while the keyboard is actually on screen.
-+        guard keyboardTop != nil else {
-+            hide()
-+            return
-+        }
++        // No keyboard-visibility requirement: with a hardware or floating
++        // keyboard iOS reports the keyboard as off screen, and the bar never
++        // appeared. What matters is whether a login field has focus.
 +        guard let session = sessionProvider?(),
 +              let contentType = session.focusedAutofillContentType,
 +              contentType == .username || contentType == .password,
@@ -1494,13 +1498,9 @@ index 0000000..a92f751
 +            return
 +        }
 +        let top = keyboardWindow.convert(frame, from: keyboardWindow.screen.coordinateSpace).minY
-+        guard top < keyboardWindow.bounds.height - 1 else {
-+            // Keyboard is leaving the screen.
-+            keyboardTop = nil
-+            hide()
-+            return
-+        }
-+        keyboardTop = top
++        // Off-screen (hardware keyboard / keyboard going away): sit above the
++        // bottom edge instead.
++        keyboardTop = top < keyboardWindow.bounds.height - 1 ? top : nil
 +        layoutBar()
 +        // Focus may have moved to another field while the keyboard stayed up.
 +        DispatchQueue.main.async { [weak self] in
@@ -1510,7 +1510,12 @@ index 0000000..a92f751
 +
 +    @objc private func handleKeyboardHide(_ notification: Notification) {
 +        keyboardTop = nil
-+        hide()
++        layoutBar()
++        // Hide unless a login field still has focus (e.g. after signing in the
++        // page has moved on and the bar goes away).
++        DispatchQueue.main.async { [weak self] in
++            self?.refreshForFocusedField()
++        }
 +    }
 +
 +    private func hide() {

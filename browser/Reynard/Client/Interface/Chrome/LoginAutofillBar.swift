@@ -181,11 +181,9 @@ final class LoginAutofillPresenter {
     }
 
     private func refreshForFocusedField() {
-        // Only while the keyboard is actually on screen.
-        guard keyboardTop != nil else {
-            hide()
-            return
-        }
+        // No keyboard-visibility requirement: with a hardware or floating
+        // keyboard iOS reports the keyboard as off screen, and the bar never
+        // appeared. What matters is whether a login field has focus.
         guard let session = sessionProvider?(),
               let contentType = session.focusedAutofillContentType,
               contentType == .username || contentType == .password,
@@ -280,13 +278,9 @@ final class LoginAutofillPresenter {
             return
         }
         let top = keyboardWindow.convert(frame, from: keyboardWindow.screen.coordinateSpace).minY
-        guard top < keyboardWindow.bounds.height - 1 else {
-            // Keyboard is leaving the screen.
-            keyboardTop = nil
-            hide()
-            return
-        }
-        keyboardTop = top
+        // Off-screen (hardware keyboard / keyboard going away): sit above the
+        // bottom edge instead.
+        keyboardTop = top < keyboardWindow.bounds.height - 1 ? top : nil
         layoutBar()
         // Focus may have moved to another field while the keyboard stayed up.
         DispatchQueue.main.async { [weak self] in
@@ -296,7 +290,12 @@ final class LoginAutofillPresenter {
 
     @objc private func handleKeyboardHide(_ notification: Notification) {
         keyboardTop = nil
-        hide()
+        layoutBar()
+        // Hide unless a login field still has focus (e.g. after signing in the
+        // page has moved on and the bar goes away).
+        DispatchQueue.main.async { [weak self] in
+            self?.refreshForFocusedField()
+        }
     }
 
     private func hide() {

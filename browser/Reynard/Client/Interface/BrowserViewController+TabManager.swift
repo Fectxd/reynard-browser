@@ -247,7 +247,13 @@ extension BrowserViewController: TabManagerDelegate {
         // Edge UI (flat): on the wide layout a new tab just becomes current,
         // without the sliding address-bar transition.
         guard browserLayout.chromeMode == .phone else {
-            completion()
+            // Still on the next run-loop turn, like the animated path: a tab
+            // opened by the page (window.open / target=_blank) must finish
+            // being set up for the engine before it is selected, or it never
+            // loads.
+            DispatchQueue.main.async {
+                completion()
+            }
             return
         }
         captureThumbnail(for: tabManager.selectedTab)
