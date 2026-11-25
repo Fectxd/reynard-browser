@@ -89,7 +89,10 @@ final class EdgeAppearanceViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        // Same grouped (grey) background as Settings > Appearance: a selected
+        // tile is filled with systemBackground, which is invisible on a white
+        // panel.
+        view.backgroundColor = .systemGroupedBackground
         preferredContentSize = CGSize(width: UX.contentWidth, height: UX.contentHeight)
         configureHierarchy()
         configureConstraints()

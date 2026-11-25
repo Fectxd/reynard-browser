@@ -1725,10 +1725,10 @@ index 7de1085..7aac7ce 100644
      }
      
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-index 8a43219..a9027da 100644
+index 8a43219..fe97937 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/TopToolbar.swift
-@@ -10,7 +10,7 @@ import UIKit
+@@ -10,12 +10,14 @@ import UIKit
  
  final class TopToolbar: UIView {
      private enum UX {
@@ -1737,7 +1737,14 @@ index 8a43219..a9027da 100644
          static let topToolbarButtonStackHeight: CGFloat = 30
          static let topToolbarStandardButtonStackWidth: CGFloat = 126
          static let topToolbarTrailingButtonWidth: CGFloat = 42
-@@ -40,13 +40,12 @@ final class TopToolbar: UIView {
+         static let topToolbarHorizontalInset: CGFloat = 12
+         static let topToolbarButtonSpacing: CGFloat = 10
++        // Edge UI: the right-hand cluster is slightly airier.
++        static let topToolbarTrailingButtonSpacing: CGFloat = 14
+         static let topToolbarAddressBarSpacing: CGFloat = 12
+         static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
+         static let topToolbarAddressBarWidthLimit: CGFloat = 650
+@@ -40,13 +42,12 @@ final class TopToolbar: UIView {
      }()
      
      private let backgroundView: UIVisualEffectView = {
@@ -1757,7 +1764,7 @@ index 8a43219..a9027da 100644
          view.translatesAutoresizingMaskIntoConstraints = false
          return view
      }()
-@@ -55,9 +54,6 @@ final class TopToolbar: UIView {
+@@ -55,9 +56,6 @@ final class TopToolbar: UIView {
          let view = UIView()
          view.translatesAutoresizingMaskIntoConstraints = false
          view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
@@ -1767,7 +1774,43 @@ index 8a43219..a9027da 100644
          return view
      }()
      
-@@ -346,6 +342,11 @@ final class TopToolbar: UIView {
+@@ -70,14 +68,14 @@ final class TopToolbar: UIView {
+     private var trailingItems: [ToolbarItem] = []
+     private let buttonMenus = ToolbarButtonMenus()
+     
++    // Edge UI: only navigation on the left of the address bar. Everything
++    // else -- downloads (while active), the page actions and the ⋯ menu as the
++    // right-most button -- sits on the right (see arrangeTrailingButtons).
+     private lazy var leadingButtons: UIStackView = {
+-        button(for: .downloads).isHidden = true
+         let stack = UIStackView(arrangedSubviews: [
+             sidebarButton,
+-            button(for: .downloads),
+             button(for: .back),
+             button(for: .forward),
+-            button(for: .library),
+         ])
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .horizontal
+@@ -90,7 +88,7 @@ final class TopToolbar: UIView {
+         let stack = UIStackView()
+         stack.translatesAutoresizingMaskIntoConstraints = false
+         stack.axis = .horizontal
+-        stack.spacing = UX.topToolbarButtonSpacing
++        stack.spacing = UX.topToolbarTrailingButtonSpacing
+         stack.distribution = .fillEqually
+         return stack
+     }()
+@@ -228,7 +226,7 @@ final class TopToolbar: UIView {
+             trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth
+             
+             sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
+-            button(for: .library).isHidden = interfaceIdiom == .pad
++            button(for: .library).isHidden = false
+             button(for: .downloads).isHidden = isCompact || !showsDownloadButton
+             
+             NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
+@@ -346,6 +344,11 @@ final class TopToolbar: UIView {
      
      @objc private func sidebarTapped() { onSidebar?() }
      
@@ -1779,7 +1822,62 @@ index 8a43219..a9027da 100644
      @objc private func itemTapped(_ sender: ToolbarButton) {
          guard case .item(let item) = sender.toolbarButtonType else {
              return
-@@ -465,23 +466,9 @@ final class TopToolbar: UIView {
+@@ -372,13 +375,15 @@ final class TopToolbar: UIView {
+     }
+     
+     private func arrangeTrailingButtons() {
+-        trailingItems = ToolbarPlacement.topToolbar.items
++        // Edge UI order: downloads (shown only while a download is active),
++        // the chosen items, and the ⋯ menu always last (right-most).
++        var items = ToolbarPlacement.topToolbar.items.filter { $0 != .downloads && $0 != .library && $0 != .back && $0 != .forward }
++        items.insert(.downloads, at: 0)
++        items.append(.library)
++        trailingItems = items
+         trailingButtons.arrangedSubviews.forEach { $0.removeFromSuperview() }
+         trailingItems.forEach { trailingButtons.addArrangedSubview(button(for: $0)) }
+-        
+-        if !trailingItems.contains(.downloads) {
+-            leadingButtons.insertArrangedSubview(button(for: .downloads), at: 1)
+-        }
++        button(for: .downloads).isHidden = !button(for: .downloads).isShowingDownloads
+     }
+     
+     // MARK: - View Setup
+@@ -441,16 +446,22 @@ final class TopToolbar: UIView {
+         )
+     }
+     
++    /// The download button only appears while a download is active.
+     private var showsDownloadButton: Bool {
+-        return trailingItems.contains(.downloads) || button(for: .downloads).isShowingDownloads
++        return button(for: .downloads).isShowingDownloads
+     }
+     
++    /// Downloads never sit on the left in the Edge layout.
+     private var showsLeadingDownloadButton: Bool {
+-        return !trailingItems.contains(.downloads) && button(for: .downloads).isShowingDownloads
++        return false
+     }
+     
+     private var trailingWidth: CGFloat {
+-        return CGFloat(trailingItems.count) * UX.topToolbarTrailingButtonWidth
++        // Visible right-hand buttons (downloads only while active), 30pt each,
++        // with the trailing spacing between them.
++        let visibleCount = trailingItems.filter { $0 != .downloads || showsDownloadButton }.count
++        return (CGFloat(visibleCount) * UX.topToolbarButtonStackHeight)
++        + (CGFloat(max(visibleCount - 1, 0)) * UX.topToolbarTrailingButtonSpacing)
+     }
+     
+     private func leadingWidth(
+@@ -459,29 +470,16 @@ final class TopToolbar: UIView {
+         showsDownloads: Bool
+     ) -> CGFloat {
+         guard interfaceIdiom == .pad else { return UX.topToolbarStandardButtonStackWidth }
+-        let visibleButtonCount = (sidebarButtonVisible ? 3 : 2) + (showsDownloads ? 1 : 0)
++        // sidebar (when shown), back, forward.
++        let visibleButtonCount = (sidebarButtonVisible ? 3 : 2)
+         return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
+         + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
      }
      
      private var shouldLimitStandardAddressBarWidth: Bool {
@@ -2255,10 +2353,10 @@ index 0000000..8d2e5be
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
 new file mode 100644
-index 0000000..ac4f3a1
+index 0000000..3118343
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/BrowserViewController+EdgeMenu.swift
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,350 @@
 +//
 +//  BrowserViewController+EdgeMenu.swift
 +//  Reynard
@@ -2580,7 +2678,10 @@ index 0000000..ac4f3a1
 +                popover.sourceView = browserChrome
 +                popover.sourceRect = browserChrome.menuButtonAnchorRect()
 +                popover.permittedArrowDirections = [.up, .down]
-+                popover.backgroundColor = .systemBackground
++                // Match the panel (e.g. the grouped grey of the appearance
++                // panel) so the arrow and rim don't show a different colour.
++                controller.loadViewIfNeeded()
++                popover.backgroundColor = controller.view.backgroundColor ?? .systemBackground
 +            }
 +        } else {
 +            controller.modalPresentationStyle = .pageSheet
@@ -2688,10 +2789,10 @@ index 0000000..aa0f2c8
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
 new file mode 100644
-index 0000000..eaf75f0
+index 0000000..5053c44
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
-@@ -0,0 +1,175 @@
+@@ -0,0 +1,178 @@
 +//
 +//  EdgeAppearanceViewController.swift
 +//  Reynard
@@ -2783,7 +2884,10 @@ index 0000000..eaf75f0
 +
 +    override func viewDidLoad() {
 +        super.viewDidLoad()
-+        view.backgroundColor = .systemBackground
++        // Same grouped (grey) background as Settings > Appearance: a selected
++        // tile is filled with systemBackground, which is invisible on a white
++        // panel.
++        view.backgroundColor = .systemGroupedBackground
 +        preferredContentSize = CGSize(width: UX.contentWidth, height: UX.contentHeight)
 +        configureHierarchy()
 +        configureConstraints()
@@ -11129,7 +11233,7 @@ index aa1450a..2840964 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index e4460af..b180735 100644
+index e4460af..2621803 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -133,8 +133,13 @@ final class TabBarCollection: UICollectionView {
@@ -11146,7 +11250,73 @@ index e4460af..b180735 100644
      
      init() {
          let layout = TabBarCollectionLayout()
-@@ -278,40 +283,27 @@ final class TabBarCollection: UICollectionView {
+@@ -159,6 +164,9 @@ final class TabBarCollection: UICollectionView {
+         guard !isUpdatingTabs else {
+             return
+         }
++        // Cell widths come from the tab bar, so a resize needs a fresh layout
++        // pass before the visible cells are reconfigured.
++        collectionViewLayout.invalidateLayout()
+         updateScrollability()
+         refreshVisibleTabs()
+         revealSelectedTab()
+@@ -211,29 +219,33 @@ final class TabBarCollection: UICollectionView {
+         layout.prepareForInsertion(at: insertedIndexPaths)
+         updateLayout()
+         isUpdatingTabs = true
+-        performBatchUpdates({
+-            if !deletedIndexPaths.isEmpty {
+-                deleteItems(at: deletedIndexPaths)
+-            }
+-            if !insertedIndexPaths.isEmpty {
+-                insertItems(at: insertedIndexPaths)
+-            }
+-        }, completion: { [weak self] _ in
+-            guard let self else {
+-                return
+-            }
++        // Opening or closing a tab must not repaint the whole strip: no insert
++        // or delete animation, and no animated scroll afterwards.
++        UIView.performWithoutAnimation {
++            performBatchUpdates({
++                if !deletedIndexPaths.isEmpty {
++                    deleteItems(at: deletedIndexPaths)
++                }
++                if !insertedIndexPaths.isEmpty {
++                    insertItems(at: insertedIndexPaths)
++                }
++            }, completion: { [weak self] _ in
++                guard let self else {
++                    return
++                }
++                
++                self.finishTabUpdate()
++            })
+             
+-            self.finishTabUpdate()
+-        })
+-        
+-        if shouldRevealRightmostTab {
+-            updateScrollability()
+-            layoutIfNeeded()
+-            scrollToItem(
+-                at: IndexPath(item: tabCount - 1, section: 0),
+-                at: .right,
+-                animated: true
+-            )
++            if shouldRevealRightmostTab {
++                updateScrollability()
++                layoutIfNeeded()
++                scrollToItem(
++                    at: IndexPath(item: tabCount - 1, section: 0),
++                    at: .right,
++                    animated: false
++                )
++            }
+         }
+     }
+     
+@@ -278,40 +290,27 @@ final class TabBarCollection: UICollectionView {
      }
      
      private func updateScrollability() {
@@ -11207,7 +11377,42 @@ index e4460af..b180735 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -405,6 +397,7 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -360,8 +359,19 @@ final class TabBarCollection: UICollectionView {
+     private func configureAppearance() {
+         translatesAutoresizingMaskIntoConstraints = false
+         backgroundColor = .clear
++        // Tabs must not paint over the "+" while the strip scrolls, so the
++        // collection clips; the edge hints cover the flare that gets cut.
++        clipsToBounds = true
+         showsHorizontalScrollIndicator = false
+-        contentInset = .zero
++        // Side padding equal to the fillet reach: the strip clips (so tabs can
++        // never paint over the "+"), and this keeps the first/last fillet
++        // inside those bounds instead of cutting them off.
++        contentInset = UIEdgeInsets(
++            top: 0,
++            left: 0,
++            bottom: 0,
++            right: TabBarCell.flareWidth
++        )
+         contentInsetAdjustmentBehavior = .never
+     }
+     
+@@ -369,7 +379,12 @@ final class TabBarCollection: UICollectionView {
+         layout.scrollDirection = .horizontal
+         layout.minimumLineSpacing = 0
+         layout.minimumInteritemSpacing = 0
+-        layout.sectionInset = .zero
++        layout.sectionInset = UIEdgeInsets(
++            top: 0,
++            left: TabBarCell.flareWidth,
++            bottom: 0,
++            right: 0
++        )
+     }
+     
+     private func configureCollection() {
+@@ -405,6 +420,7 @@ extension TabBarCollection: UICollectionViewDataSource {
          }
          
          configure(tabBarCell, at: indexPath)
@@ -11215,7 +11420,7 @@ index e4460af..b180735 100644
          tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
              guard let self,
                    let tabBarCell,
-@@ -418,6 +411,140 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -418,6 +434,140 @@ extension TabBarCollection: UICollectionViewDataSource {
  }
  
  extension TabBarCollection: UICollectionViewDelegate {
@@ -11356,7 +11561,7 @@ index e4460af..b180735 100644
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
-@@ -473,7 +600,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
+@@ -473,7 +623,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
          return parameters
      }
      
@@ -12441,6 +12646,22 @@ index bb0f355..3dac24b 100644
      }
  }
  
+diff --git a/browser/Reynard/Client/Windows/BrowserWindow.swift b/browser/Reynard/Client/Windows/BrowserWindow.swift
+index 77a655e..095fd44 100644
+--- a/browser/Reynard/Client/Windows/BrowserWindow.swift
++++ b/browser/Reynard/Client/Windows/BrowserWindow.swift
+@@ -16,7 +16,10 @@ final class BrowserWindow {
+     }
+     
+     init(windowScene: UIWindowScene, startup: TabStartup) {
+-        rootViewController = BrowserViewController(startup: startup)
++        // Edge UI: no split-view library sidebar (the Edge menu and side
++        // panel replace it); upstream's default would pin a sidebar on the
++        // left of every iPad window.
++        rootViewController = BrowserViewController(canHostSidebar: false, startup: startup)
+         rootViewController.sessionManager.setApplicationForeground(windowScene.activationState != .background)
+         
+         let window = InteractionTrackingWindow(windowScene: windowScene)
 diff --git a/browser/Reynard/SceneDelegate.swift b/browser/Reynard/SceneDelegate.swift
 index 8687198..98906c3 100644
 --- a/browser/Reynard/SceneDelegate.swift

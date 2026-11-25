@@ -16,6 +16,8 @@ final class TopToolbar: UIView {
         static let topToolbarTrailingButtonWidth: CGFloat = 42
         static let topToolbarHorizontalInset: CGFloat = 12
         static let topToolbarButtonSpacing: CGFloat = 10
+        // Edge UI: the right-hand cluster is slightly airier.
+        static let topToolbarTrailingButtonSpacing: CGFloat = 14
         static let topToolbarAddressBarSpacing: CGFloat = 12
         static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
         static let topToolbarAddressBarWidthLimit: CGFloat = 650
@@ -66,14 +68,14 @@ final class TopToolbar: UIView {
     private var trailingItems: [ToolbarItem] = []
     private let buttonMenus = ToolbarButtonMenus()
     
+    // Edge UI: only navigation on the left of the address bar. Everything
+    // else -- downloads (while active), the page actions and the ⋯ menu as the
+    // right-most button -- sits on the right (see arrangeTrailingButtons).
     private lazy var leadingButtons: UIStackView = {
-        button(for: .downloads).isHidden = true
         let stack = UIStackView(arrangedSubviews: [
             sidebarButton,
-            button(for: .downloads),
             button(for: .back),
             button(for: .forward),
-            button(for: .library),
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
@@ -86,7 +88,7 @@ final class TopToolbar: UIView {
         let stack = UIStackView()
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
-        stack.spacing = UX.topToolbarButtonSpacing
+        stack.spacing = UX.topToolbarTrailingButtonSpacing
         stack.distribution = .fillEqually
         return stack
     }()
@@ -224,7 +226,7 @@ final class TopToolbar: UIView {
             trailingWidthConstraint.constant = isCompact ? 0 : trailingWidth
             
             sidebarButton.isHidden = interfaceIdiom != .pad || !sidebarButtonVisible
-            button(for: .library).isHidden = interfaceIdiom == .pad
+            button(for: .library).isHidden = false
             button(for: .downloads).isHidden = isCompact || !showsDownloadButton
             
             NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
@@ -373,13 +375,15 @@ final class TopToolbar: UIView {
     }
     
     private func arrangeTrailingButtons() {
-        trailingItems = ToolbarPlacement.topToolbar.items
+        // Edge UI order: downloads (shown only while a download is active),
+        // the chosen items, and the ⋯ menu always last (right-most).
+        var items = ToolbarPlacement.topToolbar.items.filter { $0 != .downloads && $0 != .library && $0 != .back && $0 != .forward }
+        items.insert(.downloads, at: 0)
+        items.append(.library)
+        trailingItems = items
         trailingButtons.arrangedSubviews.forEach { $0.removeFromSuperview() }
         trailingItems.forEach { trailingButtons.addArrangedSubview(button(for: $0)) }
-        
-        if !trailingItems.contains(.downloads) {
-            leadingButtons.insertArrangedSubview(button(for: .downloads), at: 1)
-        }
+        button(for: .downloads).isHidden = !button(for: .downloads).isShowingDownloads
     }
     
     // MARK: - View Setup
@@ -442,16 +446,22 @@ final class TopToolbar: UIView {
         )
     }
     
+    /// The download button only appears while a download is active.
     private var showsDownloadButton: Bool {
-        return trailingItems.contains(.downloads) || button(for: .downloads).isShowingDownloads
+        return button(for: .downloads).isShowingDownloads
     }
     
+    /// Downloads never sit on the left in the Edge layout.
     private var showsLeadingDownloadButton: Bool {
-        return !trailingItems.contains(.downloads) && button(for: .downloads).isShowingDownloads
+        return false
     }
     
     private var trailingWidth: CGFloat {
-        return CGFloat(trailingItems.count) * UX.topToolbarTrailingButtonWidth
+        // Visible right-hand buttons (downloads only while active), 30pt each,
+        // with the trailing spacing between them.
+        let visibleCount = trailingItems.filter { $0 != .downloads || showsDownloadButton }.count
+        return (CGFloat(visibleCount) * UX.topToolbarButtonStackHeight)
+        + (CGFloat(max(visibleCount - 1, 0)) * UX.topToolbarTrailingButtonSpacing)
     }
     
     private func leadingWidth(
@@ -460,7 +470,8 @@ final class TopToolbar: UIView {
         showsDownloads: Bool
     ) -> CGFloat {
         guard interfaceIdiom == .pad else { return UX.topToolbarStandardButtonStackWidth }
-        let visibleButtonCount = (sidebarButtonVisible ? 3 : 2) + (showsDownloads ? 1 : 0)
+        // sidebar (when shown), back, forward.
+        let visibleButtonCount = (sidebarButtonVisible ? 3 : 2)
         return (CGFloat(visibleButtonCount) * UX.topToolbarButtonStackHeight)
         + (CGFloat(max(visibleButtonCount - 1, 0)) * UX.topToolbarButtonSpacing)
     }

@@ -319,7 +319,10 @@ extension BrowserViewController {
                 popover.sourceView = browserChrome
                 popover.sourceRect = browserChrome.menuButtonAnchorRect()
                 popover.permittedArrowDirections = [.up, .down]
-                popover.backgroundColor = .systemBackground
+                // Match the panel (e.g. the grouped grey of the appearance
+                // panel) so the arrow and rim don't show a different colour.
+                controller.loadViewIfNeeded()
+                popover.backgroundColor = controller.view.backgroundColor ?? .systemBackground
             }
         } else {
             controller.modalPresentationStyle = .pageSheet

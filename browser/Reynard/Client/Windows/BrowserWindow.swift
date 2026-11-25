@@ -16,7 +16,10 @@ final class BrowserWindow {
     }
     
     init(windowScene: UIWindowScene, startup: TabStartup) {
-        rootViewController = BrowserViewController(startup: startup)
+        // Edge UI: no split-view library sidebar (the Edge menu and side
+        // panel replace it); upstream's default would pin a sidebar on the
+        // left of every iPad window.
+        rootViewController = BrowserViewController(canHostSidebar: false, startup: startup)
         rootViewController.sessionManager.setApplicationForeground(windowScene.activationState != .background)
         
         let window = InteractionTrackingWindow(windowScene: windowScene)

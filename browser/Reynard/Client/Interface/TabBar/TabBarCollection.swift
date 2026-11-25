@@ -164,6 +164,9 @@ final class TabBarCollection: UICollectionView {
         guard !isUpdatingTabs else {
             return
         }
+        // Cell widths come from the tab bar, so a resize needs a fresh layout
+        // pass before the visible cells are reconfigured.
+        collectionViewLayout.invalidateLayout()
         updateScrollability()
         refreshVisibleTabs()
         revealSelectedTab()
@@ -216,29 +219,33 @@ final class TabBarCollection: UICollectionView {
         layout.prepareForInsertion(at: insertedIndexPaths)
         updateLayout()
         isUpdatingTabs = true
-        performBatchUpdates({
-            if !deletedIndexPaths.isEmpty {
-                deleteItems(at: deletedIndexPaths)
-            }
-            if !insertedIndexPaths.isEmpty {
-                insertItems(at: insertedIndexPaths)
-            }
-        }, completion: { [weak self] _ in
-            guard let self else {
-                return
-            }
+        // Opening or closing a tab must not repaint the whole strip: no insert
+        // or delete animation, and no animated scroll afterwards.
+        UIView.performWithoutAnimation {
+            performBatchUpdates({
+                if !deletedIndexPaths.isEmpty {
+                    deleteItems(at: deletedIndexPaths)
+                }
+                if !insertedIndexPaths.isEmpty {
+                    insertItems(at: insertedIndexPaths)
+                }
+            }, completion: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                
+                self.finishTabUpdate()
+            })
             
-            self.finishTabUpdate()
-        })
-        
-        if shouldRevealRightmostTab {
-            updateScrollability()
-            layoutIfNeeded()
-            scrollToItem(
-                at: IndexPath(item: tabCount - 1, section: 0),
-                at: .right,
-                animated: true
-            )
+            if shouldRevealRightmostTab {
+                updateScrollability()
+                layoutIfNeeded()
+                scrollToItem(
+                    at: IndexPath(item: tabCount - 1, section: 0),
+                    at: .right,
+                    animated: false
+                )
+            }
         }
     }
     
@@ -352,8 +359,19 @@ final class TabBarCollection: UICollectionView {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+        // Tabs must not paint over the "+" while the strip scrolls, so the
+        // collection clips; the edge hints cover the flare that gets cut.
+        clipsToBounds = true
         showsHorizontalScrollIndicator = false
-        contentInset = .zero
+        // Side padding equal to the fillet reach: the strip clips (so tabs can
+        // never paint over the "+"), and this keeps the first/last fillet
+        // inside those bounds instead of cutting them off.
+        contentInset = UIEdgeInsets(
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: TabBarCell.flareWidth
+        )
         contentInsetAdjustmentBehavior = .never
     }
     
@@ -361,7 +379,12 @@ final class TabBarCollection: UICollectionView {
         layout.scrollDirection = .horizontal
         layout.minimumLineSpacing = 0
         layout.minimumInteritemSpacing = 0
-        layout.sectionInset = .zero
+        layout.sectionInset = UIEdgeInsets(
+            top: 0,
+            left: TabBarCell.flareWidth,
+            bottom: 0,
+            right: 0
+        )
     }
     
     private func configureCollection() {
