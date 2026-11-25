@@ -34,7 +34,7 @@ final class LoginAutofillBar: UIView {
 
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = true
-        autoresizingMask = [.flexibleWidth]
+        autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin]
         backgroundColor = EdgeChromePalette.surface
         layer.cornerRadius = 14
         layer.cornerCurve = .continuous
@@ -167,12 +167,28 @@ final class LoginAutofillPresenter {
         refreshForFocusedField()
     }
 
+    /// After a login was filled, don't offer that site's logins again for a
+    /// while: the page often re-focuses a field or the keyboard bounces while
+    /// it signs in, which made the bar pop up again after logging in.
+    private var suppressedOrigin: String?
+    private var suppressedUntil = Date.distantPast
+
     private func refreshForFocusedField() {
+        // Only while the keyboard is actually on screen.
+        guard keyboardTop != nil else {
+            hide()
+            return
+        }
         guard let session = sessionProvider?(),
               let contentType = session.focusedAutofillContentType,
               contentType == .username || contentType == .password,
               let origin = originProvider?(session),
               !origin.isEmpty else {
+            hide()
+            return
+        }
+
+        if origin == suppressedOrigin, Date() < suppressedUntil {
             hide()
             return
         }
@@ -184,6 +200,7 @@ final class LoginAutofillPresenter {
         }
 
         activeSession = session
+        activeOrigin = origin
         window = session.engineView?.window
         present(with: logins)
     }
@@ -199,9 +216,14 @@ final class LoginAutofillPresenter {
             if self?.activeSession?.autofillLogin(username: login.username, password: login.password) != true {
                 self?.activeSession?.fillLoginThroughEngine(username: login.username, password: login.password)
             }
+            self?.suppressedOrigin = self?.activeOrigin
+            self?.suppressedUntil = Date().addingTimeInterval(60)
             self?.hide()
         }
         bar.onClose = { [weak self] in
+            // Closed by hand: stay away for this site for a while too.
+            self?.suppressedOrigin = self?.activeOrigin
+            self?.suppressedUntil = Date().addingTimeInterval(60)
             self?.hide()
         }
         bar.configure(with: logins)
@@ -228,35 +250,54 @@ final class LoginAutofillPresenter {
                 - window.safeAreaInsets.bottom
                 - 60
         }
+        // As wide as its content (icon, up to three accounts, close), not the
+        // whole window; capped and centred.
+        let available = window.bounds.width - horizontalInset * 2
+        let fitting = bar.systemLayoutSizeFitting(
+            CGSize(width: UIView.layoutFittingCompressedSize.width, height: height),
+            withHorizontalFittingPriority: .fittingSizeLevel,
+            verticalFittingPriority: .required
+        ).width
+        let width = min(available, min(420, max(220, ceil(fitting))))
         bar.frame = CGRect(
-            x: horizontalInset,
+            x: (window.bounds.width - width) / 2,
             y: bottom - height,
-            width: window.bounds.width - horizontalInset * 2,
+            width: width,
             height: height
         )
     }
 
     @objc private func handleKeyboardChange(_ notification: Notification) {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let keyboardWindow = window ?? sessionProvider?()?.engineView?.window else {
+            return
+        }
+        let top = keyboardWindow.convert(frame, from: keyboardWindow.screen.coordinateSpace).minY
+        guard top < keyboardWindow.bounds.height - 1 else {
+            // Keyboard is leaving the screen.
+            keyboardTop = nil
+            hide()
+            return
+        }
+        keyboardTop = top
+        layoutBar()
         // Focus may have moved to another field while the keyboard stayed up.
         DispatchQueue.main.async { [weak self] in
             self?.refreshForFocusedField()
         }
-        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let window else {
-            return
-        }
-        keyboardTop = window.convert(frame, from: window.screen.coordinateSpace).minY
-        layoutBar()
     }
 
     @objc private func handleKeyboardHide(_ notification: Notification) {
         keyboardTop = nil
-        layoutBar()
+        hide()
     }
 
     private func hide() {
         bar?.removeFromSuperview()
         bar = nil
         activeSession = nil
+        activeOrigin = nil
     }
+
+    private var activeOrigin: String?
 }
