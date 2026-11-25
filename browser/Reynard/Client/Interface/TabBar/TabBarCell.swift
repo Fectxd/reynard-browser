@@ -44,9 +44,6 @@ final class TabBarCell: UICollectionViewCell {
     }
     
     static let reuseIdentifier = "TabBarCell"
-    /// Drag preview geometry used by TabBarCollection.
-    static let contentInsets = UX.contentInsets
-    static let contentCornerRadius = UX.contentCornerRadius
     
     static var expandedMinimumWidth: CGFloat {
         return UX.expandedTabMinimumWidth

@@ -19,6 +19,11 @@ on:
         required: false
         default: ''
         type: string
+      app_only:
+        description: 只构建 App：跳过引擎编译，直接用缓存里上次编好的引擎（引擎补丁没改时用）
+        required: false
+        default: false
+        type: boolean
       runner:
         description: macOS runner image (macos-26 is often out of capacity)
         required: false
@@ -238,8 +243,30 @@ jobs:
             edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}-
             edgeui-buildcache-gecko-obj-${{ matrix.variant }}-${{ runner.arch }}-${{ hashFiles('engine/release.txt') }}-
 
+      # Skip the engine when the restored object tree is a *finished* build of
+      # exactly this engine source (same Firefox release + same engine
+      # patches; marker written after a successful build), or when the run
+      # was started with "app_only". Only the app is compiled then.
+      - name: Check for a finished engine build
+        id: engine_check
+        env:
+          ENGINE_KEY: ${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}
+          APP_ONLY: ${{ inputs.app_only }}
+        run: |
+          marker=engine/firefox/obj-aarch64-apple-ios/.edge-engine-complete
+          if [ "$APP_ONLY" = "true" ]; then
+            echo "::notice::app_only: skipping the engine build, using the cached engine as is."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ -f "$marker" ] && [ "$(cat "$marker")" = "$ENGINE_KEY" ]; then
+            echo "::notice::Cached engine is a finished build of this exact engine source; skipping the engine build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Gecko
         id: gecko_build
+        if: ${{ steps.engine_check.outputs.skip != 'true' }}
         # The step stops the compile itself at 270 min (see below), leaving
         # time to save the partial object tree; the job then fails and a
         # re-run continues. timeout-minutes is only a last-resort backstop:
@@ -301,6 +328,12 @@ jobs:
           fi
           exit "$build_status"
 
+      - name: Mark the engine build as finished
+        if: ${{ steps.gecko_build.outcome == 'success' }}
+        env:
+          ENGINE_KEY: ${{ hashFiles('engine/release.txt') }}-${{ hashFiles('patches/**/*.patch') }}
+        run: printf '%s' "$ENGINE_KEY" > engine/firefox/obj-aarch64-apple-ios/.edge-engine-complete
+
       - name: Save Gecko object cache
         if: ${{ always() && steps.gecko_build.outcome != 'skipped' }}
         uses: actions/cache/save@v4
@@ -311,7 +344,7 @@ jobs:
           key: ${{ steps.gecko_obj_cache.outputs.cache-primary-key }}
 
       - name: Stop if the engine build did not finish
-        if: ${{ steps.gecko_build.outcome != 'success' }}
+        if: ${{ steps.gecko_build.outcome == 'failure' }}
         run: |
           echo "::error::Gecko build did not finish (timed out or failed). Progress was cached: re-run this workflow to continue from where it stopped."
           exit 1

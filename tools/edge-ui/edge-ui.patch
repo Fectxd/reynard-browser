@@ -5007,10 +5007,10 @@ index 0000000..eacfede
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
 new file mode 100644
-index 0000000..8b082b6
+index 0000000..9418eb8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Homepage/Edge/EdgeStartPageViewController.swift
-@@ -0,0 +1,1224 @@
+@@ -0,0 +1,1226 @@
 +//
 +//  EdgeStartPageViewController.swift
 +//  Reynard
@@ -6228,11 +6228,13 @@ index 0000000..8b082b6
 +    func homepageSectionDidSelectSettings(_ viewController: UIViewController) {
 +        presentHomepageSettings()
 +    }
-+}
-+
-+extension EdgeStartPageViewController: FavoritesSectionViewControllerDelegate {
-+    func favoritesSectionViewController(_ controller: FavoritesSectionViewController, didSelectFolder folder: BookmarkFolderSnapshot) {
++    
++    func homepageSection(_ viewController: UIViewController, didSelectFolder folder: BookmarkFolderSnapshot) {
 +        delegate?.edgeStartPageDidSelectFolder(folder)
++    }
++    
++    func homepageDidStartScrolling() {
++        delegate?.edgeStartPageDidStartScrolling()
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Homepage/Edge/FavoriteAddCollectionViewCell.swift b/browser/Reynard/Client/Interface/Homepage/Edge/FavoriteAddCollectionViewCell.swift
@@ -9763,10 +9765,10 @@ index c73c69a..eae8ea1 100644
      }
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift
 new file mode 100644
-index 0000000..a89be3f
+index 0000000..7b69346
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift
-@@ -0,0 +1,472 @@
+@@ -0,0 +1,474 @@
 +//
 +//  PasswordsViewController.swift
 +//  Reynard
@@ -9995,6 +9997,7 @@ index 0000000..a89be3f
 +        AlertPresenter.show(
 +            title: nil,
 +            message: NSLocalizedString("This will remove all saved passwords. This action cannot be undone.", comment: ""),
++            in: view.window,
 +            buttons: [
 +                AlertPresenter.Button(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) {
 +                    LoginStore.shared.removeAll()
@@ -10229,6 +10232,7 @@ index 0000000..a89be3f
 +        AlertPresenter.show(
 +            title: nil,
 +            message: NSLocalizedString("This will delete the saved password. This action cannot be undone.", comment: ""),
++            in: view.window,
 +            buttons: [
 +                AlertPresenter.Button(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] in
 +                    LoginStore.shared.delete(id: record.id)
@@ -10778,7 +10782,7 @@ index f9572c2..a4598a3 100644
      }
  }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
-index aa1450a..da63718 100644
+index aa1450a..2840964 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCell.swift
 @@ -10,7 +10,12 @@ import UIKit
@@ -10820,18 +10824,15 @@ index aa1450a..da63718 100644
          static let borderWidth: CGFloat = 0.5
      }
      
-@@ -33,7 +44,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -33,7 +44,6 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      static let reuseIdentifier = "TabBarCell"
 -    private static let minimumVisibleTabTitle = "WWWWW"
-+    /// Drag preview geometry used by TabBarCollection.
-+    static let contentInsets = UX.contentInsets
-+    static let contentCornerRadius = UX.contentCornerRadius
      
      static var expandedMinimumWidth: CGFloat {
          return UX.expandedTabMinimumWidth
-@@ -43,6 +56,15 @@ final class TabBarCell: UICollectionViewCell {
+@@ -43,6 +53,15 @@ final class TabBarCell: UICollectionViewCell {
          return UX.collapsedTabMinimumWidth
      }
      
@@ -10847,7 +10848,7 @@ index aa1450a..da63718 100644
      static var contentCornerRadius: CGFloat {
          return UX.contentCornerRadius
      }
-@@ -52,14 +74,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -52,14 +71,9 @@ final class TabBarCell: UICollectionViewCell {
      }
      
      private static let fallbackFavicon = UIImage(named: "reynard.globe")
@@ -10863,7 +10864,7 @@ index aa1450a..da63718 100644
      
      private let tabContentView: UIView = {
          let view = UIView()
-@@ -67,6 +84,14 @@ final class TabBarCell: UICollectionViewCell {
+@@ -67,6 +81,14 @@ final class TabBarCell: UICollectionViewCell {
          return view
      }()
      
@@ -10878,7 +10879,7 @@ index aa1450a..da63718 100644
      private let faviconView: UIImageView = {
          let imageView = UIImageView()
          imageView.translatesAutoresizingMaskIntoConstraints = false
-@@ -83,7 +108,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -83,7 +105,9 @@ final class TabBarCell: UICollectionViewCell {
          label.font = UIFont.systemFont(ofSize: UX.tabTitleFontSize, weight: .semibold)
          label.textColor = .secondaryLabel
          label.numberOfLines = 1
@@ -10889,7 +10890,7 @@ index aa1450a..da63718 100644
          return label
      }()
      
-@@ -93,7 +120,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -93,7 +117,7 @@ final class TabBarCell: UICollectionViewCell {
              button.isPointerInteractionEnabled = true
          }
          button.translatesAutoresizingMaskIntoConstraints = false
@@ -10898,7 +10899,7 @@ index aa1450a..da63718 100644
          button.setPreferredSymbolConfiguration(
              UIImage.SymbolConfiguration(pointSize: UX.tabCloseButtonSymbolPointSize, weight: .regular),
              forImageIn: .normal
-@@ -137,11 +164,18 @@ final class TabBarCell: UICollectionViewCell {
+@@ -137,11 +161,18 @@ final class TabBarCell: UICollectionViewCell {
      
      override func prepareForReuse() {
          super.prepareForReuse()
@@ -10917,7 +10918,7 @@ index aa1450a..da63718 100644
      override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
          super.traitCollectionDidChange(previousTraitCollection)
          guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-@@ -149,6 +183,7 @@ final class TabBarCell: UICollectionViewCell {
+@@ -149,6 +180,7 @@ final class TabBarCell: UICollectionViewCell {
          }
          
          updateBorderColor()
@@ -10925,7 +10926,7 @@ index aa1450a..da63718 100644
      }
      
      // MARK: - Configuration
-@@ -160,17 +195,21 @@ final class TabBarCell: UICollectionViewCell {
+@@ -160,17 +192,21 @@ final class TabBarCell: UICollectionViewCell {
          cellWidth: CGFloat
      ) {
          tabID = tab.id
@@ -10953,7 +10954,7 @@ index aa1450a..da63718 100644
          let isCollapsed = layoutMode == .faviconOnly || isTooNarrowForTitle
          
          titleLabel.isHidden = isCollapsed
-@@ -180,7 +219,10 @@ final class TabBarCell: UICollectionViewCell {
+@@ -180,7 +216,10 @@ final class TabBarCell: UICollectionViewCell {
          expandedTrailingConstraint.isActive = !isCollapsed
          collapsedTrailingConstraint.isActive = isCollapsed
          expandedTitleWidthConstraint.isActive = !isCollapsed
@@ -10965,7 +10966,7 @@ index aa1450a..da63718 100644
      }
      
      func containsCloseButton(at point: CGPoint) -> Bool {
-@@ -192,14 +234,35 @@ final class TabBarCell: UICollectionViewCell {
+@@ -192,14 +231,35 @@ final class TabBarCell: UICollectionViewCell {
          return closeButton.frame.contains(convertedPoint)
      }
      
@@ -11004,7 +11005,7 @@ index aa1450a..da63718 100644
      }
      
      private func configureHierarchy() {
-@@ -223,9 +286,9 @@ final class TabBarCell: UICollectionViewCell {
+@@ -223,9 +283,9 @@ final class TabBarCell: UICollectionViewCell {
      private func configureConstraints() {
          expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
          collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
@@ -11017,7 +11018,7 @@ index aa1450a..da63718 100644
          
          NSLayoutConstraint.activate([
              tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
-@@ -233,7 +296,6 @@ final class TabBarCell: UICollectionViewCell {
+@@ -233,7 +293,6 @@ final class TabBarCell: UICollectionViewCell {
              tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
              tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
              
@@ -11025,7 +11026,7 @@ index aa1450a..da63718 100644
              titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
              expandedLeadingConstraint,
              expandedTrailingConstraint,
-@@ -250,6 +312,101 @@ final class TabBarCell: UICollectionViewCell {
+@@ -250,6 +309,101 @@ final class TabBarCell: UICollectionViewCell {
          ])
      }
      
@@ -11128,11 +11129,16 @@ index aa1450a..da63718 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index e4460af..4bd0d2a 100644
+index e4460af..b180735 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-@@ -135,6 +135,8 @@ final class TabBarCollection: UICollectionView {
+@@ -133,8 +133,13 @@ final class TabBarCollection: UICollectionView {
+     private var pendingInsertedIndices = Set<Int>()
+     private var pendingDeletedIndices = Set<Int>()
      
++    /// Reports whether the strip can still be scrolled towards each edge, so
++    /// the tab bar can show or hide its soft edge hints.
++    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
      private(set) var dragSourceIndex: Int?
      private(set) var dragDestinationIndex: Int?
 +    /// Set once the drag has lifted, so reloaded cells keep the slot empty.
@@ -11140,7 +11146,7 @@ index e4460af..4bd0d2a 100644
      
      init() {
          let layout = TabBarCollectionLayout()
-@@ -278,40 +280,27 @@ final class TabBarCollection: UICollectionView {
+@@ -278,40 +283,27 @@ final class TabBarCollection: UICollectionView {
      }
      
      private func updateScrollability() {
@@ -11201,7 +11207,7 @@ index e4460af..4bd0d2a 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -405,6 +394,7 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -405,6 +397,7 @@ extension TabBarCollection: UICollectionViewDataSource {
          }
          
          configure(tabBarCell, at: indexPath)
@@ -11209,7 +11215,7 @@ index e4460af..4bd0d2a 100644
          tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
              guard let self,
                    let tabBarCell,
-@@ -418,6 +408,140 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -418,6 +411,140 @@ extension TabBarCollection: UICollectionViewDataSource {
  }
  
  extension TabBarCollection: UICollectionViewDelegate {
@@ -11350,7 +11356,7 @@ index e4460af..4bd0d2a 100644
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
-@@ -473,7 +597,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
+@@ -473,7 +600,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
          return parameters
      }
      
@@ -11700,10 +11706,10 @@ index 6f85e44..58947d3 100644
          title: String?,
          message: String?,
 diff --git a/browser/Reynard/Client/Stores/DownloadStore.swift b/browser/Reynard/Client/Stores/DownloadStore.swift
-index 07ae3c1..cae68ca 100644
+index 07ae3c1..3690c71 100644
 --- a/browser/Reynard/Client/Stores/DownloadStore.swift
 +++ b/browser/Reynard/Client/Stores/DownloadStore.swift
-@@ -471,6 +471,30 @@ final class DownloadStore: NSObject {
+@@ -471,6 +471,33 @@ final class DownloadStore: NSObject {
          }
      }
      
@@ -11722,7 +11728,10 @@ index 07ae3c1..cae68ca 100644
 +            }
 +            self.savePersistedDownloadsLocked()
 +            self.postDidChange()
++            // Retried from the Downloads list, not from a window: no window's
++            // toolbar tracks it (initiators are per window).
 +            self.enqueueDownload(
++                initiatorID: UUID(),
 +                sourceURL: sourceURL,
 +                originalURL: entry.originalURLString.flatMap(URL.init(string:)),
 +                suggestedFileName: entry.fileName,

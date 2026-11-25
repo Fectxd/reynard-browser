@@ -486,7 +486,10 @@ final class DownloadStore: NSObject {
             }
             self.savePersistedDownloadsLocked()
             self.postDidChange()
+            // Retried from the Downloads list, not from a window: no window's
+            // toolbar tracks it (initiators are per window).
             self.enqueueDownload(
+                initiatorID: UUID(),
                 sourceURL: sourceURL,
                 originalURL: entry.originalURLString.flatMap(URL.init(string:)),
                 suggestedFileName: entry.fileName,

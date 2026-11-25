@@ -1215,10 +1215,12 @@ extension EdgeStartPageViewController: HomepageSectionDelegate {
     func homepageSectionDidSelectSettings(_ viewController: UIViewController) {
         presentHomepageSettings()
     }
-}
-
-extension EdgeStartPageViewController: FavoritesSectionViewControllerDelegate {
-    func favoritesSectionViewController(_ controller: FavoritesSectionViewController, didSelectFolder folder: BookmarkFolderSnapshot) {
+    
+    func homepageSection(_ viewController: UIViewController, didSelectFolder folder: BookmarkFolderSnapshot) {
         delegate?.edgeStartPageDidSelectFolder(folder)
+    }
+    
+    func homepageDidStartScrolling() {
+        delegate?.edgeStartPageDidStartScrolling()
     }
 }

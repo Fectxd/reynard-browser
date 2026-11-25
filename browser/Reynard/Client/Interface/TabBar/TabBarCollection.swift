@@ -133,6 +133,9 @@ final class TabBarCollection: UICollectionView {
     private var pendingInsertedIndices = Set<Int>()
     private var pendingDeletedIndices = Set<Int>()
     
+    /// Reports whether the strip can still be scrolled towards each edge, so
+    /// the tab bar can show or hide its soft edge hints.
+    var scrollStateDidChange: ((_ canScrollLeft: Bool, _ canScrollRight: Bool) -> Void)?
     private(set) var dragSourceIndex: Int?
     private(set) var dragDestinationIndex: Int?
     /// Set once the drag has lifted, so reloaded cells keep the slot empty.

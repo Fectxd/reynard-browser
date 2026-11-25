@@ -226,6 +226,7 @@ final class PasswordsViewController: SettingsTableViewController {
         AlertPresenter.show(
             title: nil,
             message: NSLocalizedString("This will remove all saved passwords. This action cannot be undone.", comment: ""),
+            in: view.window,
             buttons: [
                 AlertPresenter.Button(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) {
                     LoginStore.shared.removeAll()
@@ -460,6 +461,7 @@ final class PasswordDetailViewController: SettingsTableViewController {
         AlertPresenter.show(
             title: nil,
             message: NSLocalizedString("This will delete the saved password. This action cannot be undone.", comment: ""),
+            in: view.window,
             buttons: [
                 AlertPresenter.Button(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] in
                     LoginStore.shared.delete(id: record.id)
