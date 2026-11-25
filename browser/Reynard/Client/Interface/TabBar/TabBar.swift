@@ -139,9 +139,6 @@ final class TabBar: UIView {
     
     func cellLayout(at index: Int) -> CellLayout {
         let tabs = dataSource?.activeTabs ?? []
-        let horizontalInset = tabCollection.adjustedContentInset.left + tabCollection.adjustedContentInset.right
-        let containerWidth = tabCollection.bounds.width > 1 ? tabCollection.bounds.width : bounds.width
-        let availableWidth = max(0, containerWidth - horizontalInset)
         let layoutTabCount = max(1, tabs.count)
         let fixedTabWidth = TabBarCell.expandedMinimumWidth
         

@@ -48,11 +48,13 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
             return attributes
         }
         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
-        guard tabCount > 1 else {
+        guard tabCount > 0 else {
             return attributes
         }
         
-        for index in 0..<(tabCount - 1) {
+        // Separators sit between tabs and after the last (right-most) tab;
+        // none before the first one.
+        for index in 0..<tabCount {
             guard showsSeparator(after: index),
                   let separatorAttributes = separatorAttributes(after: index, in: rect) else {
                 continue
@@ -83,12 +85,12 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
             return false
         }
         let tabCount = min(collectionView.numberOfItems(inSection: 0), dataSourceTabCount)
-        guard tabCount > 1,
-              index >= 0,
-              index < tabCount - 1 else {
+        guard index >= 0, index < tabCount else {
             return false
         }
-        
+        if index == tabCount - 1 {
+            return !tabBar.isTabSelected(at: index)
+        }
         return !tabBar.isTabSelected(at: index) && !tabBar.isTabSelected(at: index + 1)
     }
     
@@ -96,12 +98,16 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
         after index: Int,
         in rect: CGRect?
     ) -> UICollectionViewLayoutAttributes? {
-        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)),
-              let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) else {
+        guard let leftAttributes = super.layoutAttributesForItem(at: IndexPath(item: index, section: 0)) else {
             return nil
         }
-        
-        let centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
+        let centerX: CGFloat
+        if let rightAttributes = super.layoutAttributesForItem(at: IndexPath(item: index + 1, section: 0)) {
+            centerX = (leftAttributes.frame.maxX + rightAttributes.frame.minX) / 2
+        } else {
+            // After the last tab: same gap as between two tabs.
+            centerX = leftAttributes.frame.maxX + max(minimumInteritemSpacing, minimumLineSpacing) / 2
+        }
         let frame = CGRect(
             x: centerX - (UX.separatorWidth / 2),
             y: leftAttributes.frame.midY - (UX.separatorHeight / 2),
