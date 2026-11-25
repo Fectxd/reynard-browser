@@ -394,7 +394,7 @@ index 6e08413..512d515 100644
                let libraryController = navigationController.viewControllers.first as? LibraryViewController else {
              presentLibrary(initialSection: section)
 diff --git a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
-index 8568bd1..911fda3 100644
+index 8568bd1..a16e19e 100644
 --- a/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 +++ b/browser/Reynard/Client/Interface/BrowserViewController+TabManager.swift
 @@ -37,6 +37,7 @@ extension BrowserViewController: TabManagerDelegate {
@@ -413,7 +413,16 @@ index 8568bd1..911fda3 100644
      }
      
      func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {
-@@ -331,4 +333,12 @@ extension BrowserViewController: TabSessionHandlerDelegate {
+@@ -180,6 +182,8 @@ extension BrowserViewController: TabManagerDelegate {
+                 )
+                 
+                 if tab.state.loadingState.isLoading {
++                    // A (re)load: the saved-logins bar may show again at once.
++                    LoginAutofillPresenter.shared.pageDidStartLoading()
+                     contentView.updateLoadError(for: tab)
+                     contentView.resetScrollTracking()
+                     toolbarController.lock(for: .pageNavigation)
+@@ -331,4 +335,12 @@ extension BrowserViewController: TabSessionHandlerDelegate {
              succeeded: succeeded
          )
      }
@@ -1169,10 +1178,10 @@ index 0000000..e6dd4d2
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
 new file mode 100644
-index 0000000..bc4acbe
+index 0000000..a92f751
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Chrome/LoginAutofillBar.swift
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,310 @@
 +//
 +//  LoginAutofillBar.swift
 +//  Reynard
@@ -1347,6 +1356,13 @@ index 0000000..bc4acbe
 +    /// it signs in, which made the bar pop up again after logging in.
 +    private var suppressedOrigin: String?
 +    private var suppressedUntil = Date.distantPast
++    private static let suppressionInterval: TimeInterval = 3
++
++    /// A page (re)load starts fresh: offer the logins again right away.
++    func pageDidStartLoading() {
++        suppressedOrigin = nil
++        suppressedUntil = .distantPast
++    }
 +
 +    private func refreshForFocusedField() {
 +        // Only while the keyboard is actually on screen.
@@ -1392,13 +1408,13 @@ index 0000000..bc4acbe
 +                self?.activeSession?.fillLoginThroughEngine(username: login.username, password: login.password)
 +            }
 +            self?.suppressedOrigin = self?.activeOrigin
-+            self?.suppressedUntil = Date().addingTimeInterval(60)
++            self?.suppressedUntil = Date().addingTimeInterval(Self.suppressionInterval)
 +            self?.hide()
 +        }
 +        bar.onClose = { [weak self] in
-+            // Closed by hand: stay away for this site for a while too.
++            // Closed by hand: stay away for this site for a moment too.
 +            self?.suppressedOrigin = self?.activeOrigin
-+            self?.suppressedUntil = Date().addingTimeInterval(60)
++            self?.suppressedUntil = Date().addingTimeInterval(Self.suppressionInterval)
 +            self?.hide()
 +        }
 +        bar.configure(with: logins)
@@ -1477,7 +1493,7 @@ index 0000000..bc4acbe
 +    private var activeOrigin: String?
 +}
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
-index cfdf24b..a3549d4 100644
+index cfdf24b..f0aefa6 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 +++ b/browser/Reynard/Client/Interface/Chrome/Toolbar/BottomToolbar.swift
 @@ -43,14 +43,11 @@ final class BottomToolbar: UIView {
@@ -1543,7 +1559,7 @@ index cfdf24b..a3549d4 100644
          case .collapsed, .compact:
              contentHeight = UX.bottomToolbarCompactContentHeight
          }
-@@ -304,7 +315,13 @@ final class BottomToolbar: UIView {
+@@ -304,12 +315,24 @@ final class BottomToolbar: UIView {
              return button
          }
          
@@ -1558,6 +1574,17 @@ index cfdf24b..a3549d4 100644
          itemButtons[item] = button
          return button
      }
+     
+     private var displayedItems: [ToolbarItem] {
++        // Edge UI: the phone row never adds a download button by itself
++        // (downloads live in the ⋯ menu); only if the user picked it.
++        return ToolbarPlacement.bottomToolbar.items
++    }
++    
++    private var upstreamDisplayedItems: [ToolbarItem] {
+         var items = ToolbarPlacement.bottomToolbar.items
+         if !items.contains(.downloads),
+            let downloadSummary,
 diff --git a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift b/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift
 index 1d815af..f03e863 100644
 --- a/browser/Reynard/Client/Interface/Chrome/Toolbar/ToolBarButton.swift

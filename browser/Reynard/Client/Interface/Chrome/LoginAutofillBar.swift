@@ -172,6 +172,13 @@ final class LoginAutofillPresenter {
     /// it signs in, which made the bar pop up again after logging in.
     private var suppressedOrigin: String?
     private var suppressedUntil = Date.distantPast
+    private static let suppressionInterval: TimeInterval = 3
+
+    /// A page (re)load starts fresh: offer the logins again right away.
+    func pageDidStartLoading() {
+        suppressedOrigin = nil
+        suppressedUntil = .distantPast
+    }
 
     private func refreshForFocusedField() {
         // Only while the keyboard is actually on screen.
@@ -217,13 +224,13 @@ final class LoginAutofillPresenter {
                 self?.activeSession?.fillLoginThroughEngine(username: login.username, password: login.password)
             }
             self?.suppressedOrigin = self?.activeOrigin
-            self?.suppressedUntil = Date().addingTimeInterval(60)
+            self?.suppressedUntil = Date().addingTimeInterval(Self.suppressionInterval)
             self?.hide()
         }
         bar.onClose = { [weak self] in
-            // Closed by hand: stay away for this site for a while too.
+            // Closed by hand: stay away for this site for a moment too.
             self?.suppressedOrigin = self?.activeOrigin
-            self?.suppressedUntil = Date().addingTimeInterval(60)
+            self?.suppressedUntil = Date().addingTimeInterval(Self.suppressionInterval)
             self?.hide()
         }
         bar.configure(with: logins)

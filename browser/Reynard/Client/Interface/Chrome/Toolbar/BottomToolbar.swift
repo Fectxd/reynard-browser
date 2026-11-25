@@ -327,6 +327,12 @@ final class BottomToolbar: UIView {
     }
     
     private var displayedItems: [ToolbarItem] {
+        // Edge UI: the phone row never adds a download button by itself
+        // (downloads live in the ⋯ menu); only if the user picked it.
+        return ToolbarPlacement.bottomToolbar.items
+    }
+    
+    private var upstreamDisplayedItems: [ToolbarItem] {
         var items = ToolbarPlacement.bottomToolbar.items
         if !items.contains(.downloads),
            let downloadSummary,

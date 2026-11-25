@@ -182,6 +182,8 @@ extension BrowserViewController: TabManagerDelegate {
                 )
                 
                 if tab.state.loadingState.isLoading {
+                    // A (re)load: the saved-logins bar may show again at once.
+                    LoginAutofillPresenter.shared.pageDidStartLoading()
                     contentView.updateLoadError(for: tab)
                     contentView.resetScrollTracking()
                     toolbarController.lock(for: .pageNavigation)
