@@ -11,6 +11,7 @@ struct PrivacySettingsSection {
     enum Row: CaseIterable {
         case sitePermissions
         case passwords
+        case clientCertificate
         case clearBrowsingData
         case httpsOnlyMode
         case dnsOverHTTPS
@@ -31,6 +32,8 @@ struct PrivacySettingsSection {
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Website Permissions", comment: ""))
         case .passwords:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Passwords", comment: ""))
+        case .clientCertificate:
+            return SettingsViewUtils.disclosureCell(title: "导入客户端证书")
         case .clearBrowsingData:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
         case .httpsOnlyMode:
@@ -54,6 +57,8 @@ struct PrivacySettingsSection {
         case .passwords:
             let destination = PasswordsViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)
+        case .clientCertificate:
+            ClientCertificateImporter.present(from: viewController)
         case .clearBrowsingData:
             let destination = ClearBrowsingDataViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)

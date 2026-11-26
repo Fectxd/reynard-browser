@@ -92,6 +92,20 @@ public class GeckoRuntime {
         )
     }
     
+    /// Imports a PKCS#12 (.p12 / .pfx) client certificate with its private key
+    /// into the profile's certificate database (Edge engine patch). Returns the
+    /// nsIX509CertDB result code: 0 success, 6 wrong password, 7 unreadable file.
+    public static func importClientCertificate(path: String, password: String) async throws -> Int {
+        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:Edge:ImportClientCertificate",
+            message: ["path": path, "password": password]
+        )
+        if let number = response as? NSNumber {
+            return number.intValue
+        }
+        return (response as? Int) ?? 1
+    }
+    
     public static func dispatchEvent(type: String, message: [String: Any?]? = nil) {
         GeckoEventDispatcherWrapper.runtimeInstance.dispatch(
             type: type,

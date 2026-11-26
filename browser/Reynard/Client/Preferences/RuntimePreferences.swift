@@ -55,6 +55,13 @@ enum RuntimePreferences {
             ])
         }
         
+        // TLS client certificates: there is no certificate chooser on iOS, so
+        // let Gecko present a matching imported certificate automatically
+        // (Settings > Privacy > 导入客户端证书).
+        GeckoRuntime.setDefaultPrefs([
+            "security.default_personal_cert": "Select Automatically"
+        ])
+        
         // HTTPS-only mode
         HTTPSOnlyModePolicyController.applyHTTPSOnlyMode()
         

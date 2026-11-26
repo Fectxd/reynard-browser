@@ -1,0 +1,45 @@
+diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
+index dbf551b..60acc1b 100644
+--- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
++++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
+@@ -396,6 +396,7 @@ export class GeckoViewStartup {
+           "GeckoView:SetDefaultPrefs",
+           "GeckoView:SetLocale",
+           "GeckoView:InitialForeground",
++          "GeckoView:Edge:ImportClientCertificate",
+         ]);
+ 
+         Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
+@@ -444,10 +445,31 @@ export class GeckoViewStartup {
+     }
+   }
+ 
+-  onEvent(aEvent, aData) {
++  onEvent(aEvent, aData, aCallback) {
+     debug`onEvent ${aEvent}`;
+ 
+     switch (aEvent) {
++      case "GeckoView:Edge:ImportClientCertificate": {
++        // Edge UI: import a PKCS#12 (.p12 / .pfx) client certificate and its
++        // private key into the profile's NSS database, so TLS client
++        // authentication ("security.default_personal_cert" = Select
++        // Automatically) can present it. Replies with the nsIX509CertDB
++        // result code (0 = success).
++        try {
++          const file = Cc["@mozilla.org/file/local;1"].createInstance(
++            Ci.nsIFile
++          );
++          file.initWithPath(aData.path);
++          const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
++            Ci.nsIX509CertDB
++          );
++          const result = certdb.importPKCS12File(file, aData.password ?? "");
++          aCallback?.onSuccess(result);
++        } catch (e) {
++          aCallback?.onError(`Cannot import the certificate: ${e}`);
++        }
++        break;
++      }
+       case "GeckoView:InitialForeground": {
+         // ExtensionProcessCrashObserver observes this topic to determine when
+         // the app goes into the foreground for the first time. This could be useful

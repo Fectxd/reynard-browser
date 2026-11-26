@@ -129,6 +129,31 @@ index 30e447a..5c8ddee 100644
 +        return PromptResponse(geckoMessage: ["selection": login.payload])
 +    }
  }
+diff --git a/browser/GeckoView/Runtime/GeckoRuntime.swift b/browser/GeckoView/Runtime/GeckoRuntime.swift
+index b8b6c40..572d5a1 100644
+--- a/browser/GeckoView/Runtime/GeckoRuntime.swift
++++ b/browser/GeckoView/Runtime/GeckoRuntime.swift
+@@ -92,6 +92,20 @@ public class GeckoRuntime {
+         )
+     }
+     
++    /// Imports a PKCS#12 (.p12 / .pfx) client certificate with its private key
++    /// into the profile's certificate database (Edge engine patch). Returns the
++    /// nsIX509CertDB result code: 0 success, 6 wrong password, 7 unreadable file.
++    public static func importClientCertificate(path: String, password: String) async throws -> Int {
++        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
++            type: "GeckoView:Edge:ImportClientCertificate",
++            message: ["path": path, "password": password]
++        )
++        if let number = response as? NSNumber {
++            return number.intValue
++        }
++        return (response as? Int) ?? 1
++    }
++    
+     public static func dispatchEvent(type: String, message: [String: Any?]? = nil) {
+         GeckoEventDispatcherWrapper.runtimeInstance.dispatch(
+             type: type,
 diff --git a/browser/GeckoView/Session/GeckoSession.swift b/browser/GeckoView/Session/GeckoSession.swift
 index bcc8ffe..38c20c3 100644
 --- a/browser/GeckoView/Session/GeckoSession.swift
@@ -2888,6 +2913,127 @@ index 0000000..aa0f2c8
 +            return
 +        }
 +        onPick(url)
++    }
++}
+diff --git a/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
+new file mode 100644
+index 0000000..39ccb30
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
+@@ -0,0 +1,115 @@
++//
++//  ClientCertificateImporter.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  "导入客户端证书" (Settings > Privacy): pick a PKCS#12 file (.p12 / .pfx)
++//  in Files, enter its password, and import the certificate with its private
++//  key into Gecko's certificate database. Sites that ask for a client
++//  certificate (e.g. FNMT / university single sign-on) then get a matching
++//  one automatically ("security.default_personal_cert" = Select
++//  Automatically, see RuntimePreferences).
++//
++
++import GeckoView
++import UIKit
++import UniformTypeIdentifiers
++
++@MainActor
++enum ClientCertificateImporter {
++    private static var activeCoordinator: PickerCoordinator?
++
++    static func present(from presenter: UIViewController) {
++        let types: [UTType] = [
++            UTType("com.rsa.pkcs-12"),
++            UTType(filenameExtension: "p12"),
++            UTType(filenameExtension: "pfx"),
++        ].compactMap { $0 }
++        let picker = UIDocumentPickerViewController(
++            forOpeningContentTypes: types.isEmpty ? [.data] : types,
++            asCopy: true
++        )
++        picker.allowsMultipleSelection = false
++        let coordinator = PickerCoordinator { [weak presenter] url in
++            activeCoordinator = nil
++            guard let presenter, let url else {
++                return
++            }
++            askPassword(for: url, from: presenter)
++        }
++        activeCoordinator = coordinator
++        picker.delegate = coordinator
++        presenter.present(picker, animated: true)
++    }
++
++    private static func askPassword(for fileURL: URL, from presenter: UIViewController) {
++        let alert = UIAlertController(
++            title: "证书密码",
++            message: "输入导出该证书（\(fileURL.lastPathComponent)）时设置的密码。",
++            preferredStyle: .alert
++        )
++        alert.addTextField { field in
++            field.isSecureTextEntry = true
++            field.placeholder = "密码"
++            field.textContentType = .password
++        }
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { _ in
++            try? FileManager.default.removeItem(at: fileURL)
++        })
++        alert.addAction(UIAlertAction(title: "导入", style: .default) { [weak alert, weak presenter] _ in
++            let password = alert?.textFields?.first?.text ?? ""
++            Task { @MainActor in
++                await importCertificate(at: fileURL, password: password, from: presenter)
++            }
++        })
++        presenter.present(alert, animated: true)
++    }
++
++    private static func importCertificate(at fileURL: URL, password: String, from presenter: UIViewController?) async {
++        let result: Int
++        do {
++            result = try await GeckoRuntime.importClientCertificate(path: fileURL.path, password: password)
++        } catch {
++            result = -1
++        }
++        // The picker handed us a private copy; it is no longer needed.
++        try? FileManager.default.removeItem(at: fileURL)
++
++        let message: String
++        switch result {
++        case 0:
++            message = "证书已导入。需要证书登录的网站会自动使用它；如果网页已经打开，请刷新一下。"
++        case 6:
++            message = "密码不正确，请重新导入。"
++        case 7:
++            message = "无法读取这个文件，请确认它是 .p12 或 .pfx 格式的证书（包含私钥）。"
++        case 5, 8:
++            message = "这个证书已经导入过了。"
++        default:
++            message = "导入失败（错误代码 \(result)）。"
++        }
++        guard let presenter else {
++            return
++        }
++        let alert = UIAlertController(title: result == 0 ? "导入成功" : "无法导入证书", message: message, preferredStyle: .alert)
++        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
++        presenter.present(alert, animated: true)
++    }
++
++    private final class PickerCoordinator: NSObject, UIDocumentPickerDelegate {
++        private let completion: (URL?) -> Void
++
++        init(completion: @escaping (URL?) -> Void) {
++            self.completion = completion
++        }
++
++        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
++            completion(urls.first)
++        }
++
++        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
++            completion(nil)
++        }
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift b/browser/Reynard/Client/Interface/Edge/EdgeAppearanceViewController.swift
@@ -10451,36 +10597,41 @@ index 0000000..7b69346
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
-index d7d7b96..e3a17b6 100644
+index d7d7b96..670e3bf 100644
 --- a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
 +++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
-@@ -10,6 +10,8 @@ import UIKit
+@@ -10,6 +10,9 @@ import UIKit
  struct PrivacySettingsSection {
      enum Row: CaseIterable {
          case sitePermissions
 +        case passwords
++        case clientCertificate
 +        case clearBrowsingData
          case httpsOnlyMode
          case dnsOverHTTPS
          case trackingProtection
-@@ -27,6 +29,10 @@ struct PrivacySettingsSection {
+@@ -27,6 +30,12 @@ struct PrivacySettingsSection {
          switch Row.allCases[index] {
          case .sitePermissions:
              return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Website Permissions", comment: ""))
 +        case .passwords:
 +            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Passwords", comment: ""))
++        case .clientCertificate:
++            return SettingsViewUtils.disclosureCell(title: "导入客户端证书")
 +        case .clearBrowsingData:
 +            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
          case .httpsOnlyMode:
              return SettingsViewUtils.disclosureCell(title: NSLocalizedString("HTTPS-Only Mode", tableName: "SettingsLocalizable", comment: ""))
          case .dnsOverHTTPS:
-@@ -45,6 +51,12 @@ struct PrivacySettingsSection {
+@@ -45,6 +54,14 @@ struct PrivacySettingsSection {
          case .sitePermissions:
              let destination = SitePermissionsViewController()
              viewController.navigationController?.pushViewController(destination, animated: true)
 +        case .passwords:
 +            let destination = PasswordsViewController()
 +            viewController.navigationController?.pushViewController(destination, animated: true)
++        case .clientCertificate:
++            ClientCertificateImporter.present(from: viewController)
 +        case .clearBrowsingData:
 +            let destination = ClearBrowsingDataViewController()
 +            viewController.navigationController?.pushViewController(destination, animated: true)
@@ -11949,6 +12100,24 @@ index 7b0171c..51ebb5e 100644
          static var showsFrequentlyVisited: Bool {
              get {
                  return prefs.bool(forSetting: "HomepageSettings", key: "showsFrequentlyVisited")
+diff --git a/browser/Reynard/Client/Preferences/RuntimePreferences.swift b/browser/Reynard/Client/Preferences/RuntimePreferences.swift
+index 4ac91d7..3d91226 100644
+--- a/browser/Reynard/Client/Preferences/RuntimePreferences.swift
++++ b/browser/Reynard/Client/Preferences/RuntimePreferences.swift
+@@ -55,6 +55,13 @@ enum RuntimePreferences {
+             ])
+         }
+         
++        // TLS client certificates: there is no certificate chooser on iOS, so
++        // let Gecko present a matching imported certificate automatically
++        // (Settings > Privacy > 导入客户端证书).
++        GeckoRuntime.setDefaultPrefs([
++            "security.default_personal_cert": "Select Automatically"
++        ])
++        
+         // HTTPS-only mode
+         HTTPSOnlyModePolicyController.applyHTTPSOnlyMode()
+         
 diff --git a/browser/Reynard/Client/Search/SearchCompletion.swift b/browser/Reynard/Client/Search/SearchCompletion.swift
 index 854b671..1f912b2 100644
 --- a/browser/Reynard/Client/Search/SearchCompletion.swift
@@ -12942,6 +13111,57 @@ index 0000000..032fdfb
 +     UITextContentTypeUsername, UITextContentTypePassword,
 +     UITextContentTypeOneTimeCode
 +   ]];
+diff --git a/patches/zz-edge-ui/client-certificate-import.patch b/patches/zz-edge-ui/client-certificate-import.patch
+new file mode 100644
+index 0000000..293622d
+--- /dev/null
++++ b/patches/zz-edge-ui/client-certificate-import.patch
+@@ -0,0 +1,45 @@
++diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
++index dbf551b..60acc1b 100644
++--- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
+++++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
++@@ -396,6 +396,7 @@ export class GeckoViewStartup {
++           "GeckoView:SetDefaultPrefs",
++           "GeckoView:SetLocale",
++           "GeckoView:InitialForeground",
+++          "GeckoView:Edge:ImportClientCertificate",
++         ]);
++ 
++         Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
++@@ -444,10 +445,31 @@ export class GeckoViewStartup {
++     }
++   }
++ 
++-  onEvent(aEvent, aData) {
+++  onEvent(aEvent, aData, aCallback) {
++     debug`onEvent ${aEvent}`;
++ 
++     switch (aEvent) {
+++      case "GeckoView:Edge:ImportClientCertificate": {
+++        // Edge UI: import a PKCS#12 (.p12 / .pfx) client certificate and its
+++        // private key into the profile's NSS database, so TLS client
+++        // authentication ("security.default_personal_cert" = Select
+++        // Automatically) can present it. Replies with the nsIX509CertDB
+++        // result code (0 = success).
+++        try {
+++          const file = Cc["@mozilla.org/file/local;1"].createInstance(
+++            Ci.nsIFile
+++          );
+++          file.initWithPath(aData.path);
+++          const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+++            Ci.nsIX509CertDB
+++          );
+++          const result = certdb.importPKCS12File(file, aData.password ?? "");
+++          aCallback?.onSuccess(result);
+++        } catch (e) {
+++          aCallback?.onError(`Cannot import the certificate: ${e}`);
+++        }
+++        break;
+++      }
++       case "GeckoView:InitialForeground": {
++         // ExtensionProcessCrashObserver observes this topic to determine when
++         // the app goes into the foreground for the first time. This could be useful
 diff --git a/patches/zz-edge-ui/edge-ui-engine.patch b/patches/zz-edge-ui/edge-ui-engine.patch
 new file mode 100644
 index 0000000..1c99020
