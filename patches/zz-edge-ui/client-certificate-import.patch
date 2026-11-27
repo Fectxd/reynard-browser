@@ -1,16 +1,18 @@
 diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-index dbf551b..60acc1b 100644
+index dbf551b..b8906fc 100644
 --- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 +++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-@@ -396,6 +396,7 @@ export class GeckoViewStartup {
+@@ -396,6 +396,9 @@ export class GeckoViewStartup {
            "GeckoView:SetDefaultPrefs",
            "GeckoView:SetLocale",
            "GeckoView:InitialForeground",
 +          "GeckoView:Edge:ImportClientCertificate",
++          "GeckoView:Edge:ListClientCertificates",
++          "GeckoView:Edge:DeleteClientCertificate",
          ]);
  
          Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
-@@ -444,10 +445,31 @@ export class GeckoViewStartup {
+@@ -444,10 +447,72 @@ export class GeckoViewStartup {
      }
    }
  
@@ -19,6 +21,47 @@ index dbf551b..60acc1b 100644
      debug`onEvent ${aEvent}`;
  
      switch (aEvent) {
++      case "GeckoView:Edge:ListClientCertificates": {
++        // Edge UI certificate manager: the user's own certificates (those
++        // with a private key, e.g. imported .p12 / .pfx files).
++        const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
++          Ci.nsIX509CertDB
++        );
++        certdb
++          .getCerts()
++          .then(certs => {
++            const list = certs
++              .filter(cert => cert.certType & Ci.nsIX509Cert.USER_CERT)
++              .map(cert => ({
++                dbKey: cert.dbKey,
++                name: cert.commonName || cert.displayName,
++                organization: cert.organization,
++                issuer: cert.issuerCommonName || cert.issuerOrganization,
++                serialNumber: cert.serialNumber,
++                // PRTime (microseconds) -> milliseconds since 1970
++                notAfter: cert.validity.notAfter / 1000,
++              }));
++            aCallback?.onSuccess(list);
++          })
++          .catch(e => aCallback?.onError(`Cannot list certificates: ${e}`));
++        break;
++      }
++      case "GeckoView:Edge:DeleteClientCertificate": {
++        // Removes the certificate and, for a user certificate, its key.
++        try {
++          const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
++            Ci.nsIX509CertDB
++          );
++          const cert = certdb.findCertByDBKey(aData.dbKey);
++          if (cert) {
++            certdb.deleteCertificate(cert);
++          }
++          aCallback?.onSuccess(!!cert);
++        } catch (e) {
++          aCallback?.onError(`Cannot delete the certificate: ${e}`);
++        }
++        break;
++      }
 +      case "GeckoView:Edge:ImportClientCertificate": {
 +        // Edge UI: import a PKCS#12 (.p12 / .pfx) client certificate and its
 +        // private key into the profile's NSS database, so TLS client

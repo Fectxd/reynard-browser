@@ -19,8 +19,10 @@ import UniformTypeIdentifiers
 @MainActor
 enum ClientCertificateImporter {
     private static var activeCoordinator: PickerCoordinator?
+    private static var onImported: (() -> Void)?
 
-    static func present(from presenter: UIViewController) {
+    static func present(from presenter: UIViewController, onImported: (() -> Void)? = nil) {
+        self.onImported = onImported
         let picker: UIDocumentPickerViewController
         if #available(iOS 14.0, *) {
             let types: [UTType] = [
@@ -96,6 +98,9 @@ enum ClientCertificateImporter {
             message = "这个证书已经导入过了。"
         default:
             message = "导入失败（错误代码 \(result)）。"
+        }
+        if result == 0 {
+            onImported?()
         }
         guard let presenter else {
             return

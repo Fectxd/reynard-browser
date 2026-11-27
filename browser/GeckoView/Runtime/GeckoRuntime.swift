@@ -106,6 +106,24 @@ public class GeckoRuntime {
         return (response as? Int) ?? 1
     }
     
+    /// The user's own (imported) client certificates: dbKey, name,
+    /// organization, issuer, serialNumber, notAfter (ms since 1970).
+    public static func listClientCertificates() async throws -> [[String: Any]] {
+        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:Edge:ListClientCertificates"
+        )
+        return (response as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
+    }
+    
+    /// Deletes a client certificate (and its private key) by its dbKey.
+    public static func deleteClientCertificate(dbKey: String) async throws -> Bool {
+        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:Edge:DeleteClientCertificate",
+            message: ["dbKey": dbKey]
+        )
+        return (response as? Bool) ?? ((response as? NSNumber)?.boolValue ?? false)
+    }
+    
     public static func dispatchEvent(type: String, message: [String: Any?]? = nil) {
         GeckoEventDispatcherWrapper.runtimeInstance.dispatch(
             type: type,

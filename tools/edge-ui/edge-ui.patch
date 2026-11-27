@@ -130,10 +130,10 @@ index 30e447a..5c8ddee 100644
 +    }
  }
 diff --git a/browser/GeckoView/Runtime/GeckoRuntime.swift b/browser/GeckoView/Runtime/GeckoRuntime.swift
-index b8b6c40..572d5a1 100644
+index b8b6c40..e46ac92 100644
 --- a/browser/GeckoView/Runtime/GeckoRuntime.swift
 +++ b/browser/GeckoView/Runtime/GeckoRuntime.swift
-@@ -92,6 +92,20 @@ public class GeckoRuntime {
+@@ -92,6 +92,38 @@ public class GeckoRuntime {
          )
      }
      
@@ -149,6 +149,24 @@ index b8b6c40..572d5a1 100644
 +            return number.intValue
 +        }
 +        return (response as? Int) ?? 1
++    }
++    
++    /// The user's own (imported) client certificates: dbKey, name,
++    /// organization, issuer, serialNumber, notAfter (ms since 1970).
++    public static func listClientCertificates() async throws -> [[String: Any]] {
++        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
++            type: "GeckoView:Edge:ListClientCertificates"
++        )
++        return (response as? [Any])?.compactMap { $0 as? [String: Any] } ?? []
++    }
++    
++    /// Deletes a client certificate (and its private key) by its dbKey.
++    public static func deleteClientCertificate(dbKey: String) async throws -> Bool {
++        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
++            type: "GeckoView:Edge:DeleteClientCertificate",
++            message: ["dbKey": dbKey]
++        )
++        return (response as? Bool) ?? ((response as? NSNumber)?.boolValue ?? false)
 +    }
 +    
      public static func dispatchEvent(type: String, message: [String: Any?]? = nil) {
@@ -2915,12 +2933,229 @@ index 0000000..aa0f2c8
 +        onPick(url)
 +    }
 +}
+diff --git a/browser/Reynard/Client/Interface/Edge/CertificateManagerViewController.swift b/browser/Reynard/Client/Interface/Edge/CertificateManagerViewController.swift
+new file mode 100644
+index 0000000..7063ffe
+--- /dev/null
++++ b/browser/Reynard/Client/Interface/Edge/CertificateManagerViewController.swift
+@@ -0,0 +1,211 @@
++//
++//  CertificateManagerViewController.swift
++//  Reynard
++//
++//  Created by Edge UI instrumentation.
++//
++//  "证书管理器" (Settings > Privacy): lists the client certificates imported
++//  into Gecko's certificate database, lets the user delete them (swipe, or tap
++//  a certificate), and imports new ones (.p12 / .pfx). Sites asking for a
++//  client certificate get a matching one automatically.
++//
++
++import GeckoView
++import UIKit
++
++final class CertificateManagerViewController: SettingsTableViewController {
++    private struct Certificate {
++        let dbKey: String
++        let name: String
++        let issuer: String
++        let organization: String
++        let notAfter: Date?
++    }
++
++    private enum Section: Int, CaseIterable {
++        case certificates
++        case actions
++    }
++
++    private var certificates: [Certificate] = []
++    private var isLoading = true
++
++    private static let dateFormatter: DateFormatter = {
++        let formatter = DateFormatter()
++        formatter.dateStyle = .medium
++        formatter.timeStyle = .none
++        return formatter
++    }()
++
++    init() {
++        super.init(style: .insetGrouped)
++        title = "证书管理器"
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func viewWillAppear(_ animated: Bool) {
++        super.viewWillAppear(animated)
++        reloadCertificates()
++    }
++
++    private func reloadCertificates() {
++        Task { @MainActor [weak self] in
++            let entries = (try? await GeckoRuntime.listClientCertificates()) ?? []
++            guard let self else {
++                return
++            }
++            self.certificates = entries.compactMap { entry in
++                guard let dbKey = entry["dbKey"] as? String else {
++                    return nil
++                }
++                let notAfter = (entry["notAfter"] as? NSNumber).map {
++                    Date(timeIntervalSince1970: $0.doubleValue / 1000)
++                }
++                let name = (entry["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "未命名证书"
++                return Certificate(
++                    dbKey: dbKey,
++                    name: name,
++                    issuer: entry["issuer"] as? String ?? "",
++                    organization: entry["organization"] as? String ?? "",
++                    notAfter: notAfter
++                )
++            }
++            self.isLoading = false
++            self.tableView.reloadData()
++        }
++    }
++
++    // MARK: - Table
++
++    override func numberOfSections(in tableView: UITableView) -> Int {
++        return Section.allCases.count
++    }
++
++    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
++        switch Section(rawValue: section) {
++        case .certificates:
++            return max(certificates.count, 1)
++        case .actions:
++            return 1
++        case .none:
++            return 0
++        }
++    }
++
++    override func sectionText(for section: Int) -> SettingsSectionText {
++        switch Section(rawValue: section) {
++        case .certificates:
++            return SettingsSectionText(
++                headerTitle: "你的证书",
++                footerTitle: "网站要求证书登录时，会自动使用与之匹配的证书。删除证书会同时删除它的私钥。"
++            )
++        case .actions:
++            return SettingsSectionText(footerTitle: "支持 .p12 / .pfx 格式（需包含私钥），导入时需要输入导出证书时设置的密码。")
++        case .none:
++            return SettingsSectionText()
++        }
++    }
++
++    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
++        switch Section(rawValue: indexPath.section) {
++        case .certificates:
++            guard certificates.indices.contains(indexPath.row) else {
++                let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
++                cell.textLabel?.text = isLoading ? "正在读取…" : "还没有导入证书"
++                cell.textLabel?.textColor = .secondaryLabel
++                cell.selectionStyle = .none
++                return cell
++            }
++            let certificate = certificates[indexPath.row]
++            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
++            cell.textLabel?.text = certificate.name
++            cell.textLabel?.numberOfLines = 2
++            var details: [String] = []
++            if !certificate.issuer.isEmpty {
++                details.append("颁发者：\(certificate.issuer)")
++            }
++            if let notAfter = certificate.notAfter {
++                let expired = notAfter < Date()
++                details.append((expired ? "已过期：" : "有效期至：") + Self.dateFormatter.string(from: notAfter))
++            }
++            cell.detailTextLabel?.text = details.joined(separator: "\n")
++            cell.detailTextLabel?.numberOfLines = 0
++            cell.detailTextLabel?.textColor = .secondaryLabel
++            cell.imageView?.image = UIImage(systemName: "person.text.rectangle")
++            cell.imageView?.tintColor = .secondaryLabel
++            return cell
++        case .actions:
++            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
++            cell.textLabel?.text = "导入证书…"
++            cell.textLabel?.textColor = view.tintColor
++            return cell
++        case .none:
++            return UITableViewCell()
++        }
++    }
++
++    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
++        tableView.deselectRow(at: indexPath, animated: true)
++        switch Section(rawValue: indexPath.section) {
++        case .certificates:
++            guard certificates.indices.contains(indexPath.row) else {
++                return
++            }
++            confirmDelete(certificates[indexPath.row], sourceView: tableView.cellForRow(at: indexPath))
++        case .actions:
++            ClientCertificateImporter.present(from: self) { [weak self] in
++                self?.reloadCertificates()
++            }
++        case .none:
++            break
++        }
++    }
++
++    override func tableView(
++        _ tableView: UITableView,
++        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
++    ) -> UISwipeActionsConfiguration? {
++        guard Section(rawValue: indexPath.section) == .certificates,
++              certificates.indices.contains(indexPath.row) else {
++            return nil
++        }
++        let certificate = certificates[indexPath.row]
++        let delete = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] _, _, completion in
++            completion(true)
++            self?.delete(certificate)
++        }
++        return UISwipeActionsConfiguration(actions: [delete])
++    }
++
++    // MARK: - Delete
++
++    private func confirmDelete(_ certificate: Certificate, sourceView: UIView?) {
++        let sheet = UIAlertController(
++            title: certificate.name,
++            message: "删除后，需要这个证书登录的网站将无法登录，除非重新导入。",
++            preferredStyle: .actionSheet
++        )
++        sheet.addAction(UIAlertAction(title: "删除证书", style: .destructive) { [weak self] _ in
++            self?.delete(certificate)
++        })
++        sheet.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
++        if let popover = sheet.popoverPresentationController {
++            popover.sourceView = sourceView ?? view
++            popover.sourceRect = (sourceView ?? view).bounds
++        }
++        present(sheet, animated: true)
++    }
++
++    private func delete(_ certificate: Certificate) {
++        // Remove the row right away; the list is re-read afterwards.
++        certificates.removeAll { $0.dbKey == certificate.dbKey }
++        tableView.reloadData()
++        Task { @MainActor [weak self] in
++            _ = try? await GeckoRuntime.deleteClientCertificate(dbKey: certificate.dbKey)
++            self?.reloadCertificates()
++        }
++    }
++}
 diff --git a/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
 new file mode 100644
-index 0000000..c8547d8
+index 0000000..602ce65
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,128 @@
 +//
 +//  ClientCertificateImporter.swift
 +//  Reynard
@@ -2942,8 +3177,10 @@ index 0000000..c8547d8
 +@MainActor
 +enum ClientCertificateImporter {
 +    private static var activeCoordinator: PickerCoordinator?
++    private static var onImported: (() -> Void)?
 +
-+    static func present(from presenter: UIViewController) {
++    static func present(from presenter: UIViewController, onImported: (() -> Void)? = nil) {
++        self.onImported = onImported
 +        let picker: UIDocumentPickerViewController
 +        if #available(iOS 14.0, *) {
 +            let types: [UTType] = [
@@ -3019,6 +3256,9 @@ index 0000000..c8547d8
 +            message = "这个证书已经导入过了。"
 +        default:
 +            message = "导入失败（错误代码 \(result)）。"
++        }
++        if result == 0 {
++            onImported?()
 +        }
 +        guard let presenter else {
 +            return
@@ -10626,7 +10866,7 @@ index 0000000..67e57f4
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
-index d7d7b96..670e3bf 100644
+index d7d7b96..96fd6c6 100644
 --- a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
 +++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
 @@ -10,6 +10,9 @@ import UIKit
@@ -10646,13 +10886,13 @@ index d7d7b96..670e3bf 100644
 +        case .passwords:
 +            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Passwords", comment: ""))
 +        case .clientCertificate:
-+            return SettingsViewUtils.disclosureCell(title: "导入客户端证书")
++            return SettingsViewUtils.disclosureCell(title: "证书管理器")
 +        case .clearBrowsingData:
 +            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
          case .httpsOnlyMode:
              return SettingsViewUtils.disclosureCell(title: NSLocalizedString("HTTPS-Only Mode", tableName: "SettingsLocalizable", comment: ""))
          case .dnsOverHTTPS:
-@@ -45,6 +54,14 @@ struct PrivacySettingsSection {
+@@ -45,6 +54,15 @@ struct PrivacySettingsSection {
          case .sitePermissions:
              let destination = SitePermissionsViewController()
              viewController.navigationController?.pushViewController(destination, animated: true)
@@ -10660,7 +10900,8 @@ index d7d7b96..670e3bf 100644
 +            let destination = PasswordsViewController()
 +            viewController.navigationController?.pushViewController(destination, animated: true)
 +        case .clientCertificate:
-+            ClientCertificateImporter.present(from: viewController)
++            let destination = CertificateManagerViewController()
++            viewController.navigationController?.pushViewController(destination, animated: true)
 +        case .clearBrowsingData:
 +            let destination = ClearBrowsingDataViewController()
 +            viewController.navigationController?.pushViewController(destination, animated: true)
@@ -13225,23 +13466,25 @@ index 0000000..032fdfb
 +   ]];
 diff --git a/patches/zz-edge-ui/client-certificate-import.patch b/patches/zz-edge-ui/client-certificate-import.patch
 new file mode 100644
-index 0000000..293622d
+index 0000000..d9e2eb9
 --- /dev/null
 +++ b/patches/zz-edge-ui/client-certificate-import.patch
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,88 @@
 +diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-+index dbf551b..60acc1b 100644
++index dbf551b..b8906fc 100644
 +--- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 ++++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-+@@ -396,6 +396,7 @@ export class GeckoViewStartup {
++@@ -396,6 +396,9 @@ export class GeckoViewStartup {
 +           "GeckoView:SetDefaultPrefs",
 +           "GeckoView:SetLocale",
 +           "GeckoView:InitialForeground",
 ++          "GeckoView:Edge:ImportClientCertificate",
+++          "GeckoView:Edge:ListClientCertificates",
+++          "GeckoView:Edge:DeleteClientCertificate",
 +         ]);
 + 
 +         Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
-+@@ -444,10 +445,31 @@ export class GeckoViewStartup {
++@@ -444,10 +447,72 @@ export class GeckoViewStartup {
 +     }
 +   }
 + 
@@ -13250,6 +13493,47 @@ index 0000000..293622d
 +     debug`onEvent ${aEvent}`;
 + 
 +     switch (aEvent) {
+++      case "GeckoView:Edge:ListClientCertificates": {
+++        // Edge UI certificate manager: the user's own certificates (those
+++        // with a private key, e.g. imported .p12 / .pfx files).
+++        const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+++          Ci.nsIX509CertDB
+++        );
+++        certdb
+++          .getCerts()
+++          .then(certs => {
+++            const list = certs
+++              .filter(cert => cert.certType & Ci.nsIX509Cert.USER_CERT)
+++              .map(cert => ({
+++                dbKey: cert.dbKey,
+++                name: cert.commonName || cert.displayName,
+++                organization: cert.organization,
+++                issuer: cert.issuerCommonName || cert.issuerOrganization,
+++                serialNumber: cert.serialNumber,
+++                // PRTime (microseconds) -> milliseconds since 1970
+++                notAfter: cert.validity.notAfter / 1000,
+++              }));
+++            aCallback?.onSuccess(list);
+++          })
+++          .catch(e => aCallback?.onError(`Cannot list certificates: ${e}`));
+++        break;
+++      }
+++      case "GeckoView:Edge:DeleteClientCertificate": {
+++        // Removes the certificate and, for a user certificate, its key.
+++        try {
+++          const certdb = Cc["@mozilla.org/security/x509certdb;1"].getService(
+++            Ci.nsIX509CertDB
+++          );
+++          const cert = certdb.findCertByDBKey(aData.dbKey);
+++          if (cert) {
+++            certdb.deleteCertificate(cert);
+++          }
+++          aCallback?.onSuccess(!!cert);
+++        } catch (e) {
+++          aCallback?.onError(`Cannot delete the certificate: ${e}`);
+++        }
+++        break;
+++      }
 ++      case "GeckoView:Edge:ImportClientCertificate": {
 ++        // Edge UI: import a PKCS#12 (.p12 / .pfx) client certificate and its
 ++        // private key into the profile's NSS database, so TLS client

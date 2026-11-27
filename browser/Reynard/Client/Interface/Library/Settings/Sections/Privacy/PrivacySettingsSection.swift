@@ -33,7 +33,7 @@ struct PrivacySettingsSection {
         case .passwords:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Passwords", comment: ""))
         case .clientCertificate:
-            return SettingsViewUtils.disclosureCell(title: "导入客户端证书")
+            return SettingsViewUtils.disclosureCell(title: "证书管理器")
         case .clearBrowsingData:
             return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
         case .httpsOnlyMode:
@@ -58,7 +58,8 @@ struct PrivacySettingsSection {
             let destination = PasswordsViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)
         case .clientCertificate:
-            ClientCertificateImporter.present(from: viewController)
+            let destination = CertificateManagerViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
         case .clearBrowsingData:
             let destination = ClearBrowsingDataViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)
