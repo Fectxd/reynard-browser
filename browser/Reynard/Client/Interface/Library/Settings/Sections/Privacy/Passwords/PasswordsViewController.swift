@@ -53,6 +53,22 @@ final class PasswordsViewController: SettingsTableViewController {
         reloadLogins()
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // Refresh as soon as the store changes (a delete from the swipe
+        // action or the detail page), not only when the page reappears.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(loginStoreDidChange),
+            name: LoginStore.didChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func loginStoreDidChange() {
+        reloadLogins()
+    }
+
     private func reloadLogins() {
         let records = LoginStore.shared.allLogins()
         var order: [String] = []
@@ -184,9 +200,12 @@ final class PasswordsViewController: SettingsTableViewController {
             return nil
         }
 
-        let delete = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { _, _, completion in
+        let delete = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] _, _, completion in
             LoginStore.shared.delete(id: record.id)
             completion(true)
+            // Drop the row right away instead of leaving it on screen until
+            // the page is reopened.
+            self?.reloadLogins()
         }
         return UISwipeActionsConfiguration(actions: [delete])
     }
@@ -223,17 +242,20 @@ final class PasswordsViewController: SettingsTableViewController {
     }
 
     private func confirmRemoveAll() {
-        AlertPresenter.show(
+        // Presented by this page directly: the shared presenter looks the
+        // window up itself and could miss the settings sheet, so the tap did
+        // nothing.
+        let alert = UIAlertController(
             title: nil,
             message: NSLocalizedString("This will remove all saved passwords. This action cannot be undone.", comment: ""),
-            in: view.window,
-            buttons: [
-                AlertPresenter.Button(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) {
-                    LoginStore.shared.removeAll()
-                },
-                AlertPresenter.Button(title: NSLocalizedString("Cancel", comment: "")),
-            ]
+            preferredStyle: .alert
         )
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) { [weak self] _ in
+            LoginStore.shared.removeAll()
+            self?.reloadLogins()
+        })
+        present(alert, animated: true)
     }
 }
 
@@ -458,17 +480,16 @@ final class PasswordDetailViewController: SettingsTableViewController {
             return
         }
 
-        AlertPresenter.show(
+        let alert = UIAlertController(
             title: nil,
             message: NSLocalizedString("This will delete the saved password. This action cannot be undone.", comment: ""),
-            in: view.window,
-            buttons: [
-                AlertPresenter.Button(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] in
-                    LoginStore.shared.delete(id: record.id)
-                    self?.navigationController?.popViewController(animated: true)
-                },
-                AlertPresenter.Button(title: NSLocalizedString("Cancel", comment: "")),
-            ]
+            preferredStyle: .alert
         )
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] _ in
+            LoginStore.shared.delete(id: record.id)
+            self?.navigationController?.popViewController(animated: true)
+        })
+        present(alert, animated: true)
     }
 }

@@ -2917,10 +2917,10 @@ index 0000000..aa0f2c8
 +}
 diff --git a/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
 new file mode 100644
-index 0000000..39ccb30
+index 0000000..c8547d8
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Edge/ClientCertificateImporter.swift
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,123 @@
 +//
 +//  ClientCertificateImporter.swift
 +//  Reynard
@@ -2944,15 +2944,23 @@ index 0000000..39ccb30
 +    private static var activeCoordinator: PickerCoordinator?
 +
 +    static func present(from presenter: UIViewController) {
-+        let types: [UTType] = [
-+            UTType("com.rsa.pkcs-12"),
-+            UTType(filenameExtension: "p12"),
-+            UTType(filenameExtension: "pfx"),
-+        ].compactMap { $0 }
-+        let picker = UIDocumentPickerViewController(
-+            forOpeningContentTypes: types.isEmpty ? [.data] : types,
-+            asCopy: true
-+        )
++        let picker: UIDocumentPickerViewController
++        if #available(iOS 14.0, *) {
++            let types: [UTType] = [
++                UTType("com.rsa.pkcs-12"),
++                UTType(filenameExtension: "p12"),
++                UTType(filenameExtension: "pfx"),
++            ].compactMap { $0 }
++            picker = UIDocumentPickerViewController(
++                forOpeningContentTypes: types.isEmpty ? [.data] : types,
++                asCopy: true
++            )
++        } else {
++            picker = UIDocumentPickerViewController(
++                documentTypes: ["com.rsa.pkcs-12", "public.data"],
++                in: .import
++            )
++        }
 +        picker.allowsMultipleSelection = false
 +        let coordinator = PickerCoordinator { [weak presenter] url in
 +            activeCoordinator = nil
@@ -10118,10 +10126,10 @@ index c73c69a..eae8ea1 100644
      }
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift
 new file mode 100644
-index 0000000..7b69346
+index 0000000..67e57f4
 --- /dev/null
 +++ b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/Passwords/PasswordsViewController.swift
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,495 @@
 +//
 +//  PasswordsViewController.swift
 +//  Reynard
@@ -10174,6 +10182,22 @@ index 0000000..7b69346
 +
 +    override func viewWillAppear(_ animated: Bool) {
 +        super.viewWillAppear(animated)
++        reloadLogins()
++    }
++
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        // Refresh as soon as the store changes (a delete from the swipe
++        // action or the detail page), not only when the page reappears.
++        NotificationCenter.default.addObserver(
++            self,
++            selector: #selector(loginStoreDidChange),
++            name: LoginStore.didChangeNotification,
++            object: nil
++        )
++    }
++
++    @objc private func loginStoreDidChange() {
 +        reloadLogins()
 +    }
 +
@@ -10308,9 +10332,12 @@ index 0000000..7b69346
 +            return nil
 +        }
 +
-+        let delete = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { _, _, completion in
++        let delete = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] _, _, completion in
 +            LoginStore.shared.delete(id: record.id)
 +            completion(true)
++            // Drop the row right away instead of leaving it on screen until
++            // the page is reopened.
++            self?.reloadLogins()
 +        }
 +        return UISwipeActionsConfiguration(actions: [delete])
 +    }
@@ -10347,17 +10374,20 @@ index 0000000..7b69346
 +    }
 +
 +    private func confirmRemoveAll() {
-+        AlertPresenter.show(
++        // Presented by this page directly: the shared presenter looks the
++        // window up itself and could miss the settings sheet, so the tap did
++        // nothing.
++        let alert = UIAlertController(
 +            title: nil,
 +            message: NSLocalizedString("This will remove all saved passwords. This action cannot be undone.", comment: ""),
-+            in: view.window,
-+            buttons: [
-+                AlertPresenter.Button(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) {
-+                    LoginStore.shared.removeAll()
-+                },
-+                AlertPresenter.Button(title: NSLocalizedString("Cancel", comment: "")),
-+            ]
++            preferredStyle: .alert
 +        )
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Remove", comment: "Destructive button"), style: .destructive) { [weak self] _ in
++            LoginStore.shared.removeAll()
++            self?.reloadLogins()
++        })
++        present(alert, animated: true)
 +    }
 +}
 +
@@ -10582,18 +10612,17 @@ index 0000000..7b69346
 +            return
 +        }
 +
-+        AlertPresenter.show(
++        let alert = UIAlertController(
 +            title: nil,
 +            message: NSLocalizedString("This will delete the saved password. This action cannot be undone.", comment: ""),
-+            in: view.window,
-+            buttons: [
-+                AlertPresenter.Button(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] in
-+                    LoginStore.shared.delete(id: record.id)
-+                    self?.navigationController?.popViewController(animated: true)
-+                },
-+                AlertPresenter.Button(title: NSLocalizedString("Cancel", comment: "")),
-+            ]
++            preferredStyle: .alert
 +        )
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
++        alert.addAction(UIAlertAction(title: NSLocalizedString("Delete", comment: "Destructive button"), style: .destructive) { [weak self] _ in
++            LoginStore.shared.delete(id: record.id)
++            self?.navigationController?.popViewController(animated: true)
++        })
++        present(alert, animated: true)
 +    }
 +}
 diff --git a/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift b/browser/Reynard/Client/Interface/Library/Settings/Sections/Privacy/PrivacySettingsSection.swift
@@ -11491,7 +11520,7 @@ index aa1450a..2840964 100644
          tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
      }
 diff --git a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
-index e4460af..b80b7f8 100644
+index e4460af..051c007 100644
 --- a/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 +++ b/browser/Reynard/Client/Interface/TabBar/TabBarCollection.swift
 @@ -32,7 +32,7 @@ private final class TabBarCollectionLayout: UICollectionViewFlowLayout {
@@ -11571,7 +11600,20 @@ index e4460af..b80b7f8 100644
      
      init() {
          let layout = TabBarCollectionLayout()
-@@ -159,6 +170,9 @@ final class TabBarCollection: UICollectionView {
+@@ -152,6 +163,12 @@ final class TabBarCollection: UICollectionView {
+     override func layoutSubviews() {
+         let widthChanged = abs(lastLayoutWidth - bounds.width) > 0.5
+         super.layoutSubviews()
++        // No drag in flight: the strip (and its tab bar) clip again, so the
++        // selected tab's shadow can never cover the address bar.
++        if !hasActiveDrag && !clipsToBounds {
++            clipsToBounds = true
++            tabBar?.clipsToBounds = true
++        }
+         guard widthChanged else {
+             return
+         }
+@@ -159,6 +176,9 @@ final class TabBarCollection: UICollectionView {
          guard !isUpdatingTabs else {
              return
          }
@@ -11581,7 +11623,7 @@ index e4460af..b80b7f8 100644
          updateScrollability()
          refreshVisibleTabs()
          revealSelectedTab()
-@@ -211,29 +225,33 @@ final class TabBarCollection: UICollectionView {
+@@ -211,29 +231,33 @@ final class TabBarCollection: UICollectionView {
          layout.prepareForInsertion(at: insertedIndexPaths)
          updateLayout()
          isUpdatingTabs = true
@@ -11637,7 +11679,7 @@ index e4460af..b80b7f8 100644
          }
      }
      
-@@ -278,40 +296,27 @@ final class TabBarCollection: UICollectionView {
+@@ -278,40 +302,27 @@ final class TabBarCollection: UICollectionView {
      }
      
      private func updateScrollability() {
@@ -11698,7 +11740,7 @@ index e4460af..b80b7f8 100644
      }
      
      private func refreshVisibleTabs() {
-@@ -360,8 +365,19 @@ final class TabBarCollection: UICollectionView {
+@@ -360,8 +371,19 @@ final class TabBarCollection: UICollectionView {
      private func configureAppearance() {
          translatesAutoresizingMaskIntoConstraints = false
          backgroundColor = .clear
@@ -11719,7 +11761,7 @@ index e4460af..b80b7f8 100644
          contentInsetAdjustmentBehavior = .never
      }
      
-@@ -369,7 +385,12 @@ final class TabBarCollection: UICollectionView {
+@@ -369,7 +391,12 @@ final class TabBarCollection: UICollectionView {
          layout.scrollDirection = .horizontal
          layout.minimumLineSpacing = 0
          layout.minimumInteritemSpacing = 0
@@ -11733,7 +11775,7 @@ index e4460af..b80b7f8 100644
      }
      
      private func configureCollection() {
-@@ -405,6 +426,7 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -405,6 +432,7 @@ extension TabBarCollection: UICollectionViewDataSource {
          }
          
          configure(tabBarCell, at: indexPath)
@@ -11741,7 +11783,7 @@ index e4460af..b80b7f8 100644
          tabBarCell.closeHandler = { [weak self, weak tabBarCell] in
              guard let self,
                    let tabBarCell,
-@@ -418,6 +440,140 @@ extension TabBarCollection: UICollectionViewDataSource {
+@@ -418,6 +446,140 @@ extension TabBarCollection: UICollectionViewDataSource {
  }
  
  extension TabBarCollection: UICollectionViewDelegate {
@@ -11882,7 +11924,20 @@ index e4460af..b80b7f8 100644
      func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
          tabBar?.requestSelectTab(at: indexPath.item)
      }
-@@ -473,7 +629,22 @@ extension TabBarCollection: UICollectionViewDragDelegate {
+@@ -452,8 +614,10 @@ extension TabBarCollection: UICollectionViewDragDelegate {
+         
+         dragSourceIndex = indexPath.item
+         dragDestinationIndex = indexPath.item
+-        clipsToBounds = false
+-        tabBar?.clipsToBounds = false
++        // Clipping is lifted only once the drag really begins
++        // (dragSessionWillBegin): a press that never turns into a drag never
++        // reaches dragSessionDidEnd, which left the selected tab's shadow
++        // spilling over the address bar.
+         return [UIDragItem(tab: tab)]
+     }
+     
+@@ -473,7 +637,24 @@ extension TabBarCollection: UICollectionViewDragDelegate {
          return parameters
      }
      
@@ -11890,6 +11945,8 @@ index e4460af..b80b7f8 100644
 +        // Edge UI: the lift preview has been snapshotted by now; leave the
 +        // original slot empty (keeps its width, shows nothing) so only the
 +        // lifted copy is visible.
++        clipsToBounds = false
++        tabBar?.clipsToBounds = false
 +        guard let sourceIndex = dragSourceIndex else {
 +            return
 +        }
@@ -12234,6 +12291,61 @@ index 86ad6fc..9d9fc9a 100644
          guard let sitePermission = SitePermission(contentPermission: permission),
                let host = URLUtils.normalizedHost(fromRawURI: permission.uri) else {
              return .prompt
+diff --git a/browser/Reynard/Client/SessionManagement/Navigation/UniversalLinkManager.swift b/browser/Reynard/Client/SessionManagement/Navigation/UniversalLinkManager.swift
+index cd64e0d..440bf6e 100644
+--- a/browser/Reynard/Client/SessionManagement/Navigation/UniversalLinkManager.swift
++++ b/browser/Reynard/Client/SessionManagement/Navigation/UniversalLinkManager.swift
+@@ -54,18 +54,30 @@ final class UniversalLinkManager {
+         for request: LoadRequest,
+         in session: GeckoSession
+     ) async -> AllowOrDeny {
+-        guard
+-            Prefs.BrowsingSettings.openLinksInExternalApps,
+-            let url = URL(string: request.uri)
+-        else {
++        guard let url = URL(string: request.uri) else {
+             return .allow
+         }
+         
++        // Edge UI: an app scheme (twitter://, weixin://, ...) that no app takes
++        // must not reach Gecko: it would replace the page with an "unknown
++        // protocol" error (e.g. x.com typed into the address bar). Schemes
++        // Gecko handles itself still load.
++        let scheme = url.scheme?.lowercased() ?? ""
++        let isAppScheme = !URLUtils.isWebURL(url) && !Self.geckoHandledSchemes.contains(scheme)
++        
++        guard Prefs.BrowsingSettings.openLinksInExternalApps else {
++            return isAppScheme ? .deny : .allow
++        }
++        
+         guard URLUtils.isWebURL(url) else {
++            guard isAppScheme else {
++                return .allow
++            }
+             guard await confirmOpen(in: session.engineView?.window) else {
+                 return .deny
+             }
+-            return await open(url, universalLinksOnly: false) ? .deny : .allow
++            _ = await open(url, universalLinksOnly: false)
++            return .deny
+         }
+         
+         guard
+@@ -106,7 +118,13 @@ final class UniversalLinkManager {
+         return didOpen ? .deny : .allow
+     }
+     
+-    func didCommitNavigation(in session: GeckoSession) {
++    /// Schemes Gecko loads itself; anything else is an app link.
++    private static let geckoHandledSchemes: Set<String> = [
++        "http", "https", "about", "data", "blob", "javascript", "file",
++        "resource", "moz-extension", "view-source", "ws", "wss", "chrome", "",
++    ]
++    
++        func didCommitNavigation(in session: GeckoSession) {
+         let sessionID = ObjectIdentifier(session)
+         failedHandoffs = Set(failedHandoffs.filter { $0.session != sessionID })
+     }
 diff --git a/browser/Reynard/Client/Shared/AlertPresenter.swift b/browser/Reynard/Client/Shared/AlertPresenter.swift
 index 6f85e44..58947d3 100644
 --- a/browser/Reynard/Client/Shared/AlertPresenter.swift

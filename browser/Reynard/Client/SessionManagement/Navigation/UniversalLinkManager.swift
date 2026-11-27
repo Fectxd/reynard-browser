@@ -54,18 +54,30 @@ final class UniversalLinkManager {
         for request: LoadRequest,
         in session: GeckoSession
     ) async -> AllowOrDeny {
-        guard
-            Prefs.BrowsingSettings.openLinksInExternalApps,
-            let url = URL(string: request.uri)
-        else {
+        guard let url = URL(string: request.uri) else {
             return .allow
         }
         
+        // Edge UI: an app scheme (twitter://, weixin://, ...) that no app takes
+        // must not reach Gecko: it would replace the page with an "unknown
+        // protocol" error (e.g. x.com typed into the address bar). Schemes
+        // Gecko handles itself still load.
+        let scheme = url.scheme?.lowercased() ?? ""
+        let isAppScheme = !URLUtils.isWebURL(url) && !Self.geckoHandledSchemes.contains(scheme)
+        
+        guard Prefs.BrowsingSettings.openLinksInExternalApps else {
+            return isAppScheme ? .deny : .allow
+        }
+        
         guard URLUtils.isWebURL(url) else {
+            guard isAppScheme else {
+                return .allow
+            }
             guard await confirmOpen(in: session.engineView?.window) else {
                 return .deny
             }
-            return await open(url, universalLinksOnly: false) ? .deny : .allow
+            _ = await open(url, universalLinksOnly: false)
+            return .deny
         }
         
         guard
@@ -106,7 +118,13 @@ final class UniversalLinkManager {
         return didOpen ? .deny : .allow
     }
     
-    func didCommitNavigation(in session: GeckoSession) {
+    /// Schemes Gecko loads itself; anything else is an app link.
+    private static let geckoHandledSchemes: Set<String> = [
+        "http", "https", "about", "data", "blob", "javascript", "file",
+        "resource", "moz-extension", "view-source", "ws", "wss", "chrome", "",
+    ]
+    
+        func didCommitNavigation(in session: GeckoSession) {
         let sessionID = ObjectIdentifier(session)
         failedHandoffs = Set(failedHandoffs.filter { $0.session != sessionID })
     }

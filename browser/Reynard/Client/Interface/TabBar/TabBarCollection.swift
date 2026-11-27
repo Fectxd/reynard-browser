@@ -163,6 +163,12 @@ final class TabBarCollection: UICollectionView {
     override func layoutSubviews() {
         let widthChanged = abs(lastLayoutWidth - bounds.width) > 0.5
         super.layoutSubviews()
+        // No drag in flight: the strip (and its tab bar) clip again, so the
+        // selected tab's shadow can never cover the address bar.
+        if !hasActiveDrag && !clipsToBounds {
+            clipsToBounds = true
+            tabBar?.clipsToBounds = true
+        }
         guard widthChanged else {
             return
         }
@@ -608,8 +614,10 @@ extension TabBarCollection: UICollectionViewDragDelegate {
         
         dragSourceIndex = indexPath.item
         dragDestinationIndex = indexPath.item
-        clipsToBounds = false
-        tabBar?.clipsToBounds = false
+        // Clipping is lifted only once the drag really begins
+        // (dragSessionWillBegin): a press that never turns into a drag never
+        // reaches dragSessionDidEnd, which left the selected tab's shadow
+        // spilling over the address bar.
         return [UIDragItem(tab: tab)]
     }
     
@@ -633,6 +641,8 @@ extension TabBarCollection: UICollectionViewDragDelegate {
         // Edge UI: the lift preview has been snapshotted by now; leave the
         // original slot empty (keeps its width, shows nothing) so only the
         // lifted copy is visible.
+        clipsToBounds = false
+        tabBar?.clipsToBounds = false
         guard let sourceIndex = dragSourceIndex else {
             return
         }

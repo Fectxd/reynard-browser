@@ -21,15 +21,23 @@ enum ClientCertificateImporter {
     private static var activeCoordinator: PickerCoordinator?
 
     static func present(from presenter: UIViewController) {
-        let types: [UTType] = [
-            UTType("com.rsa.pkcs-12"),
-            UTType(filenameExtension: "p12"),
-            UTType(filenameExtension: "pfx"),
-        ].compactMap { $0 }
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: types.isEmpty ? [.data] : types,
-            asCopy: true
-        )
+        let picker: UIDocumentPickerViewController
+        if #available(iOS 14.0, *) {
+            let types: [UTType] = [
+                UTType("com.rsa.pkcs-12"),
+                UTType(filenameExtension: "p12"),
+                UTType(filenameExtension: "pfx"),
+            ].compactMap { $0 }
+            picker = UIDocumentPickerViewController(
+                forOpeningContentTypes: types.isEmpty ? [.data] : types,
+                asCopy: true
+            )
+        } else {
+            picker = UIDocumentPickerViewController(
+                documentTypes: ["com.rsa.pkcs-12", "public.data"],
+                in: .import
+            )
+        }
         picker.allowsMultipleSelection = false
         let coordinator = PickerCoordinator { [weak presenter] url in
             activeCoordinator = nil
